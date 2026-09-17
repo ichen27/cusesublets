@@ -104,11 +104,15 @@ async function throttle(req: Request, db: D1Database, email: string) {
     "Too many attempts. Try again in 15 minutes.",
   );
 }
-const validPassword = (value: unknown): string => {
+export const validPassword = (value: unknown, creating = true): string => {
   requireThat(
-    typeof value === "string" && value.length >= 15 && value.length <= 128,
+    typeof value === "string" &&
+      value.length >= (creating ? 15 : 1) &&
+      value.length <= 128,
     400,
-    "Use a password between 15 and 128 characters.",
+    creating
+      ? "Use a password between 15 and 128 characters."
+      : "Enter your password (up to 128 characters).",
   );
   return value;
 };
@@ -126,7 +130,7 @@ export async function passwordAuth(
       .prepare("SELECT passwordHash FROM password_credentials WHERE userId=?")
       .bind(user.id)
       .first<{ passwordHash: string }>();
-    const current = validPassword(b.currentPassword),
+    const current = validPassword(b.currentPassword, false),
       next = validPassword(b.newPassword);
     requireThat(
       credential && (await verifyPassword(current, credential.passwordHash)),
@@ -171,7 +175,7 @@ export async function passwordAuth(
     "Enter a valid email address.",
   );
   await throttle(req, db, email);
-  const password = validPassword(b.password);
+  const password = validPassword(b.password, action === "signup");
   if (action === "signup") {
     requireThat(
       typeof b.name === "string" &&

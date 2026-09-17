@@ -62,7 +62,7 @@ export function PasswordLogin({
           type="password"
           autoComplete={signup ? "new-password" : "current-password"}
           required
-          minLength={15}
+          minLength={signup ? 15 : 1}
           maxLength={128}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -161,7 +161,7 @@ export function PasswordSettings() {
           type="password"
           autoComplete="current-password"
           required
-          minLength={15}
+          minLength={1}
           maxLength={128}
           value={current}
           onChange={(e) => setCurrent(e.target.value)}

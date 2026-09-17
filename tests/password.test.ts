@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { hashPassword, verifyPassword } from "../worker/password";
+import {
+  hashPassword,
+  verifyPassword,
+  validPassword,
+} from "../worker/password";
 describe("password hashing", () => {
   it("uses unique salts and checks exact passwords", async () => {
     const a = await hashPassword("a long example password");
@@ -11,5 +15,14 @@ describe("password hashing", () => {
     expect(await verifyPassword("a long example password", "broken")).toBe(
       false,
     );
+  });
+});
+
+describe("existing credential policy", () => {
+  it("accepts provisioned shorter credentials only for authentication", () => {
+    expect(validPassword("test-short", false)).toBe("test-short");
+    expect(() => validPassword("test-short")).toThrow();
+    expect(() => validPassword("", false)).toThrow();
+    expect(() => validPassword("x".repeat(129), false)).toThrow();
   });
 });
