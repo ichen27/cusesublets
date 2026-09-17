@@ -500,6 +500,20 @@ function validDocumentBytes(type: string, bytes: Uint8Array) {
   return false;
 }
 
+function userPathId(segment: string) {
+  let value: string;
+  try {
+    value = decodeURIComponent(segment);
+  } catch {
+    throw new HttpError(400, "Invalid user ID");
+  }
+  requireThat(
+    value.length > 0 && !/[\/\\\u0000-\u001f]/.test(value),
+    400,
+    "Invalid user ID",
+  );
+  return value;
+}
 type ProfileRow = User & {
   bio: string;
   phone: string;
@@ -782,7 +796,7 @@ async function route(req: Request, e: Env) {
     const target = await one<ProfileRow>(
       e,
       "SELECT * FROM users WHERE id=? AND suspended=0",
-      publicUser[1],
+      userPathId(publicUser[1]),
     );
     requireThat(target, 404, "Profile not found");
     const profile = await profileData(e, target);
@@ -932,7 +946,21 @@ async function route(req: Request, e: Env) {
       );
     }
     const url = "/api/profile-media/" + key;
-    await e.DB.batch([
+    // Compare-and-swap prevents concurrent replacement from leaving a losing
+    // upload publicly reachable or deleting a newer avatar.
+    const previous =
+      kind === "avatar"
+        ? await one<{
+            avatar: string | null;
+            id: string | null;
+            objectKey: string | null;
+          }>(
+            e,
+            "SELECT u.avatar,m.id,m.objectKey FROM users u LEFT JOIN profile_media m ON u.avatar='/api/profile-media/'||m.id AND m.userId=u.id WHERE u.id=?",
+            u.id,
+          )
+        : null;
+    const results = await e.DB.batch([
       stmt(
         e,
         "INSERT INTO profile_media VALUES(?,?,?,?,?,?)",
@@ -944,9 +972,41 @@ async function route(req: Request, e: Env) {
         createdAt,
       ),
       ...(kind === "avatar"
-        ? [stmt(e, "UPDATE users SET avatar=? WHERE id=?", url, u.id)]
+        ? [
+            stmt(
+              e,
+              "UPDATE users SET avatar=? WHERE id=? AND COALESCE(avatar,'')=?",
+              url,
+              u.id,
+              previous?.avatar || "",
+            ),
+            stmt(
+              e,
+              "DELETE FROM profile_media WHERE id=? AND userId=? AND EXISTS(SELECT 1 FROM users WHERE id=? AND avatar=?)",
+              previous?.id || "",
+              u.id,
+              u.id,
+              url,
+            ),
+          ]
         : []),
     ]);
+    if (kind === "avatar") {
+      if (results[1].meta.changes !== 1) {
+        await stmt(
+          e,
+          "DELETE FROM profile_media WHERE id=? AND userId=?",
+          key,
+          u.id,
+        ).run();
+        await e.UPLOADS.delete(objectKey);
+        throw new HttpError(
+          409,
+          "Avatar changed during upload; refresh and try again",
+        );
+      }
+      if (previous?.objectKey) await e.UPLOADS.delete(previous.objectKey);
+    }
     return json({ url }, 201);
   }
   if (p === "/api/profile/media/remove" && m === "POST") {
@@ -1002,7 +1062,7 @@ async function route(req: Request, e: Env) {
   const profileReview = p.match(/^\/api\/users\/([^/]+)\/reviews$/);
   if (profileReview && m === "POST") {
     const b = await body(req),
-      target = profileReview[1];
+      target = userPathId(profileReview[1]);
     const eligible = await reviewable(e, u, target);
     const booking = eligible.find((x) => x.id === b.bookingId);
     requireThat(
@@ -1827,7 +1887,7 @@ async function route(req: Request, e: Env) {
       l = await getListing(e, review[1]);
     const reason = text(b.reason, "Review reason", 2000, 5);
     requireThat(
-      ["approved", "needs_info", "rejected", "paused"].includes(
+      ["pending", "approved", "needs_info", "rejected", "paused"].includes(
         String(b.status),
       ),
       400,
@@ -1856,11 +1916,11 @@ async function route(req: Request, e: Env) {
         kind,
       );
       evidence[kind] = latest?.id || null;
-      if (b[kind + "Status"] === "verified")
+      if (b[kind + "Status"] !== "pending" || b[kind + "DocumentId"])
         requireThat(
           latest && b[kind + "DocumentId"] === latest.id,
           409,
-          "Select the current " + kind + " evidence before verifying",
+          "Select the current " + kind + " evidence before reviewing",
         );
     }
     const results = await e.DB.batch([
@@ -1900,7 +1960,7 @@ async function route(req: Request, e: Env) {
   );
   if (identity && m === "POST") {
     const b = await body(req),
-      target = identity[1] || identity[2],
+      target = userPathId(identity[1] || identity[2]),
       status = b.status || b.identity,
       reason = text(b.reason, "Review reason", 2000, 5);
     requireThat(target !== u.id, 403, "You cannot review your own identity");

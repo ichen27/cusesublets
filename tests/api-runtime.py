@@ -47,6 +47,10 @@ class API(unittest.TestCase):
   identityDoc=host.upload('/api/profile/identity')[1]['document']['id']
   self.assertEqual(admin.call('/api/admin/identities/demo-host/review',dict(status='verified',reason='Reviewed sample identity',documentId=identityDoc))[0],200)
   review=dict(leaseDocumentId=doc,permissionDocumentId=permission,status='approved',leaseStatus='verified',permissionStatus='verified',reason='PRIVATE-REVIEW-MARKER: Test-only reviewed supporting documents')
+  self.assertEqual(admin.call('/api/admin/listings/'+key+'/review',{**review,'leaseStatus':'needs_info','leaseDocumentId':'obsolete'})[0],409)
+  self.assertEqual(admin.call('/api/admin/listings/'+key+'/review',{**review,'permissionStatus':'rejected','permissionDocumentId':'obsolete'})[0],409)
+  self.assertEqual(admin.call('/api/admin/listings/'+key+'/review',{**review,'status':'pending'})[0],200)
+  self.assertEqual(guest.call('/api/listings/'+key)[0],404)
   self.assertEqual(admin.call('/api/admin/listings/'+key+'/review',review)[0],200)
   self.assertNotIn('PRIVATE-REVIEW-MARKER',json.dumps(guest.call('/api/listings')[1]))
   self.assertNotIn('reviewNote',guest.call('/api/listings/'+key)[1]['listing'])

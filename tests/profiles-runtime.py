@@ -40,6 +40,11 @@ class Profiles(unittest.TestCase):
   status,result=host.upload('/api/profile/media',kind='avatar',mime='image/png',name='avatar.png',data=b'\x89PNG\r\n\x1a\n')
   self.assertEqual(status,201,result);url=result['url']
   self.assertEqual(guest.raw(url)[0],200)
+  oldUrl=url
+  status,result=host.upload('/api/profile/media',kind='avatar',mime='image/png',name='replacement.png',data=b'\x89PNG\r\n\x1a\n')
+  self.assertEqual(status,201,result);url=result['url']
+  self.assertEqual(guest.raw(oldUrl)[0],404)
+  self.assertEqual(guest.raw(url)[0],200)
   self.assertEqual(guest.call('/api/users/demo-host')[1]['profile']['avatar'],url)
   self.assertEqual(renter.call('/api/profile/media/remove',dict(url=url))[0],404)
   self.assertEqual(host.call('/api/profile/media/remove',dict(url=url))[0],200)
@@ -64,5 +69,17 @@ class Profiles(unittest.TestCase):
   self.assertEqual(renter.call('/api/users/demo-host/reviews',body)[0],409)
   self.assertEqual(host.call('/api/users/demo-renter/reviews',body)[0],201)
   self.assertTrue(any(r['body']==body['body'] for r in guest.call('/api/users/demo-host')[1]['reviews']))
+  # Real Access user IDs contain colons and are encoded by the browser.
+  encodedId='access:runtime-profile'
+  db.execute("INSERT OR IGNORE INTO users(id,name,email) VALUES(?,?,?)",(encodedId,'Encoded profile','encoded-profile@example.test'))
+  db.execute("INSERT OR REPLACE INTO identity_documents VALUES('encoded-doc',?,'id.pdf','application/pdf','fixture-only','2026-01-01',0)",(encodedId,));db.commit()
+  self.assertEqual(guest.call('/api/users/access%3Aruntime-profile')[1]['profile']['id'],encodedId)
+  self.assertEqual(guest.call('/api/users/access%ZZruntime-profile')[0],400)
+  self.assertEqual(guest.call('/api/users/access%2Fruntime-profile')[0],400)
+  self.assertEqual(admin.call('/api/admin/identities/access%3Aruntime-profile/review',dict(status='needs_info',reason='Encoded profile review routing',documentId='encoded-doc'))[0],200)
+  # Verify review target decoding using an eligible booking redirected solely in this fixture.
+  db.execute("UPDATE bookings SET sellerId=? WHERE id=?",(encodedId,bid))
+  db.execute("DELETE FROM profile_reviews WHERE bookingId=?",(bid,));db.commit()
+  self.assertEqual(renter.call('/api/users/access%3Aruntime-profile/reviews',body)[0],201)
   db.close()
 if __name__=='__main__':unittest.main()
