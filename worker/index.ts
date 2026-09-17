@@ -16,16 +16,13 @@ import {
   payoutBlockers,
   mediaUrl,
 } from "./policy";
-interface Env {
-  DB: D1Database;
-  UPLOADS: R2Bucket;
-  ASSETS: Fetcher;
+type Env = Pick<Cloudflare.Env, "DB" | "UPLOADS" | "ASSETS"> & {
   APP_ENV: string;
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
   ADMIN_EMAILS?: string;
   APP_ORIGIN?: string;
-}
+};
 type Row = Record<string, unknown>;
 const json = (
   data: unknown,
