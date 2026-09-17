@@ -35,18 +35,39 @@ import ListingDetail from "./ListingDetail";
 import PostListing from "./PostListing";
 import Workspace from "./Workspace";
 import Admin from "./Admin";
+import PublicProfile from "./PublicProfile";
+import { ChecksGuide, IdentityBadge } from "./Checks";
 import ChatWorkspace, { type ChatIntent } from "./ChatWorkspace";
 import HostWorkspace from "./HostWorkspace";
-type View = "explore" | "saved" | "inbox" | "account" | "admin" | "host";
+type View =
+  | "explore"
+  | "saved"
+  | "inbox"
+  | "account"
+  | "admin"
+  | "host"
+  | "profile"
+  | "checks";
+function routeId(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return "";
+  }
+}
 export default function App() {
   const [view, setView] = useState<View>(
-      location.hash.startsWith("#chat")
-        ? "inbox"
-        : location.hash === "#my-listings"
-          ? "host"
-          : location.hash === "#account"
-            ? "account"
-            : "explore",
+      location.hash.startsWith("#profile/")
+        ? "profile"
+        : location.hash === "#checks"
+          ? "checks"
+          : location.hash.startsWith("#chat")
+            ? "inbox"
+            : location.hash === "#my-listings"
+              ? "host"
+              : location.hash === "#account"
+                ? "account"
+                : "explore",
     ),
     [listings, setListings] = useState<Listing[]>([]),
     [user, setUser] = useState<User | null>(null),
@@ -59,7 +80,6 @@ export default function App() {
     [selected, setSelected] = useState<Listing | null>(null),
     [login, setLogin] = useState(false),
     [post, setPost] = useState(false),
-    [trust, setTrust] = useState(false),
     [filters, setFilters] = useState<Filters>({}),
     [filterOpen, setFilterOpen] = useState(false),
     [sort, setSort] = useState("recommended"),
@@ -67,10 +87,20 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false);
-  const [chatId, setChatId] = useState(
-    location.hash.startsWith("#chat/")
-      ? decodeURIComponent(location.hash.slice(6))
+  const [profileId, setProfileId] = useState(
+    location.hash.startsWith("#profile/")
+      ? routeId(location.hash.slice(9))
       : "",
+  );
+  function openProfile(id: string) {
+    setSelected(null);
+    setProfileId(id);
+    setView("profile");
+    history.replaceState(null, "", `#profile/${encodeURIComponent(id)}`);
+    window.scrollTo({ top: 0 });
+  }
+  const [chatId, setChatId] = useState(
+    location.hash.startsWith("#chat/") ? routeId(location.hash.slice(6)) : "",
   );
   const [chatIntent, setChatIntent] = useState<ChatIntent>("message");
   const openChat = (id: string) => {
@@ -133,18 +163,45 @@ export default function App() {
   }, [refresh]);
   useEffect(() => {
     let active = true;
+    let request = 0;
     const openLinkedListing = () => {
-      if (!location.hash.startsWith("#listing/")) return;
-      const id = location.hash.slice(9);
-      api<{ listing: Listing }>(
-        `/listings/${encodeURIComponent(decodeURIComponent(id))}`,
-      )
-        .then(({ listing }) => {
-          if (active) setSelected(listing);
-        })
-        .catch((e) => {
-          if (active) setToast(e.message);
-        });
+      const current = ++request;
+      const hash = location.hash;
+      if (hash.startsWith("#listing/")) {
+        api<{ listing: Listing }>(
+          `/listings/${encodeURIComponent(routeId(hash.slice(9)))}`,
+        )
+          .then(({ listing }) => {
+            if (active && current === request) setSelected(listing);
+          })
+          .catch((e) => {
+            if (active && current === request) setToast(e.message);
+          });
+        return;
+      }
+      setSelected(null);
+      if (hash.startsWith("#profile/")) {
+        setProfileId(routeId(hash.slice(9)));
+        setView("profile");
+        return;
+      }
+      if (hash.startsWith("#chat")) {
+        setChatId(hash.startsWith("#chat/") ? routeId(hash.slice(6)) : "");
+        setChatIntent("message");
+        setView("inbox");
+        return;
+      }
+      const views: Record<string, View> = {
+        "#account": "account",
+        "#my-listings": "host",
+        "#checks": "checks",
+        "#saved": "saved",
+        "#admin": "admin",
+        "#explore": "explore",
+        "#": "explore",
+        "": "explore",
+      };
+      if (views[hash]) setView(views[hash]);
     };
     openLinkedListing();
     window.addEventListener("hashchange", openLinkedListing);
@@ -215,6 +272,7 @@ export default function App() {
       );
       if (role === "admin") setView("admin");
       else setView("explore");
+      history.replaceState(null, "", role === "admin" ? "#admin" : "#explore");
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -224,7 +282,6 @@ export default function App() {
   const closeDetail = useCallback(() => setSelected(null), []),
     closeLogin = useCallback(() => setLogin(false), []),
     closePost = useCallback(() => setPost(false), []),
-    closeTrust = useCallback(() => setTrust(false), []),
     closeFilters = useCallback(() => setFilterOpen(false), []);
   const askLogin = () => {
     setSelected(null);
@@ -262,9 +319,6 @@ export default function App() {
             onClick={() => navigate("saved")}
           >
             Saved <span className="nav-count">{saved.length || ""}</span>
-          </button>
-          <button onClick={() => setTrust(true)}>
-            How it works <ArrowUpRight size={13} />
           </button>
           {user && (
             <button
@@ -638,6 +692,9 @@ export default function App() {
                             </span>
                           </div>
                           <h3>{l.title}</h3>
+                          {l.hostIdentity === "verified" && (
+                            <IdentityBadge status={l.hostIdentity} />
+                          )}
                           <p>
                             <MapPin size={12} />
                             {l.neighborhood}, Syracuse
@@ -704,6 +761,17 @@ export default function App() {
             </div>
           </main>
         </>
+      ) : view === "checks" ? (
+        <ChecksGuide />
+      ) : view === "profile" ? (
+        <PublicProfile
+          key={profileId}
+          id={profileId}
+          user={user}
+          onSelect={setSelected}
+          onEdit={() => navigate("account")}
+          onChecks={() => navigate("checks")}
+        />
       ) : view === "admin" ? (
         <Admin user={user} notify={notify} onRefresh={refresh} />
       ) : user && view === "inbox" ? (
@@ -713,6 +781,7 @@ export default function App() {
           demo={demo}
           activeId={chatId}
           intent={chatIntent}
+          onProfile={openProfile}
           onOpen={openChat}
           onSelect={setSelected}
         />
@@ -727,6 +796,7 @@ export default function App() {
       ) : user ? (
         <Workspace
           view={view}
+          onProfile={openProfile}
           onManage={() => navigate("host")}
           onRefresh={refresh}
           user={user}
@@ -764,8 +834,8 @@ export default function App() {
           <i />
         </a>
         <span>Made for the places between your plans.</span>
-        <button onClick={() => setTrust(true)}>
-          Trust & how it works <ArrowUpRight size={12} />
+        <button onClick={() => navigate("checks")}>
+          CuseSublets Checks <ArrowUpRight size={12} />
         </button>
         <small>
           Independent community platform. Not affiliated with Syracuse
@@ -810,6 +880,11 @@ export default function App() {
           onSave={() => save(selected.id)}
           onClose={closeDetail}
           onLogin={askLogin}
+          onProfile={openProfile}
+          onChecks={() => {
+            setSelected(null);
+            navigate("checks");
+          }}
           onChat={listingChat}
           onManage={() => {
             setSelected(null);
@@ -893,51 +968,6 @@ export default function App() {
                 Continue with Google <ArrowRight size={17} />
               </button>
             )}
-          </div>
-        </Modal>
-      )}
-      {trust && (
-        <Modal title="A little clarity goes a long way." onClose={closeTrust}>
-          <div className="trust-content">
-            <p className="lead">
-              Housing is personal. You should know who you’re talking to and
-              exactly what has been checked.
-            </p>
-            {[
-              [
-                "01",
-                "Find your fit",
-                "Browse freely. Compare dates, rent, amenities, and the neighborhood.",
-              ],
-              [
-                "02",
-                "Get to know your host",
-                "Message on the platform and look for separate identity, lease, and sublet-permission checks. A badge is a specific check, not a guarantee.",
-              ],
-              [
-                "03",
-                "Agree on the details",
-                "Make an offer or request the asking price. Confirm permission to sublet and complete the agreement before paying.",
-              ],
-              [
-                "04",
-                "Move in with a clear plan",
-                "The proposed payout policy waits until confirmed move-in plus 48 hours without an open dispute. Stripe delayed payouts are not escrow.",
-              ],
-            ].map(([n, t, d]) => (
-              <div className="trust-step" key={n}>
-                <span>{n}</span>
-                <div>
-                  <h3>{t}</h3>
-                  <p>{d}</p>
-                </div>
-              </div>
-            ))}
-            <div className="notice">
-              This preview uses sample homes and simulated transactions. Live
-              identity checks, payment processing, and legally reviewed signing
-              require provider setup before launch.
-            </div>
           </div>
         </Modal>
       )}

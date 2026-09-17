@@ -8,6 +8,8 @@ import type {
   Offer,
   Booking,
 } from "../shared/types";
+import Checks from "./Checks";
+import UploadCard from "./UploadCard";
 import { api, money } from "./api";
 import { Busy, Empty, ErrorBox } from "./ui";
 export default function HostWorkspace({
@@ -56,19 +58,6 @@ export default function HostWorkspace({
     }, 10000);
     return () => clearInterval(timer);
   }, [refresh]);
-  async function upload(e: FormEvent<HTMLFormElement>, id: string) {
-    e.preventDefault();
-    const body = new FormData(e.currentTarget);
-    setBusy(true);
-    try {
-      await api(`/listings/${id}/documents`, body);
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <main className="workspace">
       <div className="workspace-heading">
@@ -120,7 +109,9 @@ export default function HostWorkspace({
                   />
                   <div>
                     <span className={"status " + l.status}>
-                      {l.status.replace("_", " ")}
+                      {l.status === "approved"
+                        ? "Published"
+                        : l.status.replace("_", " ")}
                     </span>
                     <h3>{l.title}</h3>
                     <p>
@@ -174,21 +165,40 @@ export default function HostWorkspace({
                       </p>
                     ))}
                 </div>
-                <h4>Private review documents</h4>
-                <p className="muted">
-                  Only you and the review team can access these. Share documents
-                  with a renter separately in chat.
-                </p>
+                <Checks
+                  identity={user.identity}
+                  lease={l.leaseStatus}
+                  permission={l.permissionStatus}
+                />
                 {l.reviewNote && (
-                  <div className="notice">Reviewer note: {l.reviewNote}</div>
+                  <div className="notice">Review team: {l.reviewNote}</div>
                 )}
-                <div className="review-statuses">
-                  <span>
-                    Lease: <b>{l.leaseStatus.replace("_", " ")}</b>
-                  </span>
-                  <span>
-                    Permission: <b>{l.permissionStatus.replace("_", " ")}</b>
-                  </span>
+                <div className="listing-verification-uploads">
+                  {[
+                    [
+                      "lease",
+                      "Lease document",
+                      "Confirm your connection to this place.",
+                    ],
+                    [
+                      "permission",
+                      "Sublet permission",
+                      "Show that you have permission to sublet.",
+                    ],
+                  ].map(([kind, title, description]) => (
+                    <UploadCard
+                      key={kind}
+                      title={title}
+                      description={description}
+                      onUpload={async (file) => {
+                        const body = new FormData();
+                        body.append("kind", kind);
+                        body.append("file", file);
+                        await api(`/listings/${l.id}/documents`, body);
+                        await refresh();
+                      }}
+                    />
+                  ))}
                 </div>
                 <div className="document-links">
                   {documents
@@ -205,25 +215,6 @@ export default function HostWorkspace({
                       </a>
                     ))}
                 </div>
-                <form
-                  className="document-upload"
-                  onSubmit={(e) => upload(e, l.id)}
-                >
-                  <select name="kind" aria-label="Document type">
-                    <option value="lease">Lease</option>
-                    <option value="permission">Sublet permission</option>
-                  </select>
-                  <input
-                    type="file"
-                    name="file"
-                    aria-label="Upload review document"
-                    accept="application/pdf,image/jpeg,image/png"
-                    required
-                  />
-                  <button className="outline small" disabled={busy}>
-                    Upload
-                  </button>
-                </form>
               </div>
             ))
           ) : (

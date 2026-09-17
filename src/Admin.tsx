@@ -18,6 +18,7 @@ import type {
   Audit,
   ReviewStatus,
 } from "../shared/types";
+import IdentityReviews from "./IdentityReviews";
 import { api, money } from "./api";
 import { Busy, Empty, ErrorBox } from "./ui";
 interface Data {
@@ -70,7 +71,7 @@ export default function Admin({
     setSelected(l.id);
     setLease(l.leaseStatus);
     setPermission(l.permissionStatus);
-    setStatus("needs_info");
+    setStatus(l.status);
     setReason("");
   };
   async function action(path: string, body: unknown, msg: string) {
@@ -92,7 +93,18 @@ export default function Admin({
     e.preventDefault();
     action(
       `/admin/listings/${selected}/review`,
-      { status, leaseStatus: lease, permissionStatus: permission, reason },
+      {
+        status,
+        leaseStatus: lease,
+        permissionStatus: permission,
+        reason,
+        leaseDocumentId: data?.documents
+          .filter((d) => d.listingId === selected && d.kind === "lease")
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.id,
+        permissionDocumentId: data?.documents
+          .filter((d) => d.listingId === selected && d.kind === "permission")
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.id,
+      },
       "Review saved with an audit record.",
     );
   }
@@ -129,7 +141,11 @@ export default function Admin({
                 Clock,
                 "Awaiting review",
                 data.listings.filter(
-                  (l) => l.status === "pending" || l.status === "needs_info",
+                  (l) =>
+                    l.status === "pending" ||
+                    l.status === "needs_info" ||
+                    l.leaseStatus === "pending" ||
+                    l.permissionStatus === "pending",
                 ).length,
               ],
               [
@@ -208,7 +224,9 @@ export default function Admin({
                     (l) =>
                       scope === "all" ||
                       l.status === "pending" ||
-                      l.status === "needs_info",
+                      l.status === "needs_info" ||
+                      l.leaseStatus === "pending" ||
+                      l.permissionStatus === "pending",
                   )
                   .map((l) => (
                     <button
@@ -337,15 +355,18 @@ export default function Admin({
                         </label>
                       </div>
                       <label>
-                        Listing decision
+                        Publication status
                         <select
                           value={status}
                           onChange={(e) => setStatus(e.target.value)}
                         >
+                          <option value="pending">Unpublished · pending</option>
                           <option value="needs_info">
-                            Request more information
+                            Unpublished · needs information
                           </option>
-                          <option value="approved">Approve and publish</option>
+                          <option value="approved">
+                            Published (independent of badges)
+                          </option>
                           <option value="rejected">Reject listing</option>
                           <option value="paused">Pause listing</option>
                         </select>
@@ -437,98 +458,70 @@ export default function Admin({
               )}
             </div>
           ) : tab === "users" ? (
-            <div className="panel">
-              <div className="notice">
-                Record only an identity result supported by your verification
-                provider or approved review process. Do not upload raw IDs. Demo
-                identities are illustrative.
-              </div>
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Member</th>
-                      <th>Role</th>
-                      <th>Identity</th>
-                      <th>Review action</th>
-                      <th>Account access</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.users.map((u) => (
-                      <tr key={u.id}>
-                        <td>
-                          <b>{u.name}</b>
-                          <small>{u.email}</small>
-                        </td>
-                        <td>{u.role}</td>
-                        <td>
-                          <span className={"status " + u.identity}>
-                            {u.identity.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="outline small"
-                            disabled={busy}
-                            onClick={() => {
-                              const r = prompt(
-                                "Reference the external verification evidence and explain the decision.",
-                              );
-                              if (r)
-                                action(
-                                  `/admin/users/${u.id}/review`,
-                                  {
-                                    identity:
-                                      u.identity === "verified"
-                                        ? "needs_info"
-                                        : "verified",
-                                    reason: r,
-                                  },
-                                  "Identity review recorded.",
-                                );
-                            }}
-                          >
-                            {u.identity === "verified"
-                              ? "Request recheck"
-                              : "Record verified result"}
-                          </button>
-                        </td>
-                        <td>
-                          <span
-                            className={
-                              "status " +
-                              (u.suspended ? "rejected" : "verified")
-                            }
-                          >
-                            {u.suspended ? "Suspended" : "Active"}
-                          </span>
-                          {u.role !== "admin" && (
-                            <button
-                              className="text-button small"
-                              disabled={busy}
-                              onClick={() => {
-                                const reason = prompt(
-                                  u.suspended
-                                    ? "Explain why access should be restored."
-                                    : "Explain the reason for suspension. Existing dispute access remains available.",
-                                );
-                                if (reason)
-                                  action(
-                                    `/admin/users/${u.id}/status`,
-                                    { suspended: !u.suspended, reason },
-                                    "Account access updated.",
-                                  );
-                              }}
-                            >
-                              {u.suspended ? "Restore access" : "Suspend"}
-                            </button>
-                          )}
-                        </td>
+            <div>
+              <IdentityReviews user={user} onRefresh={refresh} />
+              <div className="panel">
+                <h2>Member access</h2>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Member</th>
+                        <th>Role</th>
+                        <th>Identity</th>
+
+                        <th>Account access</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {data.users.map((u) => (
+                        <tr key={u.id}>
+                          <td>
+                            <b>{u.name}</b>
+                            <small>{u.email}</small>
+                          </td>
+                          <td>{u.role}</td>
+                          <td>
+                            <span className={"status " + u.identity}>
+                              {u.identity.replace("_", " ")}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={
+                                "status " +
+                                (u.suspended ? "rejected" : "verified")
+                              }
+                            >
+                              {u.suspended ? "Suspended" : "Active"}
+                            </span>
+                            {u.role !== "admin" && (
+                              <button
+                                className="text-button small"
+                                disabled={busy}
+                                onClick={() => {
+                                  const reason = prompt(
+                                    u.suspended
+                                      ? "Explain why access should be restored."
+                                      : "Explain the reason for suspension. Existing dispute access remains available.",
+                                  );
+                                  if (reason)
+                                    action(
+                                      `/admin/users/${u.id}/status`,
+                                      { suspended: !u.suspended, reason },
+                                      "Account access updated.",
+                                    );
+                                }}
+                              >
+                                {u.suspended ? "Restore access" : "Suspend"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ) : tab === "transactions" ? (

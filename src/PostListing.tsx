@@ -88,7 +88,7 @@ export default function PostListing({
         setMedia((prev) => prev.filter((f) => f !== file));
       }
       notify(
-        "Listing submitted. It will stay private until the review is complete.",
+        "Your listing is published. Badges appear after manual verification.",
       );
       onCreated();
       onClose();
@@ -368,9 +368,10 @@ export default function PostListing({
           ) : (
             <>
               <div className="notice">
-                Your listing starts as <b>Awaiting review</b>. Our team checks
-                your lease and permission to sublet separately. Never upload a
-                government ID here.
+                Your listing will be <b>published immediately</b>. Documents are
+                optional. Our team reviews your lease and permission separately
+                before adding verification badges. Upload ID only through your
+                profile.
               </div>
               <label className="upload-label">
                 <Upload /> Lease document
@@ -395,7 +396,7 @@ export default function PostListing({
               </label>
               <p className="muted">
                 Only you and authorized reviewers can access these documents.
-                You can submit now and add evidence from your account later.
+                You can publish now and add evidence from My listings later.
               </p>
               <label className="check-label">
                 <input type="checkbox" required /> I have the right to submit
@@ -404,8 +405,8 @@ export default function PostListing({
               {created && (
                 <>
                   <div className="notice">
-                    Your listing was saved. Retry to finish remaining uploads or
-                    remove a file below. A second listing won’t be created.
+                    Your listing is published. Retry to finish remaining uploads
+                    or remove a file below. A second listing won’t be created.
                   </div>
                   {media.map((f, i) => (
                     <div className="button-row" key={i}>
@@ -443,7 +444,7 @@ export default function PostListing({
               {busy
                 ? "Submitting…"
                 : step === 3
-                  ? "Submit for review"
+                  ? "Publish listing"
                   : "Continue"}
               <ArrowRight size={16} />
             </button>

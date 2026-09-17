@@ -14,6 +14,7 @@ import type {
   User,
 } from "../shared/types";
 import { api, money, date, syracuseToday } from "./api";
+import Checks from "./Checks";
 import { isPaymentComplete } from "./booking-state";
 import { Busy, Empty, ErrorBox } from "./ui";
 export type ChatIntent = "message" | "offer" | "request";
@@ -24,6 +25,7 @@ export default function ChatWorkspace({
   intent,
   onOpen,
   onSelect,
+  onProfile,
 }: {
   user: User;
   demo: boolean;
@@ -31,6 +33,7 @@ export default function ChatWorkspace({
   intent: ChatIntent;
   onOpen: (id: string) => void;
   onSelect: (l: Listing) => void;
+  onProfile: (id: string) => void;
 }) {
   const [threads, setThreads] = useState<ConversationSummary[]>([]),
     [detail, setDetail] = useState<ConversationDetail | null>(null);
@@ -195,7 +198,12 @@ export default function ChatWorkspace({
               <div className="chat-heading">
                 <span className="avatar">{detail.peer.name[0]}</span>
                 <div>
-                  <h2>{detail.peer.name}</h2>
+                  <button
+                    className="host-name-link"
+                    onClick={() => onProfile(detail.peer.id)}
+                  >
+                    {detail.peer.name} <ArrowUpRight size={14} />
+                  </button>
                   <p>{detail.listing.title}</p>
                 </div>
               </div>
@@ -543,17 +551,12 @@ export default function ChatWorkspace({
               >
                 View listing <ArrowUpRight size={15} />
               </a>
-              <div className="chat-checks">
-                <b>Listing checks</b>
-                <p>
-                  Identity: {detail.listing.hostIdentity.replaceAll("_", " ")}
-                </p>
-                <p>Lease: {detail.listing.leaseStatus.replaceAll("_", " ")}</p>
-                <p>
-                  Sublet permission:{" "}
-                  {detail.listing.permissionStatus.replaceAll("_", " ")}
-                </p>
-              </div>
+              <Checks
+                compact
+                identity={detail.listing.hostIdentity}
+                lease={detail.listing.leaseStatus}
+                permission={detail.listing.permissionStatus}
+              />
               <div className="chat-next">
                 <h3>Your next steps</h3>
                 {!detail.bookings.length && (

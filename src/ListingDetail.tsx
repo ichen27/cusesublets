@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Listing, User } from "../shared/types";
 import { api, money, date } from "./api";
+import Checks, { IdentityBadge } from "./Checks";
 import { Modal, Badge, ErrorBox } from "./ui";
 export default function ListingDetail({
   listing: l,
@@ -28,9 +29,13 @@ export default function ListingDetail({
   notify,
   onChat,
   onManage,
+  onProfile,
+  onChecks,
 }: {
   onChat: (listing: Listing, intent: "message" | "offer" | "request") => void;
   onManage: () => void;
+  onProfile: (id: string) => void;
+  onChecks: () => void;
   listing: Listing;
   user: User | null;
   demo: boolean;
@@ -153,6 +158,12 @@ export default function ListingDetail({
             </span>
           )}
         </div>
+        <Checks
+          identity={l.hostIdentity}
+          lease={l.leaseStatus}
+          permission={l.permissionStatus}
+          onLearn={onChecks}
+        />
         <div className="detail-columns">
           <div>
             <div className="detail-specs">
@@ -183,7 +194,13 @@ export default function ListingDetail({
             <div className="host-card">
               <span className="avatar">{l.hostName[0]}</span>
               <div>
-                <h3>Meet {l.hostName}</h3>
+                <button
+                  className="host-name-link"
+                  onClick={() => onProfile(l.ownerId)}
+                >
+                  Meet {l.hostName} <ArrowRight size={15} />
+                </button>
+                <IdentityBadge status={l.hostIdentity} />
                 <p>
                   Your host ·{" "}
                   {l.hostIdentity === "verified"
@@ -204,47 +221,6 @@ export default function ListingDetail({
               >
                 <MessageCircle size={20} />
               </button>
-            </div>
-            <div className="trust-checks">
-              <h3>
-                <ShieldCheck size={19} /> Know what’s been checked
-              </h3>
-              <p>
-                <span
-                  className={
-                    "status-dot " +
-                    (l.hostIdentity === "verified" ? "green" : "")
-                  }
-                />
-                Identity{" "}
-                {l.hostIdentity === "verified" ? "checked" : "not yet checked"}
-              </p>
-              <p>
-                <span
-                  className={
-                    "status-dot " +
-                    (l.leaseStatus === "verified" ? "green" : "")
-                  }
-                />
-                Lease{" "}
-                {l.leaseStatus === "verified" ? "reviewed" : "review pending"}
-              </p>
-              <p>
-                <span
-                  className={
-                    "status-dot " +
-                    (l.permissionStatus === "verified" ? "green" : "")
-                  }
-                />
-                Sublet permission{" "}
-                {l.permissionStatus === "verified"
-                  ? "reviewed"
-                  : "review pending"}
-              </p>
-              <small>
-                These are individual checks, not a guarantee. Ask questions and
-                review the agreement before committing.
-              </small>
             </div>
           </div>
           <aside className="reservation-box">
