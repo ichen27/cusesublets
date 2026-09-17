@@ -53,7 +53,15 @@ const one = <T>(e: Env, sql: string, ...v: unknown[]) =>
 const listingSQL =
   "SELECT l.*,u.name hostName,u.identity hostIdentity,u.suspended hostSuspended FROM listings l JOIN users u ON u.id=l.ownerId";
 type InternalListing = Listing & { hostSuspended: boolean };
-const userView = (u: User): User => ({ ...u, suspended: !!u.suspended });
+const userView = (u: User): User => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  role: u.role,
+  identity: u.identity,
+  avatar: u.avatar,
+  suspended: !!u.suspended,
+});
 function listing(row: Row): InternalListing {
   const { data, ...rest } = row;
   return {
@@ -492,6 +500,97 @@ function validDocumentBytes(type: string, bytes: Uint8Array) {
   return false;
 }
 
+type ProfileRow = User & {
+  bio: string;
+  phone: string;
+  socials: string;
+  identityNote?: string;
+  nameVersion: number;
+  joinedAt?: string;
+};
+async function identityDocs(e: Env, userId: string) {
+  return all<{ id: string; name: string; type: string; createdAt: string }>(
+    e,
+    "SELECT d.id,d.name,d.type,d.createdAt FROM identity_documents d JOIN users u ON u.id=d.userId WHERE d.userId=? AND d.nameVersion=u.nameVersion ORDER BY d.rowid DESC",
+    userId,
+  );
+}
+async function profileData(e: Env, u: ProfileRow) {
+  const photos = await all<{ id: string }>(
+    e,
+    "SELECT id FROM profile_media WHERE userId=? AND kind='photo' ORDER BY rowid",
+    u.id,
+  );
+  return {
+    bio: u.bio,
+    phone: u.phone,
+    socials: JSON.parse(u.socials),
+    avatar: u.avatar || undefined,
+    photos: photos.map((x) => "/api/profile-media/" + x.id),
+  };
+}
+async function account(e: Env, u: User) {
+  const current = (await one<ProfileRow>(
+    e,
+    "SELECT * FROM users WHERE id=?",
+    u.id,
+  ))!;
+  return {
+    user: userView(current),
+    profile: await profileData(e, current),
+    identityDocuments: await identityDocs(e, u.id),
+    identityNote: current.identityNote,
+  };
+}
+async function reviewable(e: Env, u: User, target: string) {
+  if (u.id === target || u.suspended) return [];
+  return all<{ id: string; listingTitle: string; endDate: string }>(
+    e,
+    "SELECT b.id,json_extract(l.data,'$.title') listingTitle,b.endDate FROM bookings b JOIN listings l ON l.id=b.listingId JOIN users t ON t.id=? WHERE ((b.buyerId=? AND b.sellerId=?) OR (b.sellerId=? AND b.buyerId=?)) AND b.paymentStatus IN ('paid',?) AND b.moveInAt IS NOT NULL AND b.endDate<? AND b.status<>'cancelled' AND b.disputeStatus<>'open' AND t.suspended=0 AND NOT EXISTS(SELECT 1 FROM profile_reviews r WHERE r.bookingId=b.id AND r.authorId=?)",
+    target,
+    u.id,
+    target,
+    u.id,
+    target,
+    e.APP_ENV === "development" ? "demo_paid" : "paid",
+    syracuseDate(),
+    u.id,
+  );
+}
+function socialLinks(value: unknown) {
+  requireThat(
+    value && typeof value === "object" && !Array.isArray(value),
+    400,
+    "Social links must be an object",
+  );
+  const out: Record<string, string> = {};
+  for (const key of ["instagram", "facebook", "linkedin", "website"]) {
+    const raw = (value as Row)[key];
+    if (raw === undefined || raw === "") continue;
+    const link = text(raw, "Social link", 500);
+    let url: URL;
+    try {
+      url = new URL(link);
+    } catch {
+      throw new HttpError(400, "Use full https social links");
+    }
+    requireThat(
+      url.protocol === "https:" && !url.username && !url.password,
+      400,
+      "Use full https social links",
+    );
+    out[key] = url.href;
+  }
+  return out;
+}
+async function uploadForm(req: Request) {
+  const bytes = await bounded(req, 6 * 1024 * 1024);
+  return new Request(req.url, {
+    method: "POST",
+    headers: { "Content-Type": req.headers.get("Content-Type") || "" },
+    body: bytes,
+  }).formData();
+}
 export default {
   async fetch(req: Request, e: Env): Promise<Response> {
     try {
@@ -501,6 +600,8 @@ export default {
         return json({ error: err.message }, err.status);
       const msg = err instanceof Error ? err.message : "";
       if (
+        msg.includes("Review prerequisites changed") ||
+        msg.includes("UNIQUE constraint failed: profile_reviews") ||
         msg.includes("Reservation prerequisites changed") ||
         msg.includes("Proposal prerequisites changed") ||
         msg.includes("Conversation participants changed")
@@ -658,6 +759,59 @@ async function route(req: Request, e: Env) {
       },
     });
   }
+  const publicMedia = p.match(/^\/api\/profile-media\/([^/]+)$/);
+  if (publicMedia && m === "GET") {
+    const d = await one<{ type: string; objectKey: string }>(
+      e,
+      "SELECT m.* FROM profile_media m JOIN users u ON u.id=m.userId WHERE m.id=? AND u.suspended=0",
+      publicMedia[1],
+    );
+    requireThat(d, 404, "Photo not found");
+    const object = await e.UPLOADS.get(d.objectKey);
+    requireThat(object, 404, "Photo not found");
+    return new Response(object.body, {
+      headers: {
+        "Content-Type": d.type,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+  const publicUser = p.match(/^\/api\/users\/([^/]+)$/);
+  if (publicUser && m === "GET") {
+    const target = await one<ProfileRow>(
+      e,
+      "SELECT * FROM users WHERE id=? AND suspended=0",
+      publicUser[1],
+    );
+    requireThat(target, 404, "Profile not found");
+    const profile = await profileData(e, target);
+    return json({
+      profile: {
+        id: target.id,
+        name: target.name,
+        identity: target.identity,
+        bio: profile.bio,
+        avatar: profile.avatar,
+        photos: profile.photos,
+        socials: profile.socials,
+        joinedAt: target.joinedAt || undefined,
+      },
+      listings: (
+        await listings(
+          e,
+          "WHERE l.ownerId=? AND l.status='approved'",
+          target.id,
+        )
+      ).map((l) => listingView(l)),
+      reviews: await all(
+        e,
+        "SELECT r.id,r.authorId,a.name authorName,r.rating,r.body,r.createdAt,json_extract(l.data,'$.title') listingTitle FROM profile_reviews r JOIN users a ON a.id=r.authorId JOIN bookings b ON b.id=r.bookingId JOIN listings l ON l.id=b.listingId WHERE r.targetId=? ORDER BY r.rowid DESC LIMIT 200",
+        target.id,
+      ),
+      reviewableBookings: u ? await reviewable(e, u, target.id) : [],
+    });
+  }
   requireThat(u, 401, "Sign in to continue");
   if (
     m === "POST" &&
@@ -670,17 +824,241 @@ async function route(req: Request, e: Env) {
     );
   if (p.startsWith("/api/admin"))
     requireThat(u.role === "admin", 403, "Admin access required");
+  if (p === "/api/profile" && m === "GET") return json(await account(e, u));
   if (p === "/api/profile" && m === "POST") {
-    const b = await body(req);
-    await stmt(
+    const b = await body(req),
+      old = await one<ProfileRow>(e, "SELECT * FROM users WHERE id=?", u.id);
+    const name = b.name === undefined ? u.name : text(b.name, "Name", 80);
+    const phone =
+      b.phone === undefined ? old!.phone : text(b.phone, "Phone", 40, 0);
+    const bio = b.bio === undefined ? old!.bio : text(b.bio, "Bio", 2000, 0);
+    const socials =
+      b.socials === undefined
+        ? old!.socials
+        : JSON.stringify(socialLinks(b.socials));
+    await e.DB.batch([
+      stmt(
+        e,
+        "UPDATE users SET name=?,phone=?,bio=?,socials=?,identity=CASE WHEN name<>? THEN 'pending' ELSE identity END,identityNote=CASE WHEN name<>? THEN NULL ELSE identityNote END,nameVersion=nameVersion+CASE WHEN name<>? THEN 1 ELSE 0 END WHERE id=?",
+        name,
+        phone,
+        bio,
+        socials,
+        name,
+        name,
+        name,
+        u.id,
+      ),
+      audit(
+        e,
+        u,
+        "profile.update",
+        u.id,
+        name === u.name
+          ? "Profile updated"
+          : "Name changed; identity review invalidated",
+      ),
+    ]);
+    return json(await account(e, u));
+  }
+  if (
+    (p === "/api/profile/identity" || p === "/api/profile/media") &&
+    m === "POST"
+  ) {
+    const identity = p.endsWith("/identity");
+    const form = await uploadForm(req),
+      file = form.get("file");
+    requireThat(file instanceof File, 400, "Choose a file");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    requireThat(
+      file.size > 0 && file.size <= 5 * 1024 * 1024,
+      413,
+      "Maximum file size is 5 MB",
+    );
+    requireThat(
+      validDocumentBytes(file.type, bytes) &&
+        (identity || file.type.startsWith("image/")),
+      400,
+      "Upload a valid " + (identity ? "PDF, JPG or PNG" : "JPG or PNG"),
+    );
+    const kind = form.get("kind");
+    if (!identity) {
+      requireThat(
+        kind === "avatar" || kind === "photo",
+        400,
+        "Choose avatar or photo",
+      );
+      const count = await one<{ n: number }>(
+        e,
+        "SELECT COUNT(*) n FROM profile_media WHERE userId=? AND kind='photo'",
+        u.id,
+      );
+      requireThat(
+        kind === "avatar" || count!.n < 12,
+        400,
+        "Maximum 12 profile photos",
+      );
+    }
+    const key = id(),
+      objectKey = (identity ? "identity/" : "profile/") + u.id + "/" + key,
+      createdAt = now();
+    await e.UPLOADS.put(objectKey, bytes, {
+      httpMetadata: { contentType: file.type },
+    });
+    if (identity) {
+      const name =
+        file.name.replace(/[^a-zA-Z0-9._ -]/g, "").slice(0, 120) || "identity";
+      await e.DB.batch([
+        stmt(
+          e,
+          "INSERT INTO identity_documents SELECT ?,id,?,?,?,?,nameVersion FROM users WHERE id=?",
+          key,
+          name,
+          file.type,
+          objectKey,
+          createdAt,
+          u.id,
+        ),
+        stmt(
+          e,
+          "UPDATE users SET identity='pending',identityNote=NULL WHERE id=?",
+          u.id,
+        ),
+        audit(e, u, "identity.upload", u.id, "New identity evidence submitted"),
+      ]);
+      return json(
+        { document: { id: key, name, type: file.type, createdAt } },
+        201,
+      );
+    }
+    const url = "/api/profile-media/" + key;
+    await e.DB.batch([
+      stmt(
+        e,
+        "INSERT INTO profile_media VALUES(?,?,?,?,?,?)",
+        key,
+        u.id,
+        kind,
+        file.type,
+        objectKey,
+        createdAt,
+      ),
+      ...(kind === "avatar"
+        ? [stmt(e, "UPDATE users SET avatar=? WHERE id=?", url, u.id)]
+        : []),
+    ]);
+    return json({ url }, 201);
+  }
+  if (p === "/api/profile/media/remove" && m === "POST") {
+    const b = await body(req),
+      url = text(b.url, "Photo URL", 200),
+      key = url.match(/^\/api\/profile-media\/([^/]+)$/)?.[1];
+    requireThat(key, 400, "Invalid profile photo");
+    const media = await one<{ objectKey: string }>(
       e,
-      "UPDATE users SET name=? WHERE id=?",
-      text(b.name, "Name", 80),
+      "SELECT objectKey FROM profile_media WHERE id=? AND userId=?",
+      key,
       u.id,
-    ).run();
+    );
+    requireThat(media, 404, "Photo not found");
+    await e.DB.batch([
+      stmt(
+        e,
+        "UPDATE users SET avatar=NULL WHERE id=? AND avatar=?",
+        u.id,
+        url,
+      ),
+      stmt(e, "DELETE FROM profile_media WHERE id=? AND userId=?", key, u.id),
+    ]);
+    await e.UPLOADS.delete(media.objectKey);
+    return json(await account(e, u));
+  }
+  const identityFile = p.match(/^\/api\/identity-documents\/([^/]+)$/);
+  if (identityFile && m === "GET") {
+    const d = await one<{
+      userId: string;
+      objectKey: string;
+      type: string;
+      name: string;
+    }>(e, "SELECT * FROM identity_documents WHERE id=?", identityFile[1]);
+    requireThat(d, 404, "Document not found");
+    requireThat(
+      d.userId === u.id || u.role === "admin",
+      403,
+      "This document is private",
+    );
+    const object = await e.UPLOADS.get(d.objectKey);
+    requireThat(object, 404, "Document not found");
+    return new Response(object.body, {
+      headers: {
+        "Content-Type": d.type,
+        "Content-Disposition": 'attachment; filename="' + d.name + '"',
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      },
+    });
+  }
+  const profileReview = p.match(/^\/api\/users\/([^/]+)\/reviews$/);
+  if (profileReview && m === "POST") {
+    const b = await body(req),
+      target = profileReview[1];
+    const eligible = await reviewable(e, u, target);
+    const booking = eligible.find((x) => x.id === b.bookingId);
+    requireThat(
+      booking,
+      409,
+      "Only the other participant in a completed lease can review once",
+    );
+    const rating = number(b.rating, "Rating", 1, 5);
+    requireThat(Number.isInteger(rating), 400, "Choose a whole star rating");
+    const key = id(),
+      createdAt = now(),
+      reviewBody = text(b.body, "Review", 2000, 10);
+    await e.DB.batch([
+      stmt(
+        e,
+        "INSERT INTO profile_reviews VALUES(?,?,?,?,?,?,?)",
+        key,
+        booking.id,
+        u.id,
+        target,
+        rating,
+        reviewBody,
+        createdAt,
+      ),
+      audit(e, u, "profile.review", target, "Completed lease review submitted"),
+    ]);
+    return json(
+      {
+        review: {
+          id: key,
+          authorId: u.id,
+          authorName: u.name,
+          rating,
+          body: reviewBody,
+          createdAt,
+          listingTitle: booking.listingTitle,
+        },
+      },
+      201,
+    );
+  }
+  if (p === "/api/admin/identities" && m === "GET") {
+    const users = await all<ProfileRow>(
+      e,
+      "SELECT * FROM users WHERE EXISTS(SELECT 1 FROM identity_documents d WHERE d.userId=users.id) ORDER BY rowid DESC LIMIT 200",
+    );
     return json({
-      user: userView(
-        (await one<User>(e, "SELECT * FROM users WHERE id=?", u.id))!,
+      submissions: await Promise.all(
+        users.map(async (x) => ({
+          userId: x.id,
+          name: x.name,
+          email: x.email,
+          identity: x.identity,
+          identityNote: x.identityNote,
+          documents: await identityDocs(e, x.id),
+        })),
       ),
     });
   }
@@ -689,7 +1067,7 @@ async function route(req: Request, e: Env) {
       listings: await listings(e, "WHERE l.ownerId=?", u.id),
       documents: await all(
         e,
-        "SELECT d.id,d.listingId,d.name,d.kind,d.createdAt FROM documents d JOIN listings l ON l.id=d.listingId WHERE l.ownerId=?",
+        "SELECT d.id,d.listingId,d.name,d.kind,d.createdAt FROM documents d JOIN listings l ON l.id=d.listingId WHERE l.ownerId=? ORDER BY d.rowid DESC",
         u.id,
       ),
     });
@@ -745,7 +1123,7 @@ async function route(req: Request, e: Env) {
     const key = id();
     await stmt(
       e,
-      "INSERT INTO listings(id,ownerId,data) VALUES(?,?,?)",
+      "INSERT INTO listings(id,ownerId,data,status) VALUES(?,?,?,'approved')",
       key,
       u.id,
       JSON.stringify(data),
@@ -1219,6 +1597,12 @@ async function route(req: Request, e: Env) {
       413,
       "File exceeds size limit",
     );
+    if (!isMedia)
+      requireThat(
+        validDocumentBytes(file.type, new Uint8Array(await file.arrayBuffer())),
+        400,
+        "File contents do not match PDF, JPG or PNG",
+      );
     const count = await one<{ n: number }>(
       e,
       "SELECT COUNT(*) n FROM documents WHERE listingId=?",
@@ -1258,7 +1642,7 @@ async function route(req: Request, e: Env) {
         insertDocument,
         stmt(
           e,
-          `UPDATE listings SET ${reviewColumn}='pending',status='pending',reviewNote=NULL WHERE id=?`,
+          `UPDATE listings SET ${reviewColumn}='pending',reviewNote=NULL WHERE id=?`,
           l.id,
         ),
       ]);
@@ -1277,7 +1661,7 @@ async function route(req: Request, e: Env) {
       else value.images = [...value.images, media].slice(-12);
       await stmt(
         e,
-        "UPDATE listings SET data=?,status='pending',reviewNote=NULL WHERE id=?",
+        "UPDATE listings SET data=? WHERE id=?",
         JSON.stringify(value),
         l.id,
       ).run();
@@ -1323,7 +1707,7 @@ async function route(req: Request, e: Env) {
       ),
       documents: await all(
         e,
-        "SELECT id,listingId,name,kind,createdAt FROM documents LIMIT 500",
+        "SELECT id,listingId,name,kind,createdAt FROM documents ORDER BY rowid DESC LIMIT 500",
       ),
       bookings: await all(e, "SELECT * FROM bookings LIMIT 200"),
       audit: await all(e, "SELECT * FROM audit ORDER BY rowid DESC LIMIT 200"),
@@ -1457,52 +1841,117 @@ async function route(req: Request, e: Env) {
         400,
         "Invalid review result",
       );
-    if (b.status === "approved")
-      requireThat(
-        b.leaseStatus === "verified" && b.permissionStatus === "verified",
-        400,
-        "Lease and landlord permission must be reviewed before approval",
+    requireThat(
+      l.ownerId !== u.id ||
+        (b.leaseStatus !== "verified" && b.permissionStatus !== "verified"),
+      403,
+      "You cannot verify your own listing",
+    );
+    const evidence: Record<string, string | null> = {};
+    for (const kind of ["lease", "permission"]) {
+      const latest = await one<{ id: string }>(
+        e,
+        "SELECT id FROM documents WHERE listingId=? AND kind=? ORDER BY rowid DESC LIMIT 1",
+        l.id,
+        kind,
       );
-    await e.DB.batch([
+      evidence[kind] = latest?.id || null;
+      if (b[kind + "Status"] === "verified")
+        requireThat(
+          latest && b[kind + "DocumentId"] === latest.id,
+          409,
+          "Select the current " + kind + " evidence before verifying",
+        );
+    }
+    const results = await e.DB.batch([
       stmt(
         e,
-        "UPDATE listings SET status=?,leaseStatus=?,permissionStatus=?,reviewNote=? WHERE id=?",
+        "UPDATE listings SET status=?,leaseStatus=?,permissionStatus=?,reviewNote=? WHERE id=? AND COALESCE((SELECT id FROM documents WHERE listingId=? AND kind='lease' ORDER BY rowid DESC LIMIT 1),'')=? AND COALESCE((SELECT id FROM documents WHERE listingId=? AND kind='permission' ORDER BY rowid DESC LIMIT 1),'')=?",
         b.status,
         b.leaseStatus,
         b.permissionStatus,
         reason,
         l.id,
+        l.id,
+        evidence.lease || "",
+        l.id,
+        evidence.permission || "",
       ),
-      audit(e, u, "listing.review", l.id, reason),
+      stmt(
+        e,
+        "INSERT INTO audit SELECT ?,?,?,?,?,? WHERE changes()=1",
+        id(),
+        u.id,
+        "listing.review",
+        l.id,
+        reason,
+        now(),
+      ),
     ]);
+    requireThat(
+      results[0].meta.changes === 1,
+      409,
+      "Evidence changed; refresh before reviewing",
+    );
     return json({ listing: await getListing(e, l.id) });
   }
-  const identity = p.match(/^\/api\/admin\/users\/([^/]+)\/review$/);
+  const identity = p.match(
+    /^\/api\/admin\/(?:identities\/([^/]+)\/review|users\/([^/]+)\/review)$/,
+  );
   if (identity && m === "POST") {
     const b = await body(req),
+      target = identity[1] || identity[2],
+      status = b.status || b.identity,
       reason = text(b.reason, "Review reason", 2000, 5);
-    requireThat(
-      await one(e, "SELECT id FROM users WHERE id=?", identity[1]),
-      404,
-      "User not found",
+    requireThat(target !== u.id, 403, "You cannot review your own identity");
+    const user = await one<ProfileRow>(
+      e,
+      "SELECT * FROM users WHERE id=?",
+      target,
     );
+    requireThat(user, 404, "User not found");
     requireThat(
-      ["verified", "needs_info", "rejected"].includes(String(b.identity)),
+      ["verified", "needs_info", "rejected"].includes(String(status)),
       400,
       "Invalid identity review",
     );
-    await e.DB.batch([
+    const docs = await identityDocs(e, target),
+      latest = docs[0];
+    requireThat(
+      latest && b.documentId === latest.id,
+      409,
+      "Select the current identity evidence before reviewing",
+    );
+    const result = await e.DB.batch([
       stmt(
         e,
-        "UPDATE users SET identity=? WHERE id=?",
-        b.identity,
-        identity[1],
+        "UPDATE users SET identity=?,identityNote=? WHERE id=? AND nameVersion=? AND (SELECT id FROM identity_documents WHERE userId=? AND nameVersion=users.nameVersion ORDER BY rowid DESC LIMIT 1)=?",
+        status,
+        reason,
+        target,
+        user.nameVersion,
+        target,
+        latest.id,
       ),
-      audit(e, u, "identity.review", identity[1], reason),
+      stmt(
+        e,
+        "INSERT INTO audit SELECT ?,?,?,?,?,? WHERE changes()=1",
+        id(),
+        u.id,
+        "identity.review",
+        target,
+        reason,
+        now(),
+      ),
     ]);
+    requireThat(
+      result[0].meta.changes === 1,
+      409,
+      "Identity evidence changed; refresh before reviewing",
+    );
     return json({
       user: userView(
-        (await one<User>(e, "SELECT * FROM users WHERE id=?", identity[1]))!,
+        (await one<User>(e, "SELECT * FROM users WHERE id=?", target))!,
       ),
     });
   }

@@ -40,10 +40,13 @@ class API(unittest.TestCase):
   self.assertEqual(renter.raw('/api/documents/'+doc)[0],403)
   status,headers,data=admin.raw('/api/documents/'+doc);self.assertEqual(status,200);self.assertEqual(headers['Cache-Control'],'no-store');self.assertIn('attachment',headers['Content-Disposition'])
   status,result=host.upload('/api/listings/'+key+'/media',name='photo.png',mime='image/png',data=b'\x89PNG\r\n\x1a\n');self.assertEqual(status,201,result);media=result['url']
-  self.assertEqual(guest.raw(media)[0],404);self.assertEqual(host.raw(media)[0],200)
+  self.assertEqual(guest.raw(media)[0],200);self.assertEqual(host.raw(media)[0],200)
   offer=dict(listingId=key,amount=700,startDate='2027-02-01',endDate='2027-03-01')
-  self.assertEqual(renter.call('/api/offers',offer)[0],404)
-  review=dict(status='approved',leaseStatus='verified',permissionStatus='verified',reason='PRIVATE-REVIEW-MARKER: Test-only reviewed supporting documents')
+  status,result=renter.call('/api/offers',offer);self.assertEqual(status,201);self.assertEqual(host.call('/api/offers/'+result['offer']['id']+'/accept',{})[0],409)
+  permission=host.upload('/api/listings/'+key+'/documents','permission')[1]['document']['id']
+  identityDoc=host.upload('/api/profile/identity')[1]['document']['id']
+  self.assertEqual(admin.call('/api/admin/identities/demo-host/review',dict(status='verified',reason='Reviewed sample identity',documentId=identityDoc))[0],200)
+  review=dict(leaseDocumentId=doc,permissionDocumentId=permission,status='approved',leaseStatus='verified',permissionStatus='verified',reason='PRIVATE-REVIEW-MARKER: Test-only reviewed supporting documents')
   self.assertEqual(admin.call('/api/admin/listings/'+key+'/review',review)[0],200)
   self.assertNotIn('PRIVATE-REVIEW-MARKER',json.dumps(guest.call('/api/listings')[1]))
   self.assertNotIn('reviewNote',guest.call('/api/listings/'+key)[1]['listing'])
@@ -57,9 +60,9 @@ class API(unittest.TestCase):
   self.assertEqual(renter.call('/api/offers',{**offer,'startDate':'2027-02-30'})[0],400)
   status,result=renter.call('/api/offers',offer);self.assertEqual(status,201,result);oid=result['offer']['id']
   self.assertEqual(renter.call('/api/offers/'+oid+'/accept',{})[0],403)
-  self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(identity='needs_info',reason='Test identity gate'))[0],200)
+  self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(documentId=identityDoc,identity='needs_info',reason='Test identity gate'))[0],200)
   self.assertEqual(host.call('/api/offers/'+oid+'/accept',{})[0],409)
-  self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(identity='verified',reason='Restore sample identity review'))[0],200)
+  self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(documentId=identityDoc,identity='verified',reason='Restore sample identity review'))[0],200)
   status,result=host.call('/api/offers/'+oid+'/accept',{});self.assertEqual(status,201,result);bid=result['booking']['id'];path='/api/bookings/'+bid+'/action'
   oid2=renter.call('/api/offers',offer)[1]['offer']['id']
   self.assertEqual(host.call('/api/offers/'+oid2+'/accept',{})[0],409)
@@ -72,19 +75,19 @@ class API(unittest.TestCase):
   def current_booking():return next(b for b in renter.call('/api/bookings')[1]['bookings'] if b['id']==bid)
   self.assertNotIn('Required reviews incomplete',current_booking()['payoutBlockers'])
   for identity in ['rejected','needs_info']:
-   self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(identity=identity,reason='Test fresh identity eligibility'))[0],200)
+   self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(documentId=identityDoc,identity=identity,reason='Test fresh identity eligibility'))[0],200)
    self.assertIn('Required reviews incomplete',current_booking()['payoutBlockers'])
    self.assertFalse(current_booking()['payoutEligible'])
-  self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(identity='verified',reason='Restore reviewed sample identity'))[0],200)
+  self.assertEqual(admin.call('/api/admin/users/demo-host/review',dict(documentId=identityDoc,identity='verified',reason='Restore reviewed sample identity'))[0],200)
   self.assertNotIn('Required reviews incomplete',current_booking()['payoutBlockers'])
   for kind,other in [('lease','permissionStatus'),('permission','leaseStatus')]:
    future_offer={**offer,'startDate':'2027-04-01','endDate':'2027-05-01'}
    future_id=renter.call('/api/offers',future_offer)[1]['offer']['id']
-   self.assertEqual(host.upload('/api/listings/'+key+'/documents',kind)[0],201)
+   status,result=host.upload('/api/listings/'+key+'/documents',kind);self.assertEqual(status,201);review[kind+'DocumentId']=result['document']['id']
    changed=host.call('/api/listings/'+key)[1]['listing']
-   self.assertEqual(changed['status'],'pending');self.assertEqual(changed[kind+'Status'],'pending');self.assertEqual(changed[other],'verified')
-   self.assertEqual(guest.call('/api/listings/'+key)[0],404)
-   self.assertNotIn(key,[l['id'] for l in guest.call('/api/listings')[1]['listings']])
+   self.assertEqual(changed['status'],'approved');self.assertEqual(changed[kind+'Status'],'pending');self.assertEqual(changed[other],'verified')
+   self.assertEqual(guest.call('/api/listings/'+key)[0],200)
+   self.assertIn(key,[l['id'] for l in guest.call('/api/listings')[1]['listings']])
    self.assertEqual(host.call('/api/offers/'+future_id+'/accept',{})[0],409)
    self.assertEqual(renter.call(path,dict(action='pay'))[0],409)
    self.assertIn('Required reviews incomplete',current_booking()['payoutBlockers']);self.assertFalse(current_booking()['payoutEligible'])

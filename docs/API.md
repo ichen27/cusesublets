@@ -64,3 +64,24 @@ Legacy message and offer creation endpoints use the same conversations. Legacy m
 Signing/payment controls still use `/api/bookings/:id/action`. Hosted calls remain setup-required (503); local demo acknowledgments and simulated payments create clearly labeled chat events and never represent a legal signature or money movement.
 
 Isolated verification: apply migrations and demo seed with `--persist-to .wrangler-chat-test`; start Wrangler on 8920 with the same isolated directory and `APP_ENV=development`; run `API_BASE=http://127.0.0.1:8920 python3 tests/chat-runtime.py`. Never use this test state for the existing 8917/8918 services.
+
+## Profiles and optional manual checks
+
+New listings publish immediately (approved) with pending lease and permission checks. Existing listings retain their status. Reservations/payment still require verified host identity, lease and permission. Uploading media or replacement evidence preserves publication status; replacement evidence resets only its corresponding check.
+
+- GET /api/profile returns user, profile (bio, phone, socials, avatar, photos), identityDocuments and identityNote. Private account information.
+- POST /api/profile accepts optional name, phone, bio, socials. Omitted fields are preserved. Email cannot be changed here. Name changes invalidate identity approval and require new evidence. Social URLs must use HTTPS.
+- POST /api/profile/media accepts multipart file (JPG/PNG, maximum 5MB) and kind (avatar/photo). Returns url. Gallery maximum 12.
+- POST /api/profile/media/remove accepts url, removes an owned image and returns updated account.
+- GET /api/profile-media/:id returns public image; unavailable for suspended accounts. Storage metadata is independent from private evidence.
+- POST /api/profile/identity accepts multipart file (PDF/JPG/PNG, maximum 5MB; bytes checked). Returns document (id, name, type, createdAt); resets identity check.
+- GET /api/identity-documents/:id is owner/admin only, attachment download with no-store.
+- GET /api/users/:id returns profile, listings, reviews, reviewableBookings. Explicit public profile projection excludes email, phone, evidence and review reasons. Listings are published only; eligible bookings visible only to authenticated counterpart.
+- POST /api/users/:id/reviews accepts bookingId, rating, body. Integer 1–5 stars and 10–2000 characters. Requires paid booking, move-in, past end date in Syracuse, no open dispute, active participants and no cancellation. Local development accepts simulated payment. Unique per booking/reviewer; no self reviews.
+- GET /api/admin/identities returns submissions with userId, name, email, identity, identityNote and documents. Current-name evidence only, newest first.
+- POST /api/admin/identities/:userId/review accepts status (verified/needs_info/rejected), reason and documentId. Requires latest evidence matching current name version. Self-review denied. Existing /api/admin/users/:id/review accepts identity as status alias but also requires documentId.
+- Listing review retains status, leaseStatus, permissionStatus and reason; requires leaseDocumentId and/or permissionDocumentId for each check set to verified. IDs must refer to latest evidence of the respective kind. Evidence revalidation and audited decision are atomic. Publication approval can coexist with pending checks. Admin cannot verify own evidence.
+
+Admin and owner listing document arrays are newest first, including uploads in the same millisecond. Use the first document of each kind. Identity evidence never appears in public profile media.
+
+Isolated validation: migrate/seed with --persist-to .wrangler-checks, run Wrangler on 8921 with same persistence path, then run tests/api-runtime.py, tests/chat-runtime.py, tests/profiles-runtime.py with API_BASE=http://127.0.0.1:8921. Profiles test advances a test reservation in that isolated database; do not run against operational data.

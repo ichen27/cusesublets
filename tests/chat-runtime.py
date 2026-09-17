@@ -23,8 +23,12 @@ class Chat(unittest.TestCase):
   for c,r in [(renter,"renter"),(host,"host"),(admin,"admin")]:c.login(r)
   payload=dict(title="Chat runtime property",neighborhood="Westcott",address="Near Westcott",price=800,beds=1,baths=1,roomType="Private room",startDate="2027-01-01",endDate="2027-08-01",description="Isolated integration test only; not a real property.",amenities=[],images=[])
   key=host.call("/api/listings",payload)[1]["listing"]["id"]
-  review=dict(status="approved",leaseStatus="verified",permissionStatus="verified",reason="PRIVATE-REVIEW-MARKER for chat test")
-  self.assertEqual(renter.call("/api/conversations",dict(listingId=key))[0],404)
+  lease=host.upload('/api/listings/'+key+'/documents','lease')[1]['document']['id']
+  permission=host.upload('/api/listings/'+key+'/documents','permission')[1]['document']['id']
+  identity=host.upload('/api/profile/identity')[1]['document']['id']
+  self.assertEqual(admin.call('/api/admin/identities/demo-host/review',dict(status='verified',reason='Sample identity review',documentId=identity))[0],200)
+  review=dict(leaseDocumentId=lease,permissionDocumentId=permission,status="approved",leaseStatus="verified",permissionStatus="verified",reason="PRIVATE-REVIEW-MARKER for chat test")
+  self.assertEqual(renter.call("/api/conversations",dict(listingId=key))[0],201)
   self.assertEqual(admin.call("/api/admin/listings/"+key+"/review",review)[0],200)
   try:
    self.assertEqual(guest.call("/api/conversations")[0],401)

@@ -148,3 +148,55 @@ export interface ConversationDetail {
   attachments: ChatAttachment[];
   events: ChatEvent[];
 }
+
+export interface ProfileSocials {
+  instagram?: string;
+  facebook?: string;
+  linkedin?: string;
+  website?: string;
+}
+export interface AccountProfile {
+  bio: string;
+  phone: string;
+  socials: ProfileSocials;
+  avatar?: string;
+  photos: string[];
+}
+export interface IdentityDocument {
+  id: string;
+  name: string;
+  type: string;
+  createdAt: string;
+}
+export interface IdentitySubmission {
+  userId: string;
+  name: string;
+  email: string;
+  identity: ReviewStatus;
+  identityNote?: string;
+  documents: IdentityDocument[];
+}
+export interface PublicProfile {
+  id: string;
+  name: string;
+  identity: ReviewStatus;
+  bio: string;
+  avatar?: string;
+  photos: string[];
+  socials: ProfileSocials;
+  joinedAt?: string;
+}
+export interface ProfileReview {
+  id: string;
+  authorId: string;
+  authorName: string;
+  rating: number;
+  body: string;
+  createdAt: string;
+  listingTitle: string;
+}
+export interface ReviewableBooking {
+  id: string;
+  listingTitle: string;
+  endDate: string;
+}
