@@ -1251,6 +1251,42 @@ async function route(req: Request, e: Env) {
     return json({ listing: await getListing(e, key) }, 201);
   }
 
+  const publish = p.match(/^\/api\/listings\/([^/]+)\/publish$/);
+  if (publish && m === "POST") {
+    const l = await getListing(e, publish[1]);
+    requireThat(
+      l.ownerId === u.id,
+      403,
+      "Only the listing owner can publish it",
+    );
+    if (l.status === "approved") return json({ listing: l });
+    const results = await e.DB.batch([
+      stmt(
+        e,
+        "UPDATE listings SET status='approved' WHERE id=? AND ownerId=? AND status='pending' AND reviewNote IS NULL AND NOT EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=1)",
+        l.id,
+        u.id,
+        u.id,
+      ),
+      stmt(
+        e,
+        "INSERT INTO audit SELECT ?,?,?,?,?,? WHERE changes()=1",
+        id(),
+        u.id,
+        "listing.publish",
+        l.id,
+        "Owner published listing; verification checks unchanged",
+        now(),
+      ),
+    ]);
+    requireThat(
+      results[0].meta.changes === 1,
+      409,
+      "This listing cannot be published here. Staff-held listings need review team action.",
+    );
+    return json({ listing: await getListing(e, l.id) });
+  }
+
   if (p === "/api/conversations" && m === "GET")
     return json({
       conversations: await all(

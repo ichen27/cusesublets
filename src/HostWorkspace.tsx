@@ -29,7 +29,8 @@ export default function HostWorkspace({
     [offers, setOffers] = useState<Offer[]>([]),
     [bookings, setBookings] = useState<Booking[]>([]),
     [loading, setLoading] = useState(true),
-    [busy, setBusy] = useState(false),
+    [publishing, setPublishing] = useState<string | null>(null),
+    [published, setPublished] = useState<string | null>(null),
     [error, setError] = useState("");
   const refresh = useCallback(async () => {
     try {
@@ -111,7 +112,11 @@ export default function HostWorkspace({
                     <span className={"status " + l.status}>
                       {l.status === "approved"
                         ? "Published"
-                        : l.status.replace("_", " ")}
+                        : l.status === "pending" && !l.reviewNote
+                          ? "Unpublished"
+                          : l.status === "pending"
+                            ? "On hold"
+                            : l.status.replace("_", " ")}
                     </span>
                     <h3>{l.title}</h3>
                     <p>
@@ -122,6 +127,48 @@ export default function HostWorkspace({
                     </button>
                   </div>
                 </div>
+                {l.status === "pending" && !l.reviewNote && (
+                  <div className="notice">
+                    <p>
+                      This listing is not visible in Find a Sublet yet. Publish
+                      it now; identity, lease, and sublet permission checks are
+                      optional for publishing and keep their current status.
+                    </p>
+                    <button
+                      className="primary"
+                      disabled={publishing !== null || Boolean(user.suspended)}
+                      onClick={async () => {
+                        setPublishing(l.id);
+                        setError("");
+                        setPublished(null);
+                        try {
+                          const result = await api<{ listing: Listing }>(
+                            `/listings/${l.id}/publish`,
+                            {},
+                          );
+                          setMine((current) =>
+                            current.map((item) =>
+                              item.id === l.id ? result.listing : item,
+                            ),
+                          );
+                          setPublished(l.id);
+                        } catch (e) {
+                          setError((e as Error).message);
+                        } finally {
+                          setPublishing(null);
+                        }
+                      }}
+                    >
+                      {publishing === l.id ? "Publishing…" : "Publish listing"}
+                    </button>
+                  </div>
+                )}
+                {published === l.id && (
+                  <div className="notice" role="status">
+                    Published! Your listing is now available in Find a Sublet.
+                    Your verification checks have not changed.
+                  </div>
+                )}
                 <div className="host-conversations">
                   <h4>
                     <MessageCircle size={16} /> Conversations & requests
