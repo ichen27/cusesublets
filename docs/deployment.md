@@ -108,3 +108,11 @@ Activated with user confirmation: dedicated public browsing Access application `
 Verified over public HTTPS: anonymous root/listings/session return 200, session user is null, profile/conversations/admin APIs return 401, login returns 302. Browser verified signed-out catalog, explicit Google login returning to Ivan's account, and logout returning to the public catalog. Five hosted guard tests pass. Google login remains owner-only until a dedicated customer sign-in policy is configured.
 
 GitHub is now https://github.com/ichen27/cusesublets (private), default `main`; CLI authentication on the mini is restored. GitHub checks pass. Never commit live databases or uploads.
+
+## Email/password login — September 17, 2026
+
+Deployed email/password signup/login alongside Google. Migration 0006 adds private credential hashes, hashed expiring sessions and atomic rate counters. Public signup creates unverified members only. Existing-email collisions never auto-link. Staff password login was provisioned offline for the existing Ivan account with its current admin role; no duplicate identity or verification badge was created. Credentials are never stored in Git or notes.
+
+New routes: POST /api/auth/signup, /api/auth/login, /api/auth/password; authenticated GET /api/auth/status. Change password requires an email/password session and the current password, revokes all password sessions and issues a new current session. Google sessions are independent. Automated email verification and forgotten-password email delivery are not configured.
+
+Hosted service8918 was stopped, state backed up to state-before-password-20260917, migration applied, and service restarted. Local demo8917 was also migrated and restarted. Validation:21 unit tests, typecheck/build,4 isolated runtime tests (including concurrent password rotation),5 hosted guard tests, independent spec/quality reviews. Browser verified member login, refresh persistence, logout, corrected account navigation and change-password controls. Live HTTPS staff login/admin access, credential rotation, revoked sessions, final login and logout all passed. Google-backed account still loads.
