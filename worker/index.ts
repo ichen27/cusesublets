@@ -6,6 +6,9 @@ import type {
   Offer,
   DocumentRecord,
   Report,
+  Conversation,
+  ConversationSummary,
+  ChatAttachment,
 } from "../shared/types";
 import {
   HttpError,
@@ -276,6 +279,219 @@ function reviewed(l: InternalListing) {
     "Complete all listing and identity reviews before reserving or paying",
   );
 }
+
+const conversationSQL = `SELECT c.*, json_extract(l.data,'$.title') listingTitle,
+ COALESCE(json_extract(l.data,'$.images[0]'),'') listingImage,peer.name peerName,
+ COALESCE((SELECT body FROM messages m WHERE m.listingId=c.listingId AND
+ ((m.senderId=c.buyerId AND m.recipientId=c.sellerId) OR (m.senderId=c.sellerId AND m.recipientId=c.buyerId))
+ ORDER BY m.createdAt DESC,m.rowid DESC LIMIT 1),'') lastMessage
+ FROM conversations c JOIN listings l ON l.id=c.listingId
+ JOIN users peer ON peer.id=CASE WHEN c.buyerId=? THEN c.sellerId ELSE c.buyerId END`;
+async function getConversation(e: Env, key: string, u: User) {
+  const c = await one<ConversationSummary>(
+    e,
+    conversationSQL + " WHERE c.id=?",
+    u.id,
+    key,
+  );
+  requireThat(c, 404, "Conversation not found");
+  participant(c, u);
+  return c;
+}
+async function openConversation(e: Env, l: InternalListing, u: User) {
+  requireThat(
+    l.ownerId !== u.id,
+    400,
+    "Open a renter conversation from your inbox",
+  );
+  const existing = await one<Conversation>(
+    e,
+    "SELECT * FROM conversations WHERE listingId=? AND buyerId=?",
+    l.id,
+    u.id,
+  );
+  if (existing) return getConversation(e, existing.id, u);
+  requireThat(
+    l.status === "approved" && !l.hostSuspended,
+    404,
+    "Listing not found",
+  );
+  const at = now();
+  await stmt(
+    e,
+    "INSERT INTO conversations(id,listingId,buyerId,sellerId,createdAt,updatedAt) VALUES(?,?,?,?,?,?) ON CONFLICT(listingId,buyerId) DO NOTHING",
+    id(),
+    l.id,
+    u.id,
+    l.ownerId,
+    at,
+    at,
+  ).run();
+  const c = await one<Conversation>(
+    e,
+    "SELECT * FROM conversations WHERE listingId=? AND buyerId=?",
+    l.id,
+    u.id,
+  );
+  return getConversation(e, c!.id, u);
+}
+async function activeParticipants(e: Env, c: Conversation) {
+  requireThat(
+    !(await one(
+      e,
+      "SELECT id FROM users WHERE id IN (?,?) AND suspended=1",
+      c.buyerId,
+      c.sellerId,
+    )),
+    409,
+    "Conversation participant is suspended",
+  );
+}
+function chatEvent(
+  e: Env,
+  c: Conversation,
+  u: User,
+  kind: string,
+  description: string,
+  offerId: string | null = null,
+) {
+  return stmt(
+    e,
+    "INSERT INTO chat_events(id,conversationId,actorId,kind,body,offerId,createdAt) VALUES(?,?,?,?,?,?,?)",
+    id(),
+    c.id,
+    u.id,
+    kind,
+    description,
+    offerId,
+    now(),
+  );
+}
+async function sendMessage(e: Env, c: Conversation, u: User, b: Row) {
+  await activeParticipants(e, c);
+  const message = {
+    id: id(),
+    conversationId: c.id,
+    listingId: c.listingId,
+    senderId: u.id,
+    recipientId: u.id === c.buyerId ? c.sellerId : c.buyerId,
+    body: text(b.body, "Message", 2000),
+    createdAt: now(),
+  };
+  await stmt(
+    e,
+    "INSERT INTO messages(id,listingId,senderId,recipientId,body,createdAt) VALUES(?,?,?,?,?,?)",
+    message.id,
+    message.listingId,
+    message.senderId,
+    message.recipientId,
+    message.body,
+    message.createdAt,
+  ).run();
+  return message;
+}
+async function createProposal(e: Env, c: Conversation, u: User, b: Row) {
+  await activeParticipants(e, c);
+  const l = await getListing(e, c.listingId);
+  requireThat(
+    l.status === "approved" && !l.hostSuspended && l.ownerId === c.sellerId,
+    409,
+    "Listing is not currently available",
+  );
+  const interval = dates(b.startDate, b.endDate);
+  requireThat(
+    interval.startDate >= l.startDate && interval.endDate <= l.endDate,
+    400,
+    "Dates must fit current listing availability",
+  );
+  requireThat(
+    interval.startDate >= syracuseDate(),
+    400,
+    "Start date cannot be in the past (Syracuse time)",
+  );
+  const kind = b.kind ?? "offer";
+  requireThat(
+    kind === "offer" || kind === "request",
+    400,
+    "Choose offer or request",
+  );
+  const parentOfferId = b.parentOfferId
+    ? text(b.parentOfferId, "Parent offer", 100)
+    : null;
+  if (parentOfferId) {
+    const parent = await one<Offer>(
+      e,
+      "SELECT * FROM offers WHERE id=? AND conversationId=?",
+      parentOfferId,
+      c.id,
+    );
+    requireThat(parent, 404, "Parent offer not found");
+    requireThat(
+      parent.proposedBy !== u.id,
+      403,
+      "Only the other participant can counter a proposal",
+    );
+    requireThat(
+      parent.status === "pending",
+      409,
+      "This proposal is no longer pending",
+    );
+  }
+  const offer = {
+    id: id(),
+    conversationId: c.id,
+    listingId: c.listingId,
+    buyerId: c.buyerId,
+    sellerId: c.sellerId,
+    proposedBy: u.id,
+    parentOfferId,
+    createdAt: now(),
+    kind,
+    amount: Math.round(number(b.amount, "Amount", 1, 20000) * 100) / 100,
+    ...interval,
+    status: "pending",
+  };
+  await e.DB.batch([
+    stmt(
+      e,
+      "INSERT INTO offers(id,listingId,buyerId,sellerId,amount,startDate,endDate,status,conversationId,proposedBy,parentOfferId,createdAt,kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      offer.id,
+      offer.listingId,
+      offer.buyerId,
+      offer.sellerId,
+      offer.amount,
+      offer.startDate,
+      offer.endDate,
+      offer.status,
+      offer.conversationId,
+      offer.proposedBy,
+      offer.parentOfferId,
+      offer.createdAt,
+      offer.kind,
+    ),
+    chatEvent(
+      e,
+      c,
+      u,
+      parentOfferId ? "counteroffer" : kind,
+      parentOfferId
+        ? "Counteroffer sent"
+        : kind === "request"
+          ? "Date request sent"
+          : "Offer sent",
+      offer.id,
+    ),
+  ]);
+  return offer;
+}
+function validDocumentBytes(type: string, bytes: Uint8Array) {
+  const prefix = (p: number[]) => p.every((v, i) => bytes[i] === v);
+  if (type === "application/pdf") return prefix([37, 80, 68, 70, 45]);
+  if (type === "image/jpeg") return prefix([255, 216, 255]);
+  if (type === "image/png") return prefix([137, 80, 78, 71, 13, 10, 26, 10]);
+  return false;
+}
+
 export default {
   async fetch(req: Request, e: Env): Promise<Response> {
     try {
@@ -284,7 +500,11 @@ export default {
       if (err instanceof HttpError)
         return json({ error: err.message }, err.status);
       const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("Reservation prerequisites changed"))
+      if (
+        msg.includes("Reservation prerequisites changed") ||
+        msg.includes("Proposal prerequisites changed") ||
+        msg.includes("Conversation participants changed")
+      )
         return json(
           {
             error:
@@ -532,6 +752,171 @@ async function route(req: Request, e: Env) {
     ).run();
     return json({ listing: await getListing(e, key) }, 201);
   }
+
+  if (p === "/api/conversations" && m === "GET")
+    return json({
+      conversations: await all(
+        e,
+        conversationSQL +
+          " WHERE c.buyerId=? OR c.sellerId=? ORDER BY c.updatedAt DESC",
+        u.id,
+        u.id,
+        u.id,
+      ),
+    });
+  if (p === "/api/conversations" && m === "POST") {
+    const b = await body(req),
+      l = await getListing(e, text(b.listingId, "Listing", 80));
+    return json({ conversation: await openConversation(e, l, u) }, 201);
+  }
+  const conversationMatch = p.match(
+    /^\/api\/conversations\/([^/]+)(?:\/(messages|documents|offers))?$/,
+  );
+  if (conversationMatch) {
+    const c = await getConversation(e, conversationMatch[1], u),
+      operation = conversationMatch[2];
+    if (!operation && m === "GET") {
+      const l = await getListing(e, c.listingId);
+      const bookings = await all<Booking>(
+        e,
+        "SELECT b.* FROM bookings b JOIN offers o ON o.id=b.offerId WHERE o.conversationId=? ORDER BY b.createdAt",
+        c.id,
+      );
+      return json({
+        conversation: c,
+        listing: listingView(l, u.id === l.ownerId ? u : null),
+        peer: {
+          id: u.id === c.buyerId ? c.sellerId : c.buyerId,
+          name: c.peerName,
+        },
+        messages: await all(
+          e,
+          "SELECT m.*,? conversationId FROM messages m WHERE listingId=? AND ((senderId=? AND recipientId=?) OR (senderId=? AND recipientId=?)) ORDER BY createdAt,rowid",
+          c.id,
+          c.listingId,
+          c.buyerId,
+          c.sellerId,
+          c.sellerId,
+          c.buyerId,
+        ),
+        offers: await all(
+          e,
+          "SELECT * FROM offers WHERE conversationId=? ORDER BY createdAt,rowid",
+          c.id,
+        ),
+        bookings: await Promise.all(bookings.map((b) => decorateBooking(e, b))),
+        attachments: await all(
+          e,
+          "SELECT id,conversationId,senderId,name,type,size,createdAt FROM chat_attachments WHERE conversationId=? ORDER BY createdAt,rowid",
+          c.id,
+        ),
+        events: await all(
+          e,
+          "SELECT * FROM chat_events WHERE conversationId=? ORDER BY createdAt,rowid",
+          c.id,
+        ),
+      });
+    }
+    if (operation === "messages" && m === "POST")
+      return json(
+        { message: await sendMessage(e, c, u, await body(req)) },
+        201,
+      );
+    if (operation === "offers" && m === "POST")
+      return json(
+        { offer: await createProposal(e, c, u, await body(req)) },
+        201,
+      );
+    if (operation === "documents" && m === "POST") {
+      await activeParticipants(e, c);
+      const bytes = await bounded(req, 6 * 1024 * 1024);
+      const form = await new Request(req.url, {
+        method: "POST",
+        headers: { "Content-Type": req.headers.get("Content-Type") || "" },
+        body: bytes,
+      }).formData();
+      const file = form.get("file");
+      requireThat(file instanceof File, 400, "Choose a file");
+      requireThat(
+        file.size > 0 && file.size <= 5 * 1024 * 1024,
+        413,
+        "File exceeds size limit",
+      );
+      requireThat(
+        validDocumentBytes(file.type, new Uint8Array(await file.arrayBuffer())),
+        400,
+        "Use a PDF, JPEG or PNG with matching file contents",
+      );
+      const count = await one<{ n: number }>(
+        e,
+        "SELECT count(*) n FROM chat_attachments WHERE conversationId=?",
+        c.id,
+      );
+      requireThat(
+        (count?.n || 0) < 100,
+        400,
+        "Maximum 100 shared documents per conversation",
+      );
+      const attachment: ChatAttachment = {
+        id: id(),
+        conversationId: c.id,
+        senderId: u.id,
+        name:
+          file.name.replace(/[^a-zA-Z0-9._ -]/g, "").slice(0, 120) ||
+          "document",
+        type: file.type,
+        size: file.size,
+        createdAt: now(),
+      };
+      const objectKey = "chat/" + c.id + "/" + attachment.id;
+      await e.UPLOADS.put(objectKey, file.stream(), {
+        httpMetadata: { contentType: file.type },
+      });
+      try {
+        await e.DB.batch([
+          stmt(
+            e,
+            "INSERT INTO chat_attachments(id,conversationId,senderId,name,type,size,objectKey,createdAt) VALUES(?,?,?,?,?,?,?,?)",
+            attachment.id,
+            c.id,
+            u.id,
+            attachment.name,
+            attachment.type,
+            attachment.size,
+            objectKey,
+            attachment.createdAt,
+          ),
+          chatEvent(e, c, u, "document", "Shared " + attachment.name),
+        ]);
+      } catch (err) {
+        await e.UPLOADS.delete(objectKey);
+        throw err;
+      }
+      return json({ attachment }, 201);
+    }
+  }
+  const chatDocument = p.match(/^\/api\/chat-documents\/([^/]+)$/);
+  if (chatDocument && m === "GET") {
+    const d = await one<ChatAttachment & { objectKey: string }>(
+      e,
+      "SELECT * FROM chat_attachments WHERE id=?",
+      chatDocument[1],
+    );
+    requireThat(d, 404, "Document not found");
+    await getConversation(e, d.conversationId, u);
+    const object = await e.UPLOADS.get(d.objectKey);
+    requireThat(object, 404, "Document not found");
+    return new Response(object.body, {
+      headers: {
+        "Content-Type": d.type,
+        "Content-Disposition": `attachment; filename="${d.name}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      },
+    });
+  }
+
   if (p === "/api/messages" && m === "GET") {
     const messages = await all(
       e,
@@ -551,44 +936,22 @@ async function route(req: Request, e: Env) {
       ).map((l) => listingView(l, u)),
     });
   }
+
   if (p === "/api/messages" && m === "POST") {
-    const b = await body(req);
-    const l = await getListing(e, text(b.listingId, "Listing", 80));
-    let recipient = l.ownerId;
+    const b = await body(req),
+      l = await getListing(e, text(b.listingId, "Listing", 80));
+    let c: ConversationSummary;
     if (u.id === l.ownerId) {
-      recipient = text(b.recipientId, "Recipient", 100);
-      requireThat(
-        await one(
-          e,
-          "SELECT id FROM messages WHERE listingId=? AND senderId=? AND recipientId=? LIMIT 1",
-          l.id,
-          recipient,
-          u.id,
-        ),
-        403,
-        "Reply to an existing conversation",
+      const existing = await one<Conversation>(
+        e,
+        "SELECT * FROM conversations WHERE listingId=? AND buyerId=?",
+        l.id,
+        text(b.recipientId, "Recipient", 100),
       );
-    } else
-      requireThat(
-        l.status === "approved" && !l.hostSuspended,
-        404,
-        "Listing not found",
-      );
-    requireThat(recipient !== u.id, 400, "You cannot message yourself");
-    const message = {
-      id: id(),
-      listingId: l.id,
-      senderId: u.id,
-      recipientId: recipient,
-      body: text(b.body, "Message", 2000),
-      createdAt: now(),
-    };
-    await stmt(
-      e,
-      "INSERT INTO messages VALUES(?,?,?,?,?,?)",
-      ...Object.values(message),
-    ).run();
-    return json({ message }, 201);
+      requireThat(existing, 403, "Reply to an existing conversation");
+      c = await getConversation(e, existing.id, u);
+    } else c = await openConversation(e, l, u);
+    return json({ message: await sendMessage(e, c, u, b) }, 201);
   }
   if (p === "/api/offers" && m === "GET")
     return json({
@@ -599,6 +962,7 @@ async function route(req: Request, e: Env) {
         u.id,
       ),
     });
+
   if (p === "/api/offers" && m === "POST") {
     const b = await body(req),
       l = await getListing(e, text(b.listingId, "Listing", 80));
@@ -607,48 +971,58 @@ async function route(req: Request, e: Env) {
       404,
       "Listing not found",
     );
-    requireThat(
-      l.ownerId !== u.id,
-      400,
-      "You cannot offer on your own listing",
-    );
-    const interval = dates(b.startDate, b.endDate);
-    requireThat(
-      interval.startDate >= l.startDate && interval.endDate <= l.endDate,
-      400,
-      "Dates must fit current listing availability",
-    );
-    requireThat(
-      interval.startDate >= syracuseDate(),
-      400,
-      "Start date cannot be in the past (Syracuse time)",
-    );
-    const offer = {
-      id: id(),
-      listingId: l.id,
-      buyerId: u.id,
-      sellerId: l.ownerId,
-      amount: Math.round(number(b.amount, "Amount", 1, 20000) * 100) / 100,
-      ...interval,
-      status: "pending",
-    };
-    await stmt(
-      e,
-      "INSERT INTO offers VALUES(?,?,?,?,?,?,?,?)",
-      ...Object.values(offer),
-    ).run();
-    return json({ offer }, 201);
+    const c = await openConversation(e, l, u);
+    return json({ offer: await createProposal(e, c, u, b) }, 201);
   }
-  const accept = p.match(/^\/api\/offers\/([^/]+)\/accept$/);
-  if (accept && m === "POST") {
-    const o = await one<Offer>(e, "SELECT * FROM offers WHERE id=?", accept[1]);
+  const offerAction = p.match(
+    /^\/api\/offers\/([^/]+)\/(accept|decline|withdraw)$/,
+  );
+  if (offerAction && m === "POST") {
+    const o = await one<Offer>(
+      e,
+      "SELECT * FROM offers WHERE id=?",
+      offerAction[1],
+    );
     requireThat(o, 404, "Offer not found");
+    const c = await getConversation(e, o.conversationId, u),
+      action = offerAction[2];
     requireThat(
-      o.sellerId === u.id && o.buyerId !== u.id,
+      action === "withdraw" ? o.proposedBy === u.id : o.proposedBy !== u.id,
       403,
-      "Only the listing owner can accept this offer",
+      action === "withdraw"
+        ? "Only the proposer can withdraw"
+        : "Only the other participant can accept or decline",
     );
     requireThat(o.status === "pending", 409, "This offer is no longer pending");
+    if (action !== "accept") {
+      const status = action === "decline" ? "declined" : "withdrawn";
+      const results = await e.DB.batch([
+        stmt(
+          e,
+          "UPDATE offers SET status=? WHERE id=? AND status='pending'",
+          status,
+          o.id,
+        ),
+        stmt(
+          e,
+          "INSERT INTO chat_events(id,conversationId,actorId,kind,body,offerId,createdAt) SELECT ?,?,?,?,?,?,? WHERE changes()=1",
+          id(),
+          c.id,
+          u.id,
+          status,
+          "Proposal " + status,
+          o.id,
+          now(),
+        ),
+      ]);
+      requireThat(
+        results[0].meta.changes === 1,
+        409,
+        "This offer is no longer pending",
+      );
+      return json({ offer: { ...o, status } });
+    }
+    await activeParticipants(e, c);
     const l = await getListing(e, o.listingId);
     reviewed(l);
     requireThat(
@@ -656,17 +1030,45 @@ async function route(req: Request, e: Env) {
       409,
       "Offer start date has passed",
     );
+    requireThat(
+      o.startDate >= l.startDate && o.endDate <= l.endDate,
+      409,
+      "Dates no longer fit listing availability",
+    );
     const key = id();
-    await e.DB.batch([
+    const results = await e.DB.batch([
       stmt(
         e,
-        "INSERT INTO bookings(id,offerId,listingId,buyerId,sellerId,amount,startDate,endDate,createdAt) SELECT ?,id,listingId,buyerId,sellerId,amount,startDate,endDate,? FROM offers WHERE id=? AND status='pending'",
+        "INSERT INTO bookings(id,offerId,listingId,buyerId,sellerId,amount,startDate,endDate,createdAt) SELECT ?,id,listingId,buyerId,sellerId,amount,startDate,endDate,? FROM offers WHERE id=? AND status='pending' AND proposedBy<>?",
         key,
         now(),
         o.id,
+        u.id,
       ),
-      stmt(e, "UPDATE offers SET status='accepted' WHERE id=?", o.id),
+      stmt(
+        e,
+        "UPDATE offers SET status='accepted' WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM bookings WHERE id=?)",
+        o.id,
+        key,
+      ),
+      stmt(
+        e,
+        "INSERT INTO chat_events(id,conversationId,actorId,kind,body,offerId,createdAt) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM bookings WHERE id=?)",
+        id(),
+        c.id,
+        u.id,
+        "accepted",
+        "Proposal accepted; reservation created",
+        o.id,
+        now(),
+        key,
+      ),
     ]);
+    requireThat(
+      results[0].meta.changes === 1,
+      409,
+      "This offer is no longer pending",
+    );
     return json({ booking: await getBooking(e, key) }, 201);
   }
   if (p === "/api/bookings" && m === "GET") {
@@ -768,6 +1170,20 @@ async function route(req: Request, e: Env) {
         text(b.reason, "Dispute reason", 2000, 10),
         booking.id,
       ).run();
+    }
+    const thread = await one<Conversation>(
+      e,
+      "SELECT c.* FROM conversations c JOIN offers o ON o.conversationId=c.id JOIN bookings b ON b.offerId=o.id WHERE b.id=?",
+      booking.id,
+    );
+    if (thread) {
+      const descriptions: Record<string, string> = {
+        sign: "Demo agreement acknowledged (not a legal signature)",
+        pay: "Demo payment simulated (no money moved)",
+        "confirm-move-in": "Renter confirmed move-in",
+        dispute: "Renter opened a reservation dispute",
+      };
+      await chatEvent(e, thread, u, String(a), descriptions[String(a)]).run();
     }
     return json({ booking: await getBooking(e, booking.id) });
   }

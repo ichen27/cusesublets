@@ -37,6 +37,7 @@ export interface Listing {
   reviewNote?: string;
 }
 export interface Message {
+  conversationId?: string;
   id: string;
   listingId: string;
   senderId: string;
@@ -45,6 +46,11 @@ export interface Message {
   createdAt: string;
 }
 export interface Offer {
+  conversationId: string;
+  proposedBy: string;
+  parentOfferId?: string | null;
+  createdAt: string;
+  kind: "offer" | "request";
   id: string;
   listingId: string;
   buyerId: string;
@@ -95,4 +101,47 @@ export interface Report {
   reason: string;
   status: "open" | "resolved";
   createdAt: string;
+}
+
+export interface Conversation {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface ConversationSummary extends Conversation {
+  listingTitle: string;
+  listingImage: string;
+  peerName: string;
+  lastMessage?: string;
+}
+export interface ChatAttachment {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  name: string;
+  type: string;
+  size: number;
+  createdAt: string;
+}
+export interface ChatEvent {
+  id: string;
+  conversationId: string;
+  actorId: string;
+  kind: string;
+  body: string;
+  offerId?: string | null;
+  createdAt: string;
+}
+export interface ConversationDetail {
+  conversation: ConversationSummary;
+  listing: Listing;
+  peer: { id: string; name: string };
+  messages: Message[];
+  offers: Offer[];
+  bookings: Booking[];
+  attachments: ChatAttachment[];
+  events: ChatEvent[];
 }
