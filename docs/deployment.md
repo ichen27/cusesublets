@@ -1,0 +1,42 @@
+# Cloudflare deployment and provider setup
+
+No public deployment has been performed. `npm run deploy:check` builds and packages the Worker without provisioning or publishing resources. The checked-in D1 ID is an explicit local placeholder. A successful dry run is not evidence of live authentication or financial integrations.
+
+## Infrastructure
+
+1. Choose the Cloudflare account and custom domain. Create a D1 database named cusesublets and a private R2 bucket named cusesublets-private using the account dashboard or current Wrangler resource commands.
+2. Replace the D1 placeholder in wrangler.jsonc with the returned database ID. Confirm bucket name and Worker name target the intended account. Keep APP_ENV=production.
+3. Apply only migrations/ to the remote database. Never apply seeds/demo.sql remotely; seed is local demo content.
+4. Configure APP_ORIGIN as the exact HTTPS app origin. Configure ACCESS_TEAM_DOMAIN as team.cloudflareaccess.com and ACCESS_AUD as the Access application audience.
+5. Set ADMIN_EMAILS to a comma-separated explicit reviewer allowlist. The Worker validates issuer, audience, expiry and signature before deriving staff role. Do not treat arbitrary identity headers as authentication.
+6. Review files and settings, run npm run types, npm run typecheck, npm test, npm run deploy:check; deploy only when authorized.
+
+## Cloudflare Access + Google
+
+Set up a self-hosted Access application protecting `/api/login` with Google as the identity provider and the intended customer allow policy. The app's login button navigates there; the validated Worker identity redirects back to `/#account`. Make sure the authorization cookie is sent on the app origin for API requests. Public catalog and static assets remain anonymously accessible. The Worker still validates JWTs and checks ownership/roles on every private endpoint; Access login alone is not authorization. Use an additional staff Access policy for the admin surface if desired, without bypassing Worker role checks. Test logout, expiry, guest browsing and ordinary-member denial of admin APIs on the actual configured domain before launch.
+
+## Financial and signing integration boundaries
+
+Current payment/sign routes are explicitly local simulations. Implement a selected provider behind those boundaries before enabling real transactions. For Stripe, use an approved Connect marketplace flow; server-created checkout amounts, verified webhook signatures and idempotent event records must be authoritative. A success URL must never mark a booking paid. Connect account onboarding and payout readiness must precede checkout. Implement refunds, transfer reversals and dispute accounting before release. The proposed 48-hour post-move-in rule is a product proposal, not a guarantee of bank settlement or protection from chargebacks. Stripe does not provide escrow.
+
+Agree which fees/rent are collected, when cards are charged, when the renter can cancel, and who funds refunds. The sample total uses a 30-day proration purely to demonstrate the UI. Do not reuse that convention for live contracts without approving it.
+
+Identity must be for an approved fraud-prevention use. Stripe Identity prohibits using results to decide housing eligibility; get provider confirmation for this use case. Do not collect government ID through generic uploads. Replace demo acknowledgments with a provider-driven document/signature workflow that stores document version, consent, audit evidence, final artifact and provider webhook status.
+
+## Media and maps
+
+Matterport tours use allowed HTTPS my.matterport.com/show/ URLs with a model ID. Capture happens in Matterport, then attach its share URL. A video upload stays video; no reconstruction is claimed. Check Matterport plan/embedding requirements for launch. Review images/videos for rights and personal information.
+
+The preview uses standard OpenStreetMap tiles with visible attribution and normal browser caching. No prefetch or offline map download. Select a production map provider and reliable approximate-location geocoding before public traffic; listing coordinates are host-selected on a map and rounded to three decimal places, not address verification. The API defaults to central Syracuse when coordinates are omitted. Configure external photo/font/map privacy disclosures. Private document downloads use no-store and attachment disposition.
+
+## Launch readiness
+
+Exercise real Google login and staff allowlist; set up appropriate rate limits and abuse controls; add retention/deletion policy and malware/media validation; define reviewed sublease/permission rules with counsel; test provider webhooks and retries in sandbox; exercise reporting/suspension and add refund support. Monitor Worker logs/traces without logging message bodies, documents or provider secrets.
+
+Official references checked during development:
+- https://developers.cloudflare.com/workers/static-assets/
+- https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
+- https://developers.cloudflare.com/d1/worker-api/d1-database/
+- https://docs.stripe.com/connect/manual-payouts
+- https://stripe.com/legal/ssa-services-terms
+- https://operations.osmfoundation.org/policies/tiles/

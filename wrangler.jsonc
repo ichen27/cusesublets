@@ -1,10 +1,32 @@
 {
- "$schema":"node_modules/wrangler/config-schema.json",
- "name":"cusesublets", "main":"worker/index.ts", "compatibility_date":"2026-09-16",
- "compatibility_flags":["nodejs_compat"],
- "assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},
- "d1_databases":[{"binding":"DB","database_name":"cusesublets","database_id":"00000000-0000-0000-0000-000000000001","migrations_dir":"migrations"}],
- "r2_buckets":[{"binding":"UPLOADS","bucket_name":"cusesublets-private"}],
- "vars":{"APP_ENV":"production","ACCESS_TEAM_DOMAIN":"","ACCESS_AUD":"","ADMIN_EMAILS":"","APP_ORIGIN":""},
- "observability":{"enabled":true,"traces":{"enabled":true}}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cusesublets",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cusesublets",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    { "binding": "UPLOADS", "bucket_name": "cusesublets-private" },
+  ],
+  "vars": {
+    "APP_ENV": "production",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "ADMIN_EMAILS": "",
+    "APP_ORIGIN": "",
+  },
+  "observability": { "enabled": true, "traces": { "enabled": true } },
 }
