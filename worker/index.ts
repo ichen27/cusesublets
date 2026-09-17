@@ -5,6 +5,7 @@ import type {
   Booking,
   Offer,
   DocumentRecord,
+  Report,
 } from "../shared/types";
 import {
   HttpError,
@@ -15,6 +16,7 @@ import {
   dates,
   payoutBlockers,
   mediaUrl,
+  syracuseDate,
 } from "./policy";
 type Env = Pick<Cloudflare.Env, "DB" | "UPLOADS" | "ASSETS"> & {
   APP_ENV: string;
@@ -46,10 +48,16 @@ const all = async <T>(e: Env, sql: string, ...v: unknown[]) =>
 const one = <T>(e: Env, sql: string, ...v: unknown[]) =>
   stmt(e, sql, ...v).first<T>();
 const listingSQL =
-  "SELECT l.*,u.name hostName,u.identity hostIdentity FROM listings l JOIN users u ON u.id=l.ownerId";
-function listing(row: Row): Listing {
+  "SELECT l.*,u.name hostName,u.identity hostIdentity,u.suspended hostSuspended FROM listings l JOIN users u ON u.id=l.ownerId";
+type InternalListing = Listing & { hostSuspended: boolean };
+const userView = (u: User): User => ({ ...u, suspended: !!u.suspended });
+function listing(row: Row): InternalListing {
   const { data, ...rest } = row;
-  return { ...JSON.parse(data as string), ...rest } as Listing;
+  return {
+    ...JSON.parse(data as string),
+    ...rest,
+    hostSuspended: !!rest.hostSuspended,
+  } as InternalListing;
 }
 // Explicit public projection: private review reasons and future database columns stay private.
 function listingView(l: Listing, viewer: User | null = null): Listing {
@@ -105,6 +113,13 @@ async function decorateBooking(e: Env, b: Booking) {
     listingTitle: l.title,
   };
   const blockers = payoutBlockers(normalized, l);
+  const suspended = await one(
+    e,
+    "SELECT id FROM users WHERE id IN (?,?) AND suspended=1 LIMIT 1",
+    b.buyerId,
+    b.sellerId,
+  );
+  if (suspended) blockers.push("Account suspension requires review");
   return {
     ...normalized,
     payoutEligible: blockers.length === 0,
@@ -250,9 +265,10 @@ function participant(b: { buyerId: string; sellerId: string }, u: User) {
     "This reservation is private",
   );
 }
-function reviewed(l: Listing) {
+function reviewed(l: InternalListing) {
   requireThat(
-    l.status === "approved" &&
+    !l.hostSuspended &&
+      l.status === "approved" &&
       l.leaseStatus === "verified" &&
       l.permissionStatus === "verified" &&
       l.hostIdentity === "verified",
@@ -333,11 +349,12 @@ async function route(req: Request, e: Env) {
       user.id,
       Date.now() + 8 * 3600000,
     ).run();
-    return json({ user, demo }, 200, {
+    return json({ user: userView(user), demo }, 200, {
       "Set-Cookie": `cuse_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`,
     });
   }
-  const u = await authenticate(req, e, demo);
+  const authenticated = await authenticate(req, e, demo);
+  const u = authenticated ? userView(authenticated) : null;
   if (p === "/api/login" && m === "GET") {
     requireThat(
       u,
@@ -366,7 +383,7 @@ async function route(req: Request, e: Env) {
       listings: (
         await listings(
           e,
-          "WHERE l.status='approved' ORDER BY l.rowid LIMIT 200",
+          "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid LIMIT 200",
         )
       ).map((l) => listingView(l)),
     });
@@ -374,7 +391,9 @@ async function route(req: Request, e: Env) {
   if (listingMatch && m === "GET") {
     const l = await getListing(e, listingMatch[1]);
     requireThat(
-      l.status === "approved" || l.ownerId === u?.id || u?.role === "admin",
+      (l.status === "approved" && !l.hostSuspended) ||
+        l.ownerId === u?.id ||
+        u?.role === "admin",
       404,
       "Listing not found",
     );
@@ -390,7 +409,9 @@ async function route(req: Request, e: Env) {
     requireThat(doc, 404, "Media not found");
     const l = await getListing(e, doc.listingId);
     requireThat(
-      l.status === "approved" || l.ownerId === u?.id || u?.role === "admin",
+      (l.status === "approved" && !l.hostSuspended) ||
+        l.ownerId === u?.id ||
+        u?.role === "admin",
       404,
       "Media not found",
     );
@@ -405,6 +426,15 @@ async function route(req: Request, e: Env) {
     });
   }
   requireThat(u, 401, "Sign in to continue");
+  if (
+    m === "POST" &&
+    u.suspended &&
+    !/^\/api\/bookings\/[^/]+\/action$/.test(p)
+  )
+    throw new HttpError(
+      403,
+      "Your account is suspended. Existing reservations and disputes remain accessible.",
+    );
   if (p.startsWith("/api/admin"))
     requireThat(u.role === "admin", 403, "Admin access required");
   if (p === "/api/profile" && m === "POST") {
@@ -415,7 +445,11 @@ async function route(req: Request, e: Env) {
       text(b.name, "Name", 80),
       u.id,
     ).run();
-    return json({ user: await one(e, "SELECT * FROM users WHERE id=?", u.id) });
+    return json({
+      user: userView(
+        (await one<User>(e, "SELECT * FROM users WHERE id=?", u.id))!,
+      ),
+    });
   }
   if (p === "/api/mine" && m === "GET")
     return json({
@@ -430,7 +464,7 @@ async function route(req: Request, e: Env) {
     const b = await body(req);
     const interval = dates(b.startDate, b.endDate);
     requireThat(
-      interval.endDate > now().slice(0, 10),
+      interval.endDate > syracuseDate(),
       400,
       "Availability must end in the future",
     );
@@ -455,8 +489,13 @@ async function route(req: Request, e: Env) {
       title: text(b.title, "Title", 100),
       neighborhood: text(b.neighborhood, "Neighborhood", 80),
       address: text(b.address, "Approximate location", 160),
-      lat: 43.037,
-      lng: -76.127,
+      lat:
+        Math.round(number(b.lat ?? 43.037, "Latitude", 42.9, 43.15) * 1000) /
+        1000,
+      lng:
+        Math.round(
+          number(b.lng ?? -76.127, "Longitude", -76.3, -75.95) * 1000,
+        ) / 1000,
       price: number(b.price, "Monthly rent", 1, 20000),
       beds: number(b.beds, "Beds", 1, 20),
       baths: number(b.baths, "Baths", 0.5, 20),
@@ -516,7 +555,12 @@ async function route(req: Request, e: Env) {
         403,
         "Reply to an existing conversation",
       );
-    } else requireThat(l.status === "approved", 404, "Listing not found");
+    } else
+      requireThat(
+        l.status === "approved" && !l.hostSuspended,
+        404,
+        "Listing not found",
+      );
     requireThat(recipient !== u.id, 400, "You cannot message yourself");
     const message = {
       id: id(),
@@ -545,7 +589,11 @@ async function route(req: Request, e: Env) {
   if (p === "/api/offers" && m === "POST") {
     const b = await body(req),
       l = await getListing(e, text(b.listingId, "Listing", 80));
-    requireThat(l.status === "approved", 404, "Listing not found");
+    requireThat(
+      l.status === "approved" && !l.hostSuspended,
+      404,
+      "Listing not found",
+    );
     requireThat(
       l.ownerId !== u.id,
       400,
@@ -553,11 +601,14 @@ async function route(req: Request, e: Env) {
     );
     const interval = dates(b.startDate, b.endDate);
     requireThat(
-      interval.startDate >= l.startDate &&
-        interval.endDate <= l.endDate &&
-        interval.startDate >= now().slice(0, 10),
+      interval.startDate >= l.startDate && interval.endDate <= l.endDate,
       400,
       "Dates must fit current listing availability",
+    );
+    requireThat(
+      interval.startDate >= syracuseDate(),
+      400,
+      "Start date cannot be in the past (Syracuse time)",
     );
     const offer = {
       id: id(),
@@ -588,7 +639,7 @@ async function route(req: Request, e: Env) {
     const l = await getListing(e, o.listingId);
     reviewed(l);
     requireThat(
-      o.startDate >= now().slice(0, 10),
+      o.startDate >= syracuseDate(),
       409,
       "Offer start date has passed",
     );
@@ -622,6 +673,11 @@ async function route(req: Request, e: Env) {
       booking = await getBooking(e, action[1]);
     participant(booking, u);
     const a = b.action;
+    requireThat(
+      !u.suspended || a === "dispute",
+      403,
+      "Suspended accounts can read existing reservations and open disputes only",
+    );
     requireThat(
       ["sign", "pay", "confirm-move-in", "dispute"].includes(String(a)),
       400,
@@ -676,7 +732,7 @@ async function route(req: Request, e: Env) {
         "Payment is required first",
       );
       requireThat(
-        now().slice(0, 10) >= booking.startDate,
+        syracuseDate() >= booking.startDate,
         409,
         "Move-in confirmation opens on your start date",
       );
@@ -829,7 +885,13 @@ async function route(req: Request, e: Env) {
   if (p === "/api/admin" && m === "GET")
     return json({
       listings: await listings(e, "ORDER BY l.rowid DESC LIMIT 200"),
-      users: await all(e, "SELECT * FROM users LIMIT 200"),
+      users: (await all<User>(e, "SELECT * FROM users LIMIT 200")).map(
+        userView,
+      ),
+      reports: await all<Report>(
+        e,
+        "SELECT * FROM reports ORDER BY rowid DESC LIMIT 200",
+      ),
       documents: await all(
         e,
         "SELECT id,listingId,name,kind,createdAt FROM documents LIMIT 500",
@@ -837,6 +899,115 @@ async function route(req: Request, e: Env) {
       bookings: await all(e, "SELECT * FROM bookings LIMIT 200"),
       audit: await all(e, "SELECT * FROM audit ORDER BY rowid DESC LIMIT 200"),
     });
+  const reportListing = p.match(/^\/api\/listings\/([^/]+)\/report$/);
+  if (reportListing && m === "POST") {
+    const b = await body(req),
+      l = await getListing(e, reportListing[1]);
+    requireThat(l.ownerId !== u.id, 400, "You cannot report your own listing");
+    const ownBooking = await one(
+      e,
+      "SELECT id FROM bookings WHERE listingId=? AND buyerId=? LIMIT 1",
+      l.id,
+      u.id,
+    );
+    requireThat(
+      (l.status === "approved" && !l.hostSuspended) || ownBooking,
+      404,
+      "Listing not found",
+    );
+    const reason = text(b.reason, "Report reason", 2000, 10);
+    requireThat(
+      !(await one(
+        e,
+        "SELECT id FROM reports WHERE listingId=? AND reporterId=? AND status='open'",
+        l.id,
+        u.id,
+      )),
+      409,
+      "You already have an open report for this listing",
+    );
+    const report: Report = {
+      id: id(),
+      listingId: l.id,
+      reporterId: u.id,
+      reason,
+      status: "open",
+      createdAt: now(),
+    };
+    await e.DB.batch([
+      stmt(
+        e,
+        "INSERT INTO reports VALUES(?,?,?,?,?,?)",
+        ...Object.values(report),
+      ),
+      audit(e, u, "listing.report", report.id, reason),
+    ]);
+    return json({ report }, 201);
+  }
+  const userStatus = p.match(/^\/api\/admin\/users\/([^/]+)\/status$/);
+  if (userStatus && m === "POST") {
+    const b = await body(req),
+      target = await one<User>(
+        e,
+        "SELECT * FROM users WHERE id=?",
+        userStatus[1],
+      );
+    requireThat(target, 404, "User not found");
+    requireThat(
+      typeof b.suspended === "boolean",
+      400,
+      "Suspended must be true or false",
+    );
+    requireThat(
+      target.id !== u.id && target.role !== "admin",
+      403,
+      "Admins cannot change their own or another admin suspension",
+    );
+    const reason = text(b.reason, "Status reason", 2000, 5);
+    await e.DB.batch([
+      stmt(
+        e,
+        "UPDATE users SET suspended=? WHERE id=? AND role<>'admin'",
+        b.suspended ? 1 : 0,
+        target.id,
+      ),
+      audit(
+        e,
+        u,
+        b.suspended ? "user.suspend" : "user.restore",
+        target.id,
+        reason,
+      ),
+    ]);
+    return json({
+      user: userView(
+        (await one<User>(e, "SELECT * FROM users WHERE id=?", target.id))!,
+      ),
+    });
+  }
+  const resolveReport = p.match(/^\/api\/admin\/reports\/([^/]+)\/resolve$/);
+  if (resolveReport && m === "POST") {
+    const b = await body(req),
+      report = await one<Report>(
+        e,
+        "SELECT * FROM reports WHERE id=?",
+        resolveReport[1],
+      );
+    requireThat(report, 404, "Report not found");
+    requireThat(report.status === "open", 409, "Report is already resolved");
+    const reason = text(b.reason, "Resolution reason", 2000, 10);
+    await e.DB.batch([
+      stmt(e, "UPDATE reports SET status='resolved' WHERE id=?", report.id),
+      audit(e, u, "report.resolve", report.id, reason),
+    ]);
+    return json({
+      report: await one<Report>(
+        e,
+        "SELECT * FROM reports WHERE id=?",
+        report.id,
+      ),
+    });
+  }
   const review = p.match(/^\/api\/admin\/listings\/([^/]+)\/review$/);
   if (review && m === "POST") {
     const b = await body(req),
@@ -901,7 +1072,9 @@ async function route(req: Request, e: Env) {
       audit(e, u, "identity.review", identity[1], reason),
     ]);
     return json({
-      user: await one(e, "SELECT * FROM users WHERE id=?", identity[1]),
+      user: userView(
+        (await one<User>(e, "SELECT * FROM users WHERE id=?", identity[1]))!,
+      ),
     });
   }
   const resolve = p.match(/^\/api\/admin\/bookings\/([^/]+)\/resolve$/);

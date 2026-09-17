@@ -31,3 +31,13 @@ Demo seed is `seeds/demo.sql`, separate from schema migration; never apply seed 
 - Individual bookings and GET bookings include `totalCents:number,currency:"USD"` computed server-side from the agreed monthly amount using a disclosed 30-day proration, alongside `payoutEligible,payoutBlockers`. These are sample totals only; no funds are held or released.
 
 Public catalog, renter listing details and renter conversation listings exclude internal `reviewNote`; owner/admin detail and authorized private views may contain it. Uploading new lease or permission evidence atomically changes that review status and the listing to `pending`, preserving the other evidence review. Acceptance, payment and payout eligibility require fresh completed reviews after the upload.
+
+## Moderation
+- `User` now includes optional `suspended:boolean` (API emits a boolean).
+- POST `/api/listings/:id/report` `{reason:string}` (10–2000 chars) → `{report:Report}`; authenticated nonowner, visible listing or existing reservation participant; creates an audited open report.
+- GET `/api/admin` additionally returns `{reports:Report[]}`. `Report = {id:string,listingId:string,reporterId:string,reason:string,status:'open'|'resolved',createdAt:string}`.
+- POST `/api/admin/users/:id/status` `{suspended:boolean,reason:string}` (5–2000 chars) → `{user:User}`; staff cannot suspend themselves or another admin; atomic audit records both suspension and restoration.
+- POST `/api/admin/reports/:id/resolve` `{reason:string}` (10–2000 chars) → `{report:Report}`; atomic mandatory-reason audit.
+- Suspended accounts retain authenticated reads and existing renter dispute actions, but cannot create listings/offers/messages, accept reservations, upload, sign or pay. Suspended hosts disappear from public catalog/detail/media. Current host/buyer suspension blocks reservation/payment and payout eligibility. Restoration re-enables eligible approved listings without changing historical reviews.
+
+New listing input optionally accepts `lat:number` between 42.9–43.15 and `lng:number` between -76.3–-75.95. Coordinates are rounded to three decimal places for an approximate location. Omitting coordinates defaults to a central Syracuse map position (43.037, -76.127); this is not address geocoding.

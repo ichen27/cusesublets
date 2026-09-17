@@ -105,3 +105,12 @@ export function mediaUrl(value: unknown, matterport = false) {
     );
   return u.href;
 }
+
+export function syracuseDate(instant = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(instant);
+}

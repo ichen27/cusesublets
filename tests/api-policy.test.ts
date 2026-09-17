@@ -1,3 +1,4 @@
+import { syracuseDate } from "../worker/policy";
 import { describe, it, expect } from "vitest";
 import { demoAllowed, dates, number, payoutBlockers } from "../worker/policy";
 import worker from "../worker/index";
@@ -59,5 +60,12 @@ describe("API trust boundaries", () => {
       { APP_ENV: "development" } as never,
     );
     expect(response.status).toBe(403);
+  });
+});
+
+describe("Syracuse calendar day", () => {
+  it("uses the local previous day near midnight UTC", () => {
+    expect(syracuseDate(new Date("2026-09-17T00:30:00Z"))).toBe("2026-09-16");
+    expect(syracuseDate(new Date("2026-09-17T04:01:00Z"))).toBe("2026-09-17");
   });
 });
