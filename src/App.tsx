@@ -966,7 +966,12 @@ export default function App() {
                 onSignedIn={(user) => {
                   setUser(user);
                   setLogin(false);
-                  navigate(user.role === "admin" ? "admin" : "account");
+                  const destination =
+                    user.role === "admin" ? "admin" : "account";
+                  setView(destination);
+                  setMenu(false);
+                  history.replaceState(null, "", "#" + destination);
+                  window.scrollTo({ top: 0 });
                   notify("Welcome, " + user.name.split(" ")[0] + ".");
                 }}
               />
