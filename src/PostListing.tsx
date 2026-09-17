@@ -99,31 +99,30 @@ export default function PostListing({
     }
   }
   return (
-    <Modal title="Give your place its next chapter." wide onClose={onClose}>
+    <Modal title="List your sublet." wide onClose={onClose}>
       <div className="post-layout">
         <aside>
           <span className="eyebrow">LIST YOUR PLACE</span>
           <h2>
-            A good handoff
+            Find someone
             <br />
-            starts here.
+            to sublease your place.
           </h2>
           <p>
-            Tell the story of your space. We’ll help you keep the details clear.
+            Add your property details and publish. Submit documents when you’re
+            ready to request verification.
           </p>
-          {[
-            "The essentials",
-            "Make it feel like home",
-            "Documents & review",
-          ].map((label, i) => (
-            <div
-              className={"post-step " + (step === i + 1 ? "active" : "")}
-              key={label}
-            >
-              <span>{step > i + 1 ? <Check size={14} /> : i + 1}</span>
-              {label}
-            </div>
-          ))}
+          {["The essentials", "Photos & details", "Documents & review"].map(
+            (label, i) => (
+              <div
+                className={"post-step " + (step === i + 1 ? "active" : "")}
+                key={label}
+              >
+                <span>{step > i + 1 ? <Check size={14} /> : i + 1}</span>
+                {label}
+              </div>
+            ),
+          )}
           <div className="mini-note">
             <ShieldCheck size={19} /> Uploading documents starts a review. It
             doesn’t automatically verify your listing.

@@ -161,7 +161,7 @@ export default function PublicProfile({
               ))
             ) : (
               <Empty title="No available listings right now.">
-                Check back for the next place.
+                This member has no published listings yet.
               </Empty>
             )}
           </section>

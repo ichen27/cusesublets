@@ -109,7 +109,7 @@ export function Empty({
 export function Busy() {
   return (
     <div className="loading" role="status">
-      <LoaderCircle className="spin" /> Loading your next chapter…
+      <LoaderCircle className="spin" /> Loading…
     </div>
   );
 }

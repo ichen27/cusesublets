@@ -268,9 +268,9 @@ export default function HostWorkspace({
               </div>
             ))
           ) : (
-            <Empty title="A new chapter for your place.">
-              Going abroad or heading home? Give your place a thoughtful
-              handoff.
+            <Empty title="Find a sublessee for your place.">
+              Post your property, connect with interested renters, and manage
+              messages and offers here.
             </Empty>
           )}
         </section>

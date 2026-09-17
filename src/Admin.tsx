@@ -124,7 +124,9 @@ export default function Admin({
             <ShieldCheck size={13} /> CUSESUBLETS · ADMIN WORKSPACE
           </span>
           <h1>Trust starts with the details.</h1>
-          <p>A thoughtful review for every place, person, and handoff.</p>
+          <p>
+            Review evidence, manage reports, and keep verification accurate.
+          </p>
         </div>
         <span className="staff-label">
           <span className="status-dot green" /> Authorized reviewer

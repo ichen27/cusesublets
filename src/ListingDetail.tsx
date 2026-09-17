@@ -78,7 +78,7 @@ export default function ListingDetail({
     setMode(next);
   };
   return (
-    <Modal title="Your next place, a little closer." wide onClose={onClose}>
+    <Modal title="Listing details & verification." wide onClose={onClose}>
       <div className="detail">
         <div className="detail-heading">
           <div>

@@ -117,8 +117,10 @@ export function ChecksGuide() {
       <span className="eyebrow">CUSESUBLETS CHECKS</span>
       <h1>Know what’s been checked.</h1>
       <p className="lead">
-        Clear signals about the person and the place, wherever your next chapter
-        takes you.
+        Our mission is to make subletting simpler and safer. CuseSublets Checks
+        help reduce scam risk by reviewing identity, lease documents, and
+        permission to sublet—and showing you exactly what has and hasn’t been
+        verified.
       </p>
       <div className="guide-grid">
         {[
@@ -146,11 +148,12 @@ export function ChecksGuide() {
         ))}
       </div>
       <section className="panel">
-        <h2>Published doesn’t mean verified.</h2>
+        <h2>Trust through clear, separate checks.</h2>
         <p>
-          You can post a listing immediately. Badges appear only after the
-          corresponding manual review. Ask questions in chat, look at the
-          property, and understand the agreement before committing.
+          You can publish without verification. Each badge appears only after
+          our team reviews the corresponding evidence. An unchecked item stays
+          clearly marked. Document reviews help you assess a listing; they are
+          not an in-person property inspection or a guarantee against scams.
         </p>
         <h3>Your documents stay private.</h3>
         <p>

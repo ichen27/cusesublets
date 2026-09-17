@@ -388,34 +388,34 @@ export default function App() {
           <section className="hero">
             <div className="hero-copy">
               <span className="eyebrow">
-                <span className="orange-dot" /> SYRACUSE, NY · MADE FOR YOUR
-                NEXT CHAPTER
+                <span className="orange-dot" /> SYRACUSE SUBLETS · BUILT AROUND
+                TRUST
               </span>
               <h1>
                 {view === "saved" ? (
                   <>
-                    Good places.
+                    Saved sublets.
                     <br />
-                    <em>Worth keeping.</em>
+                    <em>Compare your options.</em>
                   </>
                 ) : (
                   <>
-                    New semester.
+                    Find a sublet.
                     <br />
-                    <em>New place. Same Cuse.</em>
+                    <em>List your place.</em>
                   </>
                 )}
               </h1>
               <p>
                 {view === "saved"
-                  ? "Your shortlist for whatever comes next."
-                  : "A summer away. A semester abroad. A place to land.\nFind your people—and your next place—in Syracuse."}
+                  ? "Compare saved listings, review their checks, and contact the host."
+                  : "Find a place to sublease or someone to take over your lease in Syracuse. See what’s been verified and manage the conversation in one place."}
               </p>
               <div className="hero-proof">
                 <span className="proof-icon">
                   <ShieldCheck size={17} />
                 </span>
-                <span>Real connections. Clear details. Less guesswork.</span>
+                <span>Identity, lease & sublet-permission checks.</span>
               </div>
             </div>
             <div className="hero-art">
@@ -424,14 +424,14 @@ export default function App() {
                 alt="Sunny living room with natural wood furnishings"
               />
               <span className="hero-image-label">
-                A LITTLE SPACE FOR YOUR NEXT BIG THING.
+                SUBLETTING, WITH TRUST AT THE CENTER.
               </span>
               <div className="hero-sticker">
                 <span className="sticker-sun">✳</span>
                 <span>
-                  Make yourself
+                  Find it.
                   <br />
-                  <b>at home.</b>
+                  <b>Check it.</b>
                 </span>
               </div>
             </div>
@@ -583,7 +583,7 @@ export default function App() {
                 <h2>
                   {view === "saved"
                     ? "Your saved places"
-                    : "Find a place that fits you."}
+                    : "Find a sublet in Syracuse."}
                 </h2>
                 <p>
                   {items.length}{" "}
@@ -595,7 +595,7 @@ export default function App() {
                   <span>·</span>{" "}
                   {demo
                     ? "Sample listings for the preview"
-                    : "Your next chapter starts here"}
+                    : "Check verification before you commit"}
                 </p>
               </div>
               <label className="sort">
@@ -738,7 +738,7 @@ export default function App() {
                   <div className="map-note">
                     <ShieldCheck size={15} />
                     <span>
-                      Find the neighborhood. Feel the fit.
+                      Explore sublets by location.
                       <small>Map pins show approximate locations.</small>
                     </span>
                   </div>
@@ -750,8 +750,16 @@ export default function App() {
                 <Home size={29} />
               </span>
               <div>
-                <h3>Leaving Cuse for a little while?</h3>
-                <p>Your place could be someone’s perfect next chapter.</p>
+                <h3>Your sublease, all in one place.</h3>
+                <p>
+                  Find a sublet or a sublessee, message each other, share
+                  documents, and negotiate offers. CuseSublets Checks help you
+                  understand who and what has been reviewed.
+                </p>
+                <p>
+                  We’re building one place to manage the entire agreement.
+                  Document signing and in-app payments are coming next.
+                </p>
               </div>
               <button
                 className="outline"
@@ -840,7 +848,7 @@ export default function App() {
           <Home size={18} /> CuseSublets
           <i />
         </a>
-        <span>Made for the places between your plans.</span>
+        <span>Simpler subletting. Clear verification. One place.</span>
         <button onClick={() => navigate("checks")}>
           CuseSublets Checks <ArrowUpRight size={12} />
         </button>
@@ -919,10 +927,10 @@ export default function App() {
             <div className="login-logo">
               <Home size={30} />
             </div>
-            <h3>Your next chapter starts here.</h3>
+            <h3>Find, list, and manage your sublet.</h3>
             <p>
-              Save the good ones, meet your next host, and keep everything in
-              one place.
+              Save listings, contact hosts, send offers, and keep your sublease
+              conversations and documents together.
             </p>
             {demo ? (
               <>
