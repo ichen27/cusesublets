@@ -793,6 +793,12 @@ export default function App() {
           onSelect={setSelected}
           onPost={() => setPost(true)}
           onOpen={openChat}
+          onPublished={(listing) =>
+            setListings((current) => [
+              ...current.filter((item) => item.id !== listing.id),
+              listing,
+            ])
+          }
         />
       ) : user ? (
         <Workspace

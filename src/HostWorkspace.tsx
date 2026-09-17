@@ -17,11 +17,13 @@ export default function HostWorkspace({
   onSelect,
   onPost,
   onOpen,
+  onPublished,
 }: {
   user: User;
   onSelect: (l: Listing) => void;
   onPost: () => void;
   onOpen: (id: string) => void;
+  onPublished: (listing: Listing) => void;
 }) {
   const [mine, setMine] = useState<Listing[]>([]),
     [documents, setDocuments] = useState<DocumentRecord[]>([]),
@@ -151,6 +153,7 @@ export default function HostWorkspace({
                               item.id === l.id ? result.listing : item,
                             ),
                           );
+                          onPublished(result.listing);
                           setPublished(l.id);
                         } catch (e) {
                           setError((e as Error).message);
