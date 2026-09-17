@@ -54,6 +54,39 @@ function listing(row: Row): Listing {
   const { data, ...rest } = row;
   return { ...JSON.parse(data as string), ...rest } as Listing;
 }
+// Explicit public projection: private review reasons and future database columns stay private.
+function listingView(l: Listing, viewer: User | null = null): Listing {
+  const result: Listing = {
+    id: l.id,
+    ownerId: l.ownerId,
+    title: l.title,
+    neighborhood: l.neighborhood,
+    address: l.address,
+    lat: l.lat,
+    lng: l.lng,
+    price: l.price,
+    beds: l.beds,
+    baths: l.baths,
+    roomType: l.roomType,
+    startDate: l.startDate,
+    endDate: l.endDate,
+    description: l.description,
+    amenities: l.amenities,
+    images: l.images,
+    videoUrl: l.videoUrl,
+    matterportUrl: l.matterportUrl,
+    status: l.status,
+    leaseStatus: l.leaseStatus,
+    permissionStatus: l.permissionStatus,
+    hostName: l.hostName,
+    hostIdentity: l.hostIdentity,
+    walkMinutes: l.walkMinutes,
+    sample: l.sample,
+  };
+  if (viewer && (viewer.id === l.ownerId || viewer.role === "admin"))
+    result.reviewNote = l.reviewNote;
+  return result;
+}
 const listings = async (e: Env, where: string, ...v: unknown[]) =>
   (await all<Row>(e, listingSQL + " " + where, ...v)).map(listing);
 async function getListing(e: Env, key: string) {
@@ -333,10 +366,12 @@ async function route(req: Request, e: Env) {
   }
   if (p === "/api/listings" && m === "GET")
     return json({
-      listings: await listings(
-        e,
-        "WHERE l.status='approved' ORDER BY l.rowid LIMIT 200",
-      ),
+      listings: (
+        await listings(
+          e,
+          "WHERE l.status='approved' ORDER BY l.rowid LIMIT 200",
+        )
+      ).map((l) => listingView(l)),
     });
   const listingMatch = p.match(/^\/api\/listings\/([^/]+)$/);
   if (listingMatch && m === "GET") {
@@ -346,7 +381,7 @@ async function route(req: Request, e: Env) {
       404,
       "Listing not found",
     );
-    return json({ listing: l });
+    return json({ listing: listingView(l, u) });
   }
   const mediaMatch = p.match(/^\/api\/media\/([^/]+)$/);
   if (mediaMatch && m === "GET") {
@@ -457,12 +492,14 @@ async function route(req: Request, e: Env) {
     );
     return json({
       messages,
-      listings: await listings(
-        e,
-        "WHERE l.id IN (SELECT listingId FROM messages WHERE senderId=? OR recipientId=?)",
-        u.id,
-        u.id,
-      ),
+      listings: (
+        await listings(
+          e,
+          "WHERE l.id IN (SELECT listingId FROM messages WHERE senderId=? OR recipientId=?)",
+          u.id,
+          u.id,
+        )
+      ).map((l) => listingView(l, u)),
     });
   }
   if (p === "/api/messages" && m === "POST") {
@@ -719,7 +756,7 @@ async function route(req: Request, e: Env) {
       kind,
       createdAt: now(),
     };
-    await stmt(
+    const insertDocument = stmt(
       e,
       "INSERT INTO documents VALUES(?,?,?,?,?,?,?)",
       key,
@@ -729,7 +766,23 @@ async function route(req: Request, e: Env) {
       objectKey,
       file.type,
       document.createdAt,
-    ).run();
+    );
+    if (!isMedia) {
+      // Metadata and verification invalidation commit together. The other evidence
+      // type retains its result until its own replacement is submitted.
+      const reviewColumn =
+        kind === "lease" ? "leaseStatus" : "permissionStatus";
+      await e.DB.batch([
+        insertDocument,
+        stmt(
+          e,
+          `UPDATE listings SET ${reviewColumn}='pending',status='pending',reviewNote=NULL WHERE id=?`,
+          l.id,
+        ),
+      ]);
+      return json({ document }, 201);
+    }
+    await insertDocument.run();
     if (isMedia) {
       const media = "/api/media/" + key;
       const data = await one<{ data: string }>(

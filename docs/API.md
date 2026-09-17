@@ -29,3 +29,5 @@ Demo seed is `seeds/demo.sql`, separate from schema migration; never apply seed 
 - POST `/api/listings/:id/media` multipart `file` supports PNG/JPEG/WebP up to 5 MB or MP4/WebM up to 25 MB; owner only; returns `{url:string,listing:Listing}` and resets listing to pending review. Maximum 30 total files per listing.
 - GET `/api/media/:id` streams uploaded media only for approved listings or their owner/admin.
 - Individual bookings and GET bookings include `totalCents:number,currency:"USD"` computed server-side from the agreed monthly amount using a disclosed 30-day proration, alongside `payoutEligible,payoutBlockers`. These are sample totals only; no funds are held or released.
+
+Public catalog, renter listing details and renter conversation listings exclude internal `reviewNote`; owner/admin detail and authorized private views may contain it. Uploading new lease or permission evidence atomically changes that review status and the listing to `pending`, preserving the other evidence review. Acceptance, payment and payout eligibility require fresh completed reviews after the upload.
