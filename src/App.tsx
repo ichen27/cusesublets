@@ -35,10 +35,18 @@ import ListingDetail from "./ListingDetail";
 import PostListing from "./PostListing";
 import Workspace from "./Workspace";
 import Admin from "./Admin";
-type View = "explore" | "saved" | "inbox" | "account" | "admin";
+import ChatWorkspace, { type ChatIntent } from "./ChatWorkspace";
+import HostWorkspace from "./HostWorkspace";
+type View = "explore" | "saved" | "inbox" | "account" | "admin" | "host";
 export default function App() {
   const [view, setView] = useState<View>(
-      location.hash === "#account" ? "account" : "explore",
+      location.hash.startsWith("#chat")
+        ? "inbox"
+        : location.hash === "#my-listings"
+          ? "host"
+          : location.hash === "#account"
+            ? "account"
+            : "explore",
     ),
     [listings, setListings] = useState<Listing[]>([]),
     [user, setUser] = useState<User | null>(null),
@@ -59,6 +67,32 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false);
+  const [chatId, setChatId] = useState(
+    location.hash.startsWith("#chat/")
+      ? decodeURIComponent(location.hash.slice(6))
+      : "",
+  );
+  const [chatIntent, setChatIntent] = useState<ChatIntent>("message");
+  const openChat = (id: string) => {
+    setSelected(null);
+    setChatId(id);
+    setChatIntent("message");
+    setView("inbox");
+    history.replaceState(null, "", `#chat/${encodeURIComponent(id)}`);
+    window.scrollTo({ top: 0 });
+  };
+  async function listingChat(listing: Listing, intent: ChatIntent) {
+    try {
+      const result = await api<{ conversation: { id: string } }>(
+        "/conversations",
+        { listingId: listing.id },
+      );
+      openChat(result.conversation.id);
+      setChatIntent(intent);
+    } catch (e) {
+      setToast((e as Error).message);
+    }
+  }
   const [saved, setSaved] = useState<string[]>(() => {
     try {
       const stored = JSON.parse(
@@ -98,6 +132,29 @@ export default function App() {
     refresh();
   }, [refresh]);
   useEffect(() => {
+    let active = true;
+    const openLinkedListing = () => {
+      if (!location.hash.startsWith("#listing/")) return;
+      const id = location.hash.slice(9);
+      api<{ listing: Listing }>(
+        `/listings/${encodeURIComponent(decodeURIComponent(id))}`,
+      )
+        .then(({ listing }) => {
+          if (active) setSelected(listing);
+        })
+        .catch((e) => {
+          if (active) setToast(e.message);
+        });
+    };
+    openLinkedListing();
+    window.addEventListener("hashchange", openLinkedListing);
+    return () => {
+      active = false;
+      window.removeEventListener("hashchange", openLinkedListing);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 5500);
     return () => clearTimeout(t);
@@ -110,11 +167,22 @@ export default function App() {
     setSaved((s) => (s.includes(id) ? s.filter((v) => v !== id) : [...s, id]));
   const navigate = (v: View) => {
     setMenu(false);
-    if (["inbox", "account", "admin"].includes(v) && !user) {
+    if (["inbox", "account", "admin", "host"].includes(v) && !user) {
       setLogin(true);
       return;
     }
     setView(v);
+    history.replaceState(
+      null,
+      "",
+      v === "inbox"
+        ? chatId
+          ? `#chat/${encodeURIComponent(chatId)}`
+          : "#chat"
+        : v === "host"
+          ? "#my-listings"
+          : `#${v}`,
+    );
     window.scrollTo({ top: 0 });
   };
   const candidates = useMemo(() => {
@@ -204,6 +272,14 @@ export default function App() {
               onClick={() => navigate("inbox")}
             >
               Inbox
+            </button>
+          )}
+          {user && (
+            <button
+              className={view === "host" ? "active" : ""}
+              onClick={() => navigate("host")}
+            >
+              My listings
             </button>
           )}
           {user?.role === "admin" && (
@@ -630,9 +706,29 @@ export default function App() {
         </>
       ) : view === "admin" ? (
         <Admin user={user} notify={notify} onRefresh={refresh} />
+      ) : user && view === "inbox" ? (
+        <ChatWorkspace
+          key={user.id}
+          user={user}
+          demo={demo}
+          activeId={chatId}
+          intent={chatIntent}
+          onOpen={openChat}
+          onSelect={setSelected}
+        />
+      ) : user && view === "host" ? (
+        <HostWorkspace
+          key={user.id}
+          user={user}
+          onSelect={setSelected}
+          onPost={() => setPost(true)}
+          onOpen={openChat}
+        />
       ) : user ? (
         <Workspace
           view={view}
+          onManage={() => navigate("host")}
+          onRefresh={refresh}
           user={user}
           demo={demo}
           notify={notify}
@@ -714,6 +810,11 @@ export default function App() {
           onSave={() => save(selected.id)}
           onClose={closeDetail}
           onLogin={askLogin}
+          onChat={listingChat}
+          onManage={() => {
+            setSelected(null);
+            navigate("host");
+          }}
           notify={notify}
         />
       )}
@@ -723,7 +824,7 @@ export default function App() {
           notify={notify}
           onCreated={() => {
             refresh();
-            setView("account");
+            navigate("host");
           }}
         />
       )}

@@ -15,12 +15,12 @@ class HostedGuards(unittest.TestCase):
         self.assertEqual((body["user"],body["demo"],body["staging"]),(None,False,True))
         self.assertEqual(request("/api/dev/session", {"role":"admin"}, {"Origin":ORIGIN})[0],404)
     def test_private_endpoints_need_signed_identity(self):
-        for endpoint in ["/api/mine","/api/messages","/api/offers","/api/bookings","/api/admin/overview"]:
+        for endpoint in ["/api/conversations","/api/chat-documents/not-a-document","/api/mine","/api/messages","/api/offers","/api/bookings","/api/admin/overview"]:
             self.assertEqual(request(endpoint,headers={"Cf-Access-Authenticated-User-Email":"ivan27chen@gmail.com"})[0],401,endpoint)
     def test_forged_token_rejected(self):
         self.assertEqual(request("/api/session",headers={"Cf-Access-Jwt-Assertion":"invalid"})[0],401)
     def test_mutations_require_identity_and_exact_origin(self):
-        for endpoint in ["/api/messages","/api/offers","/api/listings"]:
+        for endpoint in ["/api/conversations","/api/messages","/api/offers","/api/listings"]:
             self.assertEqual(request(endpoint,{}, {"Origin":ORIGIN})[0],401)
             self.assertEqual(request(endpoint,{}, {"Origin":"https://attacker.example"})[0],403)
             self.assertEqual(request(endpoint,{}, {"Origin":ORIGIN,"Sec-Fetch-Site":"cross-site"})[0],403)

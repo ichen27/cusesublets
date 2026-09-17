@@ -76,6 +76,9 @@ export interface Booking {
   paymentStatus: string;
   moveInAt?: string;
   disputeStatus: string;
+  disputeReason?: string;
+  payoutBlockers?: string[];
+  payoutEligible?: boolean;
   listingTitle?: string;
 }
 export interface DocumentRecord {

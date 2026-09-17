@@ -15,7 +15,7 @@ import {
   Video,
 } from "lucide-react";
 import type { Listing, User } from "../shared/types";
-import { api, money, date, syracuseToday } from "./api";
+import { api, money, date } from "./api";
 import { Modal, Badge, ErrorBox } from "./ui";
 export default function ListingDetail({
   listing: l,
@@ -26,7 +26,11 @@ export default function ListingDetail({
   onClose,
   onLogin,
   notify,
+  onChat,
+  onManage,
 }: {
+  onChat: (listing: Listing, intent: "message" | "offer" | "request") => void;
+  onManage: () => void;
   listing: Listing;
   user: User | null;
   demo: boolean;
@@ -40,34 +44,14 @@ export default function ListingDetail({
     [photo, setPhoto] = useState(0),
     [mode, setMode] = useState(""),
     [message, setMessage] = useState(""),
-    [amount, setAmount] = useState(l.price),
-    [start, setStart] = useState(
-      l.startDate > syracuseToday() ? l.startDate : syracuseToday(),
-    ),
-    [end, setEnd] = useState(l.endDate),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function send() {
     setBusy(true);
     setError("");
     try {
-      if (mode === "report") {
-        await api(`/listings/${l.id}/report`, { reason: message });
-        notify("Report sent to the review team. Thank you for flagging it.");
-      } else if (mode === "message") {
-        await api("/messages", { listingId: l.id, body: message });
-        notify("Message sent. Continue the conversation in your inbox.");
-      } else {
-        await api("/offers", {
-          listingId: l.id,
-          amount,
-          startDate: start,
-          endDate: end,
-        });
-        notify(
-          "Request sent. Your host can review it in their offers. No payment was taken.",
-        );
-      }
+      await api(`/listings/${l.id}/report`, { reason: message });
+      notify("Report sent to the review team. Thank you for flagging it.");
       setMode("");
       setMessage("");
     } catch (e) {
@@ -81,9 +65,12 @@ export default function ListingDetail({
       onLogin();
       return;
     }
+    if (next !== "report") {
+      onChat(l, next === "reserve" ? "request" : (next as "message" | "offer"));
+      return;
+    }
     setError("");
     setMode(next);
-    if (next === "reserve") setAmount(l.price);
   };
   return (
     <Modal title="Your next place, a little closer." wide onClose={onClose}>
@@ -204,7 +191,19 @@ export default function ListingDetail({
                     : "Identity review pending"}
                 </p>
               </div>
-              <MessageCircle size={20} />
+              <button
+                className="icon-button"
+                aria-label={
+                  l.ownerId === user?.id
+                    ? "Manage your listing"
+                    : "Open conversation with host"
+                }
+                onClick={() =>
+                  l.ownerId === user?.id ? onManage() : action("message")
+                }
+              >
+                <MessageCircle size={20} />
+              </button>
             </div>
             <div className="trust-checks">
               <h3>
@@ -263,7 +262,10 @@ export default function ListingDetail({
             </div>
             {l.ownerId === user?.id ? (
               <div className="notice">
-                This is your listing. Manage incoming requests in your inbox.
+                This is your listing.{" "}
+                <button className="text-button" onClick={onManage}>
+                  Manage listing and conversations <ArrowRight size={14} />
+                </button>
               </div>
             ) : (
               <>
@@ -307,65 +309,16 @@ export default function ListingDetail({
                   send();
                 }}
               >
-                <h3>
-                  {mode === "report"
-                    ? "Tell us what concerns you"
-                    : mode === "message"
-                      ? "Say hello"
-                      : mode === "offer"
-                        ? "Make it work for you"
-                        : "Request these dates"}
-                </h3>
-                {mode === "message" || mode === "report" ? (
-                  <label>
-                    {mode === "report" ? "Report reason" : "Your message"}
-                    <textarea
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      required
-                      maxLength={2000}
-                      placeholder="Hi! Is your place still available?"
-                    />
-                  </label>
-                ) : (
-                  <>
-                    <label>
-                      Monthly offer (USD)
-                      <input
-                        type="number"
-                        min="1"
-                        max="20000"
-                        step="1"
-                        required
-                        value={amount}
-                        disabled={mode === "reserve"}
-                        onChange={(e) => setAmount(Number(e.target.value))}
-                      />
-                    </label>
-                    <label>
-                      Move in
-                      <input
-                        type="date"
-                        value={start}
-                        min={l.startDate}
-                        max={l.endDate}
-                        required
-                        onChange={(e) => setStart(e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Move out
-                      <input
-                        type="date"
-                        value={end}
-                        min={start}
-                        max={l.endDate}
-                        required
-                        onChange={(e) => setEnd(e.target.value)}
-                      />
-                    </label>
-                  </>
-                )}
+                <h3>Tell us what concerns you</h3>
+                <label>
+                  Report reason
+                  <textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    required
+                    maxLength={2000}
+                  />
+                </label>
                 <ErrorBox message={error} />
                 <button className="primary full" disabled={busy}>
                   {busy
