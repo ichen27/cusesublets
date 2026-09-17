@@ -78,3 +78,13 @@ The map emits viewport bounds after pan, zoom, and visible resize. Only catalog 
 Validation: 20 unit tests; TypeScript; build; existing local API runtime flow; tests/hosted-guards.py against the real 8918 service. Authenticated hosted browser verified account, saved sample message, $750 offer and $785 asking-price request in Inbox, pending test listing in account, and map results shrinking from six to three on mobile and six to two on desktop. Test listing is explicitly named "Private beta test listing — not available" and left pending; no real property or payment created.
 
 Rollback to browsing-only: restore launcher-run.sh APP_ENV=hosted-preview, rebuild/restart via launcher; optionally remove only the exact CuseSublets tunnel rule and restart cloudflared. Never blindly restore an old full tunnel config after other service changes.
+
+## Conversation workspace — September 17, 2026
+
+Listing message, offer, and asking-price request actions open a persistent full conversation. Threads have listing context/backlink, PDF/JPEG/PNG document sharing, proposal/counteroffer cards, and booking steps. My listings is now a main navigation destination with host conversations, proposals to review, reservations and private review-document uploads. Profile has editable display name. Hosted legal e-signing and Stripe payment buttons explicitly remain unavailable pending provider integration; demo acknowledgments/payments stay local-only.
+
+Apply migration 0004_conversations.sql with the service stopped. It backfills listing/buyer conversations and legacy proposals without deleting existing records. Back up the exact hosted state directory first. Do not seed the hosted database during updates. Tests run separately on port8920 with .wrangler-chat-test state.
+
+Verification: 20 unit tests, typecheck/build, legacy API runtime and new chat runtime (participant isolation, document validation/private downloads, legacy backfill, counteroffer and acceptance races); independent code review with race and booking-control fixes; browser listing-to-chat, message, request, host My listings, counteroffer, property backlink, refresh persistence and 390px layout.
+
+Live rollout: backup state-before-chat-20260917 beside hosted state; service stopped, migration 0004 applied, service started successfully. The separate 8917 demo datastore was also migrated while stopped and restarted. Hosted guard suite (5 tests including conversations and chat-document authentication) passes. Signed-in browser confirmed one preserved pending test listing under Ivan Chen in My listings; account name changed from email stem via profile form. No real property was published. Owner-only Access remains unchanged.
