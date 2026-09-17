@@ -1,0 +1,16 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,role TEXT NOT NULL DEFAULT 'member',identity TEXT NOT NULL DEFAULT 'pending');
+CREATE TABLE sessions(token TEXT PRIMARY KEY,userId TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
+CREATE TABLE schools(id TEXT PRIMARY KEY,name TEXT NOT NULL);
+INSERT INTO schools VALUES('syracuse','Syracuse University');
+CREATE TABLE listings(id TEXT PRIMARY KEY,ownerId TEXT NOT NULL REFERENCES users(id),schoolId TEXT NOT NULL DEFAULT 'syracuse' REFERENCES schools(id),status TEXT NOT NULL DEFAULT 'pending',leaseStatus TEXT NOT NULL DEFAULT 'pending',permissionStatus TEXT NOT NULL DEFAULT 'pending',reviewNote TEXT,data TEXT NOT NULL);
+CREATE TABLE messages(id TEXT PRIMARY KEY,listingId TEXT NOT NULL REFERENCES listings(id),senderId TEXT NOT NULL REFERENCES users(id),recipientId TEXT NOT NULL REFERENCES users(id),body TEXT NOT NULL,createdAt TEXT NOT NULL);
+CREATE INDEX messages_participants ON messages(senderId,recipientId,createdAt);
+CREATE TABLE offers(id TEXT PRIMARY KEY,listingId TEXT NOT NULL REFERENCES listings(id),buyerId TEXT NOT NULL REFERENCES users(id),sellerId TEXT NOT NULL REFERENCES users(id),amount REAL NOT NULL CHECK(amount>0 AND amount<=20000),startDate TEXT NOT NULL,endDate TEXT NOT NULL CHECK(endDate>startDate),status TEXT NOT NULL DEFAULT 'pending',CHECK(buyerId<>sellerId));
+CREATE TABLE bookings(id TEXT PRIMARY KEY,offerId TEXT NOT NULL UNIQUE REFERENCES offers(id),listingId TEXT NOT NULL REFERENCES listings(id),buyerId TEXT NOT NULL REFERENCES users(id),sellerId TEXT NOT NULL REFERENCES users(id),amount REAL NOT NULL,startDate TEXT NOT NULL,endDate TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'reserved',buyerSigned INTEGER NOT NULL DEFAULT 0,sellerSigned INTEGER NOT NULL DEFAULT 0,paymentStatus TEXT NOT NULL DEFAULT 'unpaid',moveInAt TEXT,disputeStatus TEXT NOT NULL DEFAULT 'none',disputeReason TEXT,createdAt TEXT NOT NULL,CHECK(buyerId<>sellerId));
+CREATE INDEX booking_dates ON bookings(listingId,startDate,endDate);
+CREATE TRIGGER no_overlap BEFORE INSERT ON bookings WHEN EXISTS(SELECT 1 FROM bookings WHERE listingId=NEW.listingId AND status<>'cancelled' AND startDate<NEW.endDate AND endDate>NEW.startDate) BEGIN SELECT RAISE(ABORT,'Booking dates overlap an existing reservation'); END;
+CREATE TABLE documents(id TEXT PRIMARY KEY,listingId TEXT NOT NULL REFERENCES listings(id),name TEXT NOT NULL,kind TEXT NOT NULL,objectKey TEXT NOT NULL,type TEXT NOT NULL,createdAt TEXT NOT NULL);
+CREATE TABLE audit(id TEXT PRIMARY KEY,actorId TEXT NOT NULL REFERENCES users(id),action TEXT NOT NULL,targetId TEXT NOT NULL,reason TEXT NOT NULL,createdAt TEXT NOT NULL);
+CREATE TRIGGER audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT,'Audit is append-only'); END;
+CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'Audit is append-only'); END;
