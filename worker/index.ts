@@ -379,7 +379,7 @@ async function route(req: Request, e: Env) {
     });
   }
   if (p === "/api/session" && m === "GET")
-    return json({ user: u, demo, preview });
+    return json({ user: u, demo, preview, staging: e.APP_ENV === "staging" });
   if (p === "/api/logout" && m === "POST") {
     const token = req.headers
       .get("Cookie")

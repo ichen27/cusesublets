@@ -62,3 +62,19 @@ Stop or restart with `node src/cli.mjs stop cusesublets` / `restart cusesublets`
 To initialize a new preview datastore before starting it, apply migrations and `seeds/demo.sql` using Wrangler `--local --persist-to` with the exact state directory above. Do not apply sample seed to a real production database. See https://developers.cloudflare.com/workers/local-development/local-data/ for local persistence behavior.
 
 Validated: 16 unit tests, TypeScript, production asset build; real launchd deploy; six sample listings and detail HTTP 200; hosted session has no user and demo=false; writes, private APIs, login and demo-admin endpoint denied; gateway missing-JWT 401; anonymous HTTPS curl redirects to Access; authenticated browser renders sample catalog and private-preview label. Python urllib received edge 403 while curl received the expected Access 302; browser access succeeded.
+
+## Current private beta — September 17, 2026 (supersedes browsing-only mode)
+
+User requested enabling Google login, listing submission, communication, offers and date requests on the hosted app, plus filtering the catalog by the visible map viewport.
+
+`launcher-run.sh` now runs with APP_ENV=staging, existing Access issuer/audience and an explicit owner admin allowlist. A specific tunnel ingress for app-cusesublets.chenagent.com goes directly to 127.0.0.1:8918, before the wildcard launcher route. This preserves the signed Access JWT for validation by the CuseSublets backend. The owner-only Access policy is unchanged. The launcher still manages the app service/card; it is no longer the request proxy for this hostname. Other apps retain their existing routing. Tunnel backup: ~/.cloudflared/config.before-cusesublets-auth-20260917.yml.
+
+The local Wrangler proxy rewrites same-host HTTPS Origin to HTTP before Worker execution. The mini launch command therefore uses APP_ORIGIN=http://app-cusesublets.chenagent.com for exact origin validation; public TLS stays HTTPS. Edge deployment must use the actual HTTPS origin. Forged JWTs/email headers, cross-site writes and unauthenticated private routes are rejected. Demo-session endpoint remains disabled. Signatures and payment simulation remain local-demo-only; no live payment provider was enabled.
+
+Google sign-in automatically creates the account; the profile button replaces Log in when an existing Access session is valid. New listings stay pending until reviewed. Messages/offers persist in Inbox; visible inbox data refreshes every 10 seconds and on window focus. Offers and asking-price date requests share the host acceptance flow. Sample host accounts do not represent real people and will not reply automatically. Additional testers need a CuseSublets-specific Access application/policy; never widen the shared personal-app policy to expose unrelated apps.
+
+The map emits viewport bounds after pan, zoom, and visible resize. Only catalog results are clipped; map markers retain all candidates satisfying other filters, so zooming out restores results. Hidden mobile maps do not publish zero-size bounds. Initial map view fits sample homes once; later filtering does not move the map.
+
+Validation: 20 unit tests; TypeScript; build; existing local API runtime flow; tests/hosted-guards.py against the real 8918 service. Authenticated hosted browser verified account, saved sample message, $750 offer and $785 asking-price request in Inbox, pending test listing in account, and map results shrinking from six to three on mobile and six to two on desktop. Test listing is explicitly named "Private beta test listing — not available" and left pending; no real property or payment created.
+
+Rollback to browsing-only: restore launcher-run.sh APP_ENV=hosted-preview, rebuild/restart via launcher; optionally remove only the exact CuseSublets tunnel rule and restart cloudflared. Never blindly restore an old full tunnel config after other service changes.

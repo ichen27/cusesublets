@@ -23,7 +23,12 @@ import {
 } from "lucide-react";
 import type { Listing, User } from "../shared/types";
 import { api, money, date } from "./api";
-import { filterListings, type Filters } from "./search";
+import {
+  filterListings,
+  listingsInBounds,
+  type MapBounds,
+  type Filters,
+} from "./search";
 import MapView from "./MapView";
 import { Badge, Modal, ErrorBox, Empty, Busy } from "./ui";
 import ListingDetail from "./ListingDetail";
@@ -39,6 +44,8 @@ export default function App() {
     [user, setUser] = useState<User | null>(null),
     [demo, setDemo] = useState(false),
     [preview, setPreview] = useState(false),
+    [staging, setStaging] = useState(false),
+    [mapBounds, setMapBounds] = useState<MapBounds | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [selected, setSelected] = useState<Listing | null>(null),
@@ -68,14 +75,18 @@ export default function App() {
     try {
       const [l, s] = await Promise.all([
         api<{ listings: Listing[] }>("/listings"),
-        api<{ user: User | null; demo: boolean; preview?: boolean }>(
-          "/session",
-        ),
+        api<{
+          user: User | null;
+          demo: boolean;
+          preview?: boolean;
+          staging?: boolean;
+        }>("/session"),
       ]);
       setListings(l.listings);
       setUser(s.user);
       setDemo(s.demo);
       setPreview(!!s.preview);
+      setStaging(!!s.staging);
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -106,7 +117,7 @@ export default function App() {
     setView(v);
     window.scrollTo({ top: 0 });
   };
-  const items = useMemo(() => {
+  const candidates = useMemo(() => {
     const items = filterListings(
       view === "saved"
         ? listings.filter((l) => saved.includes(l.id))
@@ -119,6 +130,10 @@ export default function App() {
         ? items.sort((a, b) => a.walkMinutes - b.walkMinutes)
         : items;
   }, [listings, saved, view, filters, sort]);
+  const items = useMemo(
+    () => listingsInBounds(candidates, mapBounds),
+    [candidates, mapBounds],
+  );
   async function signIn(role: string) {
     setBusy(true);
     try {
@@ -444,8 +459,8 @@ export default function App() {
                   {view === "saved"
                     ? "saved places"
                     : items.length === 1
-                      ? "place around Syracuse"
-                      : "places around Syracuse"}{" "}
+                      ? "place in this map area"
+                      : "places in this map area"}{" "}
                   <span>·</span>{" "}
                   {demo
                     ? "Sample listings for the preview"
@@ -566,7 +581,7 @@ export default function App() {
                     ))
                   ) : (
                     <Empty title="No places match just yet.">
-                      Try a wider budget or different dates.{" "}
+                      Zoom out, move the map, or adjust your budget and dates.{" "}
                       <button
                         className="text-button"
                         onClick={() => setFilters({})}
@@ -578,7 +593,8 @@ export default function App() {
                 </div>
                 <aside className="map-panel">
                   <MapView
-                    listings={items}
+                    listings={candidates}
+                    onBoundsChange={setMapBounds}
                     selected={selected?.id || null}
                     onSelect={setSelected}
                   />
@@ -660,13 +676,15 @@ export default function App() {
           University.
         </small>
       </footer>
-      {(demo || preview) && (
+      {(demo || preview || staging) && (
         <div className="demo-ribbon">
           <span>
             <span className="orange-dot" />{" "}
-            {preview
-              ? "PRIVATE PREVIEW · Sample homes · Browsing only"
-              : "LOCAL PREVIEW · Sample homes, simulated transactions"}
+            {staging
+              ? "PRIVATE BETA · Sample homes · Payments not enabled"
+              : preview
+                ? "PRIVATE PREVIEW · Sample homes · Browsing only"
+                : "LOCAL PREVIEW · Sample homes, simulated transactions"}
           </span>
           {demo && (
             <button onClick={() => setLogin(true)}>

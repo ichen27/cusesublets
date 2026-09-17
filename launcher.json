@@ -1,10 +1,13 @@
 {
   "id": "cusesublets",
   "name": "CuseSublets",
-  "description": "Private Syracuse sublease preview. Sample homes; browsing only.",
+  "description": "Private Syracuse marketplace beta: accounts, listings, messages and offers. Payments disabled.",
   "icon": "CS",
   "color": "#f6dfc9",
-  "tags": ["housing", "preview"],
+  "tags": [
+    "housing",
+    "preview"
+  ],
   "cwd": "/Volumes/SamsungSSD1/code/cusesublets",
   "command": [
     "/bin/sh",

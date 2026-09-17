@@ -63,4 +63,4 @@ Run one Wrangler process per local persistence directory. Concurrent dev runtime
 
 ## Hosted private preview
 
-https://app-cusesublets.chenagent.com runs on the Mac mini through your existing Google-protected app launcher. It supports browsing sample listings only. Account actions and transactions are disabled in this hosted mode; the local demo on 8917 remains separate. See the deployment runbook for operations.
+https://app-cusesublets.chenagent.com runs on the Mac mini through your existing Google-protected app launcher. Google identity now creates a marketplace account with listing submission, messaging, offers, date requests and admin review. Access remains owner-only until testers are explicitly added. Payments and legal signing are disabled; the local demo on 8917 remains separate. The catalog automatically follows the visible map area. See the deployment runbook for operations.

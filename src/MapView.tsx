@@ -1,21 +1,28 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import type { Listing } from "../shared/types";
+import type { MapBounds } from "./search";
 import { money } from "./api";
 export default function MapView({
   listings,
   selected,
   onSelect,
+  onBoundsChange,
 }: {
   listings: Listing[];
   selected: string | null;
   onSelect: (l: Listing) => void;
+  onBoundsChange: (bounds: MapBounds) => void;
 }) {
   const el = useRef<HTMLDivElement>(null),
     map = useRef<L.Map | null>(null),
     layer = useRef<L.LayerGroup | null>(null);
   const select = useRef(onSelect);
   select.current = onSelect;
+  const boundsCallback = useRef(onBoundsChange);
+  boundsCallback.current = onBoundsChange;
+  const initialHomes = useRef(listings);
+  const fitted = useRef(false);
   useEffect(() => {
     if (!el.current) return;
     const m = L.map(el.current, {
@@ -42,10 +49,36 @@ export default function MapView({
         iconSize: [135, 60],
       }),
     }).addTo(m);
-    const ro = new ResizeObserver(() => m.invalidateSize());
+    const publishBounds = () => {
+      if (!el.current?.clientWidth || !el.current?.clientHeight) return;
+      const b = m.getBounds();
+      boundsCallback.current({
+        south: b.getSouth(),
+        north: b.getNorth(),
+        west: b.getWest(),
+        east: b.getEast(),
+      });
+    };
+    const resize = () => {
+      if (!el.current?.clientWidth || !el.current?.clientHeight) return;
+      m.invalidateSize({ pan: false });
+      if (!fitted.current && initialHomes.current.length) {
+        fitted.current = true;
+        m.fitBounds(
+          L.latLngBounds(
+            initialHomes.current.map((l) => [l.lat, l.lng] as [number, number]),
+          ),
+          { padding: [45, 45], maxZoom: 14, animate: false },
+        );
+      }
+      publishBounds();
+    };
+    m.on("moveend zoomend", publishBounds);
+    const ro = new ResizeObserver(resize);
     ro.observe(el.current);
     return () => {
       ro.disconnect();
+      fitted.current = false;
       m.remove();
       map.current = null;
     };

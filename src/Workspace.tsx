@@ -78,6 +78,17 @@ export default function Workspace({
   }, [user.id]);
   useEffect(() => {
     refresh();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, 10000);
+    const onFocus = () => {
+      refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refresh]);
   const threads = Array.from(
     new Set(

@@ -28,3 +28,23 @@ export function filterListings(listings: Listing[], f: Filters) {
       (!f.tour || !!l.matterportUrl),
   );
 }
+
+export type MapBounds = {
+  south: number;
+  north: number;
+  west: number;
+  east: number;
+};
+export function listingsInBounds(
+  listings: Listing[],
+  bounds: MapBounds | null,
+) {
+  if (!bounds) return listings;
+  return listings.filter(
+    (l) =>
+      l.lat >= bounds.south &&
+      l.lat <= bounds.north &&
+      l.lng >= bounds.west &&
+      l.lng <= bounds.east,
+  );
+}
