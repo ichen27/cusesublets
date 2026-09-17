@@ -1,3 +1,4 @@
+import { PasswordLogin } from "./PasswordAuth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -961,12 +962,14 @@ export default function App() {
                 Your Google sign-in protects access to this preview.
               </p>
             ) : (
-              <button
-                className="primary full"
-                onClick={() => location.assign("/api/login")}
-              >
-                Continue with Google <ArrowRight size={17} />
-              </button>
+              <PasswordLogin
+                onSignedIn={(user) => {
+                  setUser(user);
+                  setLogin(false);
+                  navigate(user.role === "admin" ? "admin" : "account");
+                  notify("Welcome, " + user.name.split(" ")[0] + ".");
+                }}
+              />
             )}
           </div>
         </Modal>

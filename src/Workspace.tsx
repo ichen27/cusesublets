@@ -1,3 +1,4 @@
+import { PasswordSettings } from "./PasswordAuth";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowUpRight,
@@ -141,6 +142,7 @@ export default function Workspace({
             </button>
           </aside>
           <section className="profile-editor-main">
+            {tab === "profile" && <PasswordSettings />}
             {tab === "profile" ? (
               <form
                 className="panel form-stack"
@@ -184,7 +186,7 @@ export default function Workspace({
                   </label>
                   <label>
                     Email{" "}
-                    <span className="field-hint">Private · From Google</span>
+                    <span className="field-hint">Private · Sign-in email</span>
                     <input type="email" value={user.email} readOnly />
                   </label>
                   <label>

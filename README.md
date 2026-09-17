@@ -68,3 +68,7 @@ https://app-cusesublets.chenagent.com runs on the Mac mini through your existing
 ## GitHub workflow (September 17, 2026)
 
 Source: https://github.com/ichen27/cusesublets (private), stable branch `main`. Development stays on the Mac mini SSD. Commit and push completed changes; GitHub Actions runs typecheck, unit tests and build for pushes and pull requests. Runtime data and credentials are excluded. Pushes do not automatically deploy the mini service. See AGENTS.md and docs/deployment.md.
+
+Email/password signup and login are available alongside Google. Public signup grants no staff role or identity badge. Account settings support changing the password with the current password; this signs out other password sessions. Automated email verification and forgotten-password recovery are not configured. See the [authentication API](docs/API.md#email-and-password-authentication).
+
+Password runtime checks use a separate staging runtime on 8922 and persistence at `/Volumes/SamsungSSD1/tools/cusesublets/.wrangler-password-test`; apply migrations there first, start Wrangler with `APP_ENV:staging`, `APP_ORIGIN:http://localhost:8922`, `ADMIN_EMAILS:staff@example.test`, `ACCESS_TEAM_DOMAIN:example.cloudflareaccess.com`, and `ACCESS_AUD:test`, then run `python3 tests/password-runtime.py`. These tests create only isolated fixtures and verify real workerd scrypt behavior, session rotation and guards.

@@ -1,3 +1,10 @@
+import {
+  passwordAuth,
+  passwordUser,
+  passwordToken,
+  passwordCookie,
+  revokePassword,
+} from "./password";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type {
   User,
@@ -190,6 +197,11 @@ async function authenticate(
   e: Env,
   demo: boolean,
 ): Promise<User | null> {
+  if (
+    new URL(req.url).pathname !== "/api/login" &&
+    passwordToken(req) !== undefined
+  )
+    return passwordUser(req, e.DB);
   if (demo) {
     const token = req.headers
       .get("Cookie")
@@ -241,6 +253,17 @@ async function authenticate(
     .filter(Boolean)
     .includes(email);
   const uid = "access:" + subject;
+  const collision = await one<User>(
+    e,
+    "SELECT * FROM users WHERE lower(email)=? AND id<>?",
+    email,
+    uid,
+  );
+  requireThat(
+    !collision,
+    409,
+    "This email already has an account. Sign in with its existing login method.",
+  );
   await stmt(
     e,
     "INSERT INTO users(id,name,email,role) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email,role=excluded.role",
@@ -700,8 +723,52 @@ async function route(req: Request, e: Env) {
       "Set-Cookie": `cuse_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`,
     });
   }
+  if (p === "/api/logout" && m === "POST") {
+    await revokePassword(req, e.DB);
+    const token = req.headers
+      .get("Cookie")
+      ?.match(/(?:^|;\s*)cuse_session=([a-f0-9-]+)/)?.[1];
+    if (demo && token)
+      await stmt(e, "DELETE FROM sessions WHERE token=?", token).run();
+    const headers = new Headers({
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json",
+    });
+    headers.append("Set-Cookie", passwordCookie("", demo));
+    headers.append(
+      "Set-Cookie",
+      "cuse_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
+    );
+    return new Response(JSON.stringify({ ok: true }), { headers });
+  }
+  if (
+    ["/api/auth/signup", "/api/auth/login", "/api/auth/password"].includes(p) &&
+    m === "POST"
+  ) {
+    const result = await passwordAuth(
+      req,
+      e.DB,
+      p.split("/").pop()!,
+      await body(req, 4096),
+    );
+    return json(
+      p.endsWith("/password") ? { ok: true } : { user: userView(result.user) },
+      200,
+      { "Set-Cookie": passwordCookie(result.token, demo) },
+    );
+  }
   const authenticated = preview ? null : await authenticate(req, e, demo);
   const u = authenticated ? userView(authenticated) : null;
+  if (p === "/api/auth/status" && m === "GET") {
+    requireThat(u && !u.suspended, 401, "Sign in required");
+    return json({
+      hasPassword: !!(await one(
+        e,
+        "SELECT userId FROM password_credentials WHERE userId=?",
+        u.id,
+      )),
+    });
+  }
   if (p === "/api/login" && m === "GET") {
     requireThat(
       u,
@@ -710,22 +777,15 @@ async function route(req: Request, e: Env) {
     );
     return new Response(null, {
       status: 302,
-      headers: { Location: "/#account", "Cache-Control": "no-store" },
+      headers: {
+        Location: "/#account",
+        "Cache-Control": "no-store",
+        "Set-Cookie": passwordCookie("", demo),
+      },
     });
   }
   if (p === "/api/session" && m === "GET")
     return json({ user: u, demo, preview, staging: e.APP_ENV === "staging" });
-  if (p === "/api/logout" && m === "POST") {
-    const token = req.headers
-      .get("Cookie")
-      ?.match(/(?:^|;\s*)cuse_session=([a-f0-9-]+)/)?.[1];
-    if (demo && token)
-      await stmt(e, "DELETE FROM sessions WHERE token=?", token).run();
-    return json({ ok: true }, 200, {
-      "Set-Cookie":
-        "cuse_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
-    });
-  }
   if (p === "/api/listings" && m === "GET")
     return json({
       listings: (

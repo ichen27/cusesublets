@@ -85,3 +85,15 @@ New listings publish immediately (approved) with pending lease and permission ch
 Admin and owner listing document arrays are newest first, including uploads in the same millisecond. Use the first document of each kind. Identity evidence never appears in public profile media.
 
 Isolated validation: migrate/seed with --persist-to .wrangler-checks, run Wrangler on 8921 with same persistence path, then run tests/api-runtime.py, tests/chat-runtime.py, tests/profiles-runtime.py with API_BASE=http://127.0.0.1:8921. Profiles test advances a test reservation in that isolated database; do not run against operational data.
+
+## Email and password authentication
+
+- POST `/api/auth/signup` `{name,email,password}` → `{user}`. Always creates a member with pending identity. Existing emails return 409; no Google linking or staff elevation.
+- POST `/api/auth/login` `{email,password}` → `{user}`. Wrong credentials and suspended users return the same 401 message.
+- GET `/api/auth/status` → `{hasPassword:boolean}`, authenticated nonsuspended users only.
+- POST `/api/auth/password` `{currentPassword,newPassword}` → `{ok:true}`, requires a password session and current password; atomically revokes other password sessions and issues a fresh one.
+- POST `/api/logout` revokes the current password session and expires password/demo cookies even if the Cloudflare cookie has expired.
+
+Passwords are 15–128 characters; request bodies at most 4 KiB. Login/signup share atomic per-email (10) and per-IP (40) attempt limits per 15-minute window. Password sessions last eight hours. Cookies are HttpOnly, SameSite=Lax, Secure outside local demo. Hosted preview remains browsing-only. Password cookies take precedence on ordinary requests; explicit Google login clears that preference after successful JWT authentication.
+
+Emails are not verified through signup. Identity badges require separate staff review. There is no automated email verification or forgotten-password email because no mail provider is configured. Staff credentials may be provisioned offline on the existing user; never put passwords in Git, command arguments or logs. Credential format and design are in [email/password plan](plans/email-password.md).
