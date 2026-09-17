@@ -1,6 +1,6 @@
 # Cloudflare deployment and provider setup
 
-No public deployment has been performed. `npm run deploy:check` builds and packages the Worker without provisioning or publishing resources. The checked-in D1 ID is an explicit local placeholder. A successful dry run is not evidence of live authentication or financial integrations.
+The initial edge deployment below is a setup guide; the current Mac mini deployment is documented in the dated sections later in this file. No edge Worker deployment has been performed. `npm run deploy:check` builds and packages the Worker without provisioning or publishing resources. The checked-in D1 ID is an explicit local placeholder. A successful dry run is not evidence of live authentication or financial integrations.
 
 ## Infrastructure
 
@@ -98,3 +98,11 @@ New account editor: name, Google email (read-only), private phone, public bio/so
 Shared CuseSublets Checks panel replaces inconsistent trust copy. Header How it works popup removed; footer checks guide is a full page. Styled file cards support selecting/dropping files with success/error state and clear private/public distinction.
 
 Apply migration0005_profiles.sql while each intended runtime is stopped; back up hosted state first. Isolated tests use8921/.wrangler-checks only. Validation:20 unit tests, typecheck/build; legacy/chat/profile runtime suites covering evidence privacy/staleness, encoded Access IDs, self-review blocks, avatar retirement, publication separation and review eligibility; independent review fixes completed; browser profile/ID submission/manual review/public host profile plus desktop390px upload layout. Test IDs were synthetic files only.
+
+## Public browsing preparation — September 17, 2026
+
+The page-level login comes from the shared Personal App Launcher Access app (`6b947c90-9cfc-4960-b367-3dfaae2b47e9`) covering `app-*.chenagent.com`. An explicit `app-cusesublets.chenagent.com/api/login` destination has been added to the same app, preserving its audience and Google owner allow policy. The app already accepts the signed CF_Authorization cookie on private APIs and verifies issuer, audience, signature and expiry. Identity/lease checks are separate from login.
+
+Next step pending dashboard confirmation: a dedicated public browsing Access application for exact hostname `app-cusesublets.chenagent.com`, Bypass/Everyone policy, while the more-specific `/api/login` destination remains protected. Do not add a bypass to the shared personal-app policy. After saving, verify anonymous catalog 200, private APIs 401, explicit Google login, cookie scope and logout. Google login remains owner-only until a dedicated customer sign-in policy is approved.
+
+GitHub is now https://github.com/ichen27/cusesublets (private), default `main`; CLI authentication on the mini is restored. GitHub checks pass. Never commit live databases or uploads.

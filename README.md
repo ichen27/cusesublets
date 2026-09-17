@@ -64,3 +64,7 @@ Run one Wrangler process per local persistence directory. Concurrent dev runtime
 ## Hosted private preview
 
 https://app-cusesublets.chenagent.com runs on the Mac mini through your existing Google-protected app launcher. Google identity now creates a marketplace account with listing submission, messaging, offers, date requests and admin review. Access remains owner-only until testers are explicitly added. Payments and legal signing are disabled; the local demo on 8917 remains separate. The catalog automatically follows the visible map area. See the deployment runbook for operations.
+
+## GitHub workflow (September 17, 2026)
+
+Source: https://github.com/ichen27/cusesublets (private), stable branch `main`. Development stays on the Mac mini SSD. Commit and push completed changes; GitHub Actions runs typecheck, unit tests and build for pushes and pull requests. Runtime data and credentials are excluded. Pushes do not automatically deploy the mini service. See AGENTS.md and docs/deployment.md.
