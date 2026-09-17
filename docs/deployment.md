@@ -40,3 +40,25 @@ Official references checked during development:
 - https://docs.stripe.com/connect/manual-payouts
 - https://stripe.com/legal/ssa-services-terms
 - https://operations.osmfoundation.org/policies/tiles/
+
+## Mac mini hosted private preview — September 17, 2026
+
+URL: https://app-cusesublets.chenagent.com (also registered in https://apps.chenagent.com).
+The existing Cloudflare Access Google policy restricts entry to the owner. The launcher independently verifies Access JWTs and strips them before proxying; CuseSublets does not treat this as a marketplace account.
+
+The launchd job `com.chenagent.launcher.app.cusesublets` runs `launcher-run.sh` on loopback port 8918 with `APP_ENV=hosted-preview`. It uses Wrangler/workerd local emulation on the mini, not a deployed edge Worker. This is a browsing-only sample preview. All API routes except GET session/listings/listing detail are denied. Demo roles and transactions remain available only through the separate local development preview on 8917.
+
+Persistent sample D1/R2 data: `/Volumes/SamsungSSD1/tools/app-launcher/apps/cusesublets/state`. Never point both runtimes at the same persistence directory. Logs: `/Volumes/SamsungSSD1/tools/app-launcher/logs/cusesublets.{stdout,stderr}.log`. Launchd resumes after login and SSD mount; the mini must remain online.
+
+Update after building with `npm run build`, then run from the app-launcher directory:
+
+```sh
+/opt/homebrew/bin/node src/cli.mjs deploy /Volumes/SamsungSSD1/code/cusesublets/launcher.json
+/opt/homebrew/bin/node src/cli.mjs status cusesublets
+```
+
+Stop or restart with `node src/cli.mjs stop cusesublets` / `restart cusesublets`. Stop disables automatic startup without removing data or DNS. Source rollback requires restoring the desired commit and rebuilding before redeploying; launcher manifest rollback does not restore source/assets. Existing tunnel routes and other apps are unchanged.
+
+To initialize a new preview datastore before starting it, apply migrations and `seeds/demo.sql` using Wrangler `--local --persist-to` with the exact state directory above. Do not apply sample seed to a real production database. See https://developers.cloudflare.com/workers/local-development/local-data/ for local persistence behavior.
+
+Validated: 16 unit tests, TypeScript, production asset build; real launchd deploy; six sample listings and detail HTTP 200; hosted session has no user and demo=false; writes, private APIs, login and demo-admin endpoint denied; gateway missing-JWT 401; anonymous HTTPS curl redirects to Access; authenticated browser renders sample catalog and private-preview label. Python urllib received edge 403 while curl received the expected Access 302; browser access succeeded.

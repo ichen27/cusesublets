@@ -60,3 +60,7 @@ Live provider integrations and webhook handling, abuse controls, operator refund
 See [deployment runbook](docs/deployment.md), [API contract](docs/API.md), and [approved design](docs/superpowers/specs/2026-09-16-cusesublets.md).
 
 Run one Wrangler process per local persistence directory. Concurrent dev runtimes sharing .wrangler SQLite files can produce database locks. Use API_BASE against the existing preview for runtime checks.
+
+## Hosted private preview
+
+https://app-cusesublets.chenagent.com runs on the Mac mini through your existing Google-protected app launcher. It supports browsing sample listings only. Account actions and transactions are disabled in this hosted mode; the local demo on 8917 remains separate. See the deployment runbook for operations.

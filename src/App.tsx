@@ -38,6 +38,7 @@ export default function App() {
     [listings, setListings] = useState<Listing[]>([]),
     [user, setUser] = useState<User | null>(null),
     [demo, setDemo] = useState(false),
+    [preview, setPreview] = useState(false),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [selected, setSelected] = useState<Listing | null>(null),
@@ -67,11 +68,14 @@ export default function App() {
     try {
       const [l, s] = await Promise.all([
         api<{ listings: Listing[] }>("/listings"),
-        api<{ user: User | null; demo: boolean }>("/session"),
+        api<{ user: User | null; demo: boolean; preview?: boolean }>(
+          "/session",
+        ),
       ]);
       setListings(l.listings);
       setUser(s.user);
       setDemo(s.demo);
+      setPreview(!!s.preview);
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -656,15 +660,19 @@ export default function App() {
           University.
         </small>
       </footer>
-      {demo && (
+      {(demo || preview) && (
         <div className="demo-ribbon">
           <span>
-            <span className="orange-dot" /> LOCAL PREVIEW · Sample homes,
-            simulated transactions
+            <span className="orange-dot" />{" "}
+            {preview
+              ? "PRIVATE PREVIEW · Sample homes · Browsing only"
+              : "LOCAL PREVIEW · Sample homes, simulated transactions"}
           </span>
-          <button onClick={() => setLogin(true)}>
-            Switch demo role <ArrowUpRight size={12} />
-          </button>
+          {demo && (
+            <button onClick={() => setLogin(true)}>
+              Switch demo role <ArrowUpRight size={12} />
+            </button>
+          )}
         </div>
       )}
       {toast && (
@@ -752,6 +760,12 @@ export default function App() {
                   </button>
                 ))}
               </>
+            ) : preview ? (
+              <p>
+                This private preview lets you explore sample homes. Marketplace
+                accounts, messages, posting, and payments are not enabled yet.
+                Your Google sign-in protects access to this preview.
+              </p>
             ) : (
               <button
                 className="primary full"

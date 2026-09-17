@@ -311,6 +311,18 @@ async function route(req: Request, e: Env) {
     m = req.method,
     demo = demoAllowed(e.APP_ENV, url.hostname);
   if (!p.startsWith("/api/")) return e.ASSETS.fetch(req);
+  const preview = e.APP_ENV === "hosted-preview";
+  if (
+    preview &&
+    !(
+      m === "GET" &&
+      (p === "/api/session" || /^\/api\/listings(?:\/[^/]+)?$/.test(p))
+    )
+  )
+    throw new HttpError(
+      403,
+      "This private preview supports browsing only. Accounts and transactions are not enabled.",
+    );
   if (!["GET", "POST"].includes(m))
     throw new HttpError(405, "Method not allowed");
   if (m === "POST") {
@@ -353,7 +365,7 @@ async function route(req: Request, e: Env) {
       "Set-Cookie": `cuse_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`,
     });
   }
-  const authenticated = await authenticate(req, e, demo);
+  const authenticated = preview ? null : await authenticate(req, e, demo);
   const u = authenticated ? userView(authenticated) : null;
   if (p === "/api/login" && m === "GET") {
     requireThat(
@@ -366,7 +378,8 @@ async function route(req: Request, e: Env) {
       headers: { Location: "/#account", "Cache-Control": "no-store" },
     });
   }
-  if (p === "/api/session" && m === "GET") return json({ user: u, demo });
+  if (p === "/api/session" && m === "GET")
+    return json({ user: u, demo, preview });
   if (p === "/api/logout" && m === "POST") {
     const token = req.headers
       .get("Cookie")

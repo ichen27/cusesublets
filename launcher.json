@@ -1,0 +1,16 @@
+{
+  "id": "cusesublets",
+  "name": "CuseSublets",
+  "description": "Private Syracuse sublease preview. Sample homes; browsing only.",
+  "icon": "CS",
+  "color": "#f6dfc9",
+  "tags": ["housing", "preview"],
+  "cwd": "/Volumes/SamsungSSD1/code/cusesublets",
+  "command": [
+    "/bin/sh",
+    "/Volumes/SamsungSSD1/code/cusesublets/launcher-run.sh"
+  ],
+  "port": 8918,
+  "healthPath": "/api/listings",
+  "runtime": "native"
+}
