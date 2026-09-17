@@ -99,10 +99,12 @@ Shared CuseSublets Checks panel replaces inconsistent trust copy. Header How it 
 
 Apply migration0005_profiles.sql while each intended runtime is stopped; back up hosted state first. Isolated tests use8921/.wrangler-checks only. Validation:20 unit tests, typecheck/build; legacy/chat/profile runtime suites covering evidence privacy/staleness, encoded Access IDs, self-review blocks, avatar retirement, publication separation and review eligibility; independent review fixes completed; browser profile/ID submission/manual review/public host profile plus desktop390px upload layout. Test IDs were synthetic files only.
 
-## Public browsing preparation — September 17, 2026
+## Public browsing enabled — September 17, 2026
 
 The page-level login comes from the shared Personal App Launcher Access app (`6b947c90-9cfc-4960-b367-3dfaae2b47e9`) covering `app-*.chenagent.com`. An explicit `app-cusesublets.chenagent.com/api/login` destination has been added to the same app, preserving its audience and Google owner allow policy. The app already accepts the signed CF_Authorization cookie on private APIs and verifies issuer, audience, signature and expiry. Identity/lease checks are separate from login.
 
-Next step pending dashboard confirmation: a dedicated public browsing Access application for exact hostname `app-cusesublets.chenagent.com`, Bypass/Everyone policy, while the more-specific `/api/login` destination remains protected. Do not add a bypass to the shared personal-app policy. After saving, verify anonymous catalog 200, private APIs 401, explicit Google login, cookie scope and logout. Google login remains owner-only until a dedicated customer sign-in policy is approved.
+Activated with user confirmation: dedicated public browsing Access application `2dd1bf1d-4496-4280-9f24-423397cede24` for exact hostname `app-cusesublets.chenagent.com`, using Bypass/Everyone policy `04d00b00-da37-4624-9b9b-941d70f33402`. The more-specific `/api/login` destination remains protected by the existing Google policy; no bypass was attached to the shared personal-app policy.
+
+Verified over public HTTPS: anonymous root/listings/session return 200, session user is null, profile/conversations/admin APIs return 401, login returns 302. Browser verified signed-out catalog, explicit Google login returning to Ivan's account, and logout returning to the public catalog. Five hosted guard tests pass. Google login remains owner-only until a dedicated customer sign-in policy is configured.
 
 GitHub is now https://github.com/ichen27/cusesublets (private), default `main`; CLI authentication on the mini is restored. GitHub checks pass. Never commit live databases or uploads.
