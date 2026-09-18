@@ -1,3 +1,4 @@
+import BrandMark from "./BrandMark";
 import { PasswordLogin } from "./PasswordAuth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -300,10 +301,9 @@ export default function App() {
           }}
         >
           <span className="brand-mark">
-            <Home size={22} strokeWidth={2.2} />
+            <BrandMark />
           </span>
           Cuse<span>Sublets</span>
-          <i />
         </a>
         <nav
           className={menu ? "main-nav open" : "main-nav"}
@@ -845,8 +845,10 @@ export default function App() {
           href="#"
           onClick={() => navigate("explore")}
         >
-          <Home size={18} /> CuseSublets
-          <i />
+          <span className="brand-mark">
+            <BrandMark size={30} />
+          </span>
+          Cuse<span>Sublets</span>
         </a>
         <span>Simpler subletting. Clear verification. One place.</span>
         <button onClick={() => navigate("checks")}>
@@ -925,7 +927,7 @@ export default function App() {
         >
           <div className="login-content">
             <div className="login-logo">
-              <Home size={30} />
+              <BrandMark size={52} />
             </div>
             <h3>Find, list, and manage your sublet.</h3>
             <p>

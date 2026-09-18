@@ -107,29 +107,31 @@ em {
   display: flex;
   align-items: center;
   font-weight: 800;
-  letter-spacing: -1.2px;
+  letter-spacing: -0.9px;
   white-space: nowrap;
   gap: 0;
 }
 .brand-mark {
-  width: 37px;
+  width: 40px;
   height: 40px;
-  background: var(--orange);
-  color: white;
-  border-radius: 11px 11px 11px 3px;
+  color: var(--orange);
   display: grid;
   place-items: center;
-  margin-right: 10px;
+  flex-shrink: 0;
+  margin-right: 9px;
+}
+.brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .brand > span:not(.brand-mark) {
-  font-weight: 500;
+  font-weight: 600;
 }
-.brand i {
-  height: 6px;
-  width: 6px;
-  background: var(--orange);
-  border-radius: 50%;
-  margin: 14px 0 0 3px;
+.footer-brand .brand-mark {
+  width: 28px;
+  height: 28px;
+  margin-right: 7px;
 }
 .main-nav {
   display: flex;
@@ -1005,8 +1007,6 @@ footer small {
   width: 60px;
   display: grid;
   place-items: center;
-  border-radius: 15px;
-  background: #f8e4d8;
   color: var(--orange);
   margin: 0 auto 20px;
 }
@@ -2237,12 +2237,11 @@ td small {
   }
   .brand-mark {
     height: 32px;
-    width: 29px;
+    width: 32px;
     margin-right: 7px;
-    border-radius: 8px;
   }
   .brand-mark svg {
-    width: 18px;
+    width: 100%;
   }
   .sign-in {
     font-size: 11px;
