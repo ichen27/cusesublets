@@ -10,6 +10,7 @@ export interface User {
 }
 export interface Listing {
   id: string;
+  createdAt?: string | null;
   ownerId: string;
   title: string;
   neighborhood: string;
@@ -35,6 +36,23 @@ export interface Listing {
   walkMinutes: number;
   sample: boolean;
   reviewNote?: string;
+}
+export interface SeekerRequest {
+  id: string;
+  ownerId: string;
+  ownerName: string;
+  ownerIdentity: ReviewStatus;
+  title: string;
+  description: string;
+  neighborhood: string;
+  maxBudget: number;
+  roomType: "Private room" | "Entire place" | "Any";
+  startDate: string;
+  endDate: string;
+  amenities: string[];
+  status: "active" | "paused" | "closed" | "removed";
+  createdAt: string;
+  updatedAt: string;
 }
 export interface Message {
   conversationId?: string;
@@ -108,6 +126,7 @@ export interface Report {
 
 export interface Conversation {
   id: string;
+  requestId?: string | null;
   listingId: string;
   buyerId: string;
   sellerId: string;
@@ -115,6 +134,7 @@ export interface Conversation {
   updatedAt: string;
 }
 export interface ConversationSummary extends Conversation {
+  requestTitle?: string | null;
   listingTitle: string;
   listingImage: string;
   peerName: string;
@@ -140,6 +160,7 @@ export interface ChatEvent {
 }
 export interface ConversationDetail {
   conversation: ConversationSummary;
+  request?: SeekerRequest | null;
   listing: Listing;
   peer: { id: string; name: string };
   messages: Message[];

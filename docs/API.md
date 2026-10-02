@@ -97,3 +97,21 @@ Isolated validation: migrate/seed with --persist-to .wrangler-checks, run Wrangl
 Passwords are 15–128 characters; request bodies at most 4 KiB. Login/signup share atomic per-email (10) and per-IP (40) attempt limits per 15-minute window. Password sessions last eight hours. Cookies are HttpOnly, SameSite=Lax, Secure outside local demo. Hosted preview remains browsing-only. Password cookies take precedence on ordinary requests; explicit Google login clears that preference after successful JWT authentication.
 
 Emails are not verified through signup. Identity badges require separate staff review. There is no automated email verification or forgotten-password email because no mail provider is configured. Staff credentials may be provisioned offline on the existing user; never put passwords in Git, command arguments or logs. Credential format and design are in [email/password plan](plans/email-password.md).
+
+## Two-sided discovery
+
+Recent combines newly created apartment listings and seeker requests. Older listings keep a null post timestamp rather than inventing a date. Both public collections are capped at 200 posts. Public request projections contain the display name and housing criteria, never account email or phone. Expired, paused, closed, removed, and suspended-owner requests do not appear publicly.
+
+- GET /api/requests returns public active requests, newest first.
+- GET /api/requests/:id returns a public active request or an owner/staff view.
+- GET /api/requests/mine returns all of the signed-in owner's requests.
+- POST /api/requests accepts title, description, optional neighborhood, maximum monthly budget, room type, start and end dates, and optional amenities. The requested stay must end in the future.
+- POST /api/requests/:id accepts those fields and/or status (active, paused, closed); owner only. A removed request cannot be republished by its owner.
+- GET /api/matches?sourceType=request&sourceId=... returns ranked published listings for the signed-in request owner.
+- GET /api/matches?sourceType=listing&sourceId=... returns ranked active seeker requests for the signed-in listing owner.
+- POST /api/conversations with listingId and requestId opens a listing-anchored conversation by the listing owner with the request owner. The listing must fully cover dates, budget and room type. Existing participant conversations may be reused with request context updated.
+- POST /api/requests/:id/report with a reason opens a report for a signed-in nonowner, at most one open report per person and request.
+- GET /api/admin includes requests and requestReports.
+- POST /api/admin/requests/:id/status accepts removed or active plus a reason; POST /api/admin/request-reports/:id/resolve accepts a reason. Both are staff only and audited.
+
+The match function requires a published listing, active request, different owners, full date coverage, compatible room type, and rent within the request's monthly maximum. It ranks qualifying pairs by preferred area, room type, requested amenities and exact/affordable fit; identity and demographic fields are excluded. Requests also appear on public user profiles while active.

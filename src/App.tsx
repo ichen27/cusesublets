@@ -41,7 +41,10 @@ import PublicProfile from "./PublicProfile";
 import { ChecksGuide, IdentityBadge } from "./Checks";
 import ChatWorkspace, { type ChatIntent } from "./ChatWorkspace";
 import HostWorkspace from "./HostWorkspace";
+import Discovery from "./Discovery";
 type View =
+  | "recent"
+  | "matches"
   | "explore"
   | "saved"
   | "inbox"
@@ -69,7 +72,11 @@ export default function App() {
               ? "host"
               : location.hash === "#account"
                 ? "account"
-                : "explore",
+                : location.hash === "#explore"
+                  ? "explore"
+                  : location.hash === "#matches"
+                    ? "matches"
+                    : "recent",
     ),
     [listings, setListings] = useState<Listing[]>([]),
     [user, setUser] = useState<User | null>(null),
@@ -164,6 +171,13 @@ export default function App() {
     refresh();
   }, [refresh]);
   useEffect(() => {
+    if (view !== "recent" && view !== "matches") return;
+    const timer = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 30000);
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [view, refresh]);
+  useEffect(() => {
     let active = true;
     let request = 0;
     const openLinkedListing = () => {
@@ -200,8 +214,10 @@ export default function App() {
         "#saved": "saved",
         "#admin": "admin",
         "#explore": "explore",
-        "#": "explore",
-        "": "explore",
+        "#recent": "recent",
+        "#matches": "matches",
+        "#": "recent",
+        "": "recent",
       };
       if (views[hash]) setView(views[hash]);
     };
@@ -273,8 +289,8 @@ export default function App() {
         `Welcome, ${s.user.name.split(" ")[0]}. You're in the local demo.`,
       );
       if (role === "admin") setView("admin");
-      else setView("explore");
-      history.replaceState(null, "", role === "admin" ? "#admin" : "#explore");
+      else setView("recent");
+      history.replaceState(null, "", role === "admin" ? "#admin" : "#recent");
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -297,7 +313,7 @@ export default function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            navigate("explore");
+            navigate("recent");
           }}
         >
           <span className="brand-mark">
@@ -309,14 +325,11 @@ export default function App() {
           className={menu ? "main-nav open" : "main-nav"}
           aria-label="Main navigation"
         >
+          <button className={view === "recent" ? "active" : ""} onClick={() => navigate("recent")}>Recent</button>
+          <button className={view === "explore" ? "active" : ""} onClick={() => navigate("explore")}>Apartments</button>
+          <button className={view === "matches" ? "active" : ""} onClick={() => navigate("matches")}>Top matches</button>
           <button
-            className={view === "explore" ? "active" : ""}
-            onClick={() => navigate("explore")}
-          >
-            Find a sublet
-          </button>
-          <button
-            className={view === "saved" ? "active" : ""}
+            className={"nav-saved " + (view === "saved" ? "active" : "")}
             onClick={() => navigate("saved")}
           >
             Saved <span className="nav-count">{saved.length || ""}</span>
@@ -383,7 +396,20 @@ export default function App() {
           </button>
         </div>
       </header>
-      {view === "explore" || view === "saved" ? (
+      {view === "recent" || view === "matches" ? (
+        <Discovery
+          mode={view}
+          listings={listings}
+          user={user}
+          onLogin={() => setLogin(true)}
+          onPostListing={() => setPost(true)}
+          onListing={setSelected}
+          onListingChat={(listing) => listingChat(listing, "message")}
+          onProfile={openProfile}
+          onChat={openChat}
+          notify={notify}
+        />
+      ) : view === "explore" || view === "saved" ? (
         <>
           <section className="hero">
             <div className="hero-copy">
@@ -822,7 +848,7 @@ export default function App() {
           onLogout={async () => {
             await api("/logout", {});
             setUser(null);
-            setView("explore");
+            setView("recent");
             if (!demo) location.assign("/cdn-cgi/access/logout");
           }}
         />

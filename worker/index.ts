@@ -9,6 +9,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import type {
   User,
   Listing,
+  SeekerRequest,
   Booking,
   Offer,
   DocumentRecord,
@@ -17,6 +18,7 @@ import type {
   ConversationSummary,
   ChatAttachment,
 } from "../shared/types";
+import { matchListingToRequest } from "../shared/matching";
 import {
   HttpError,
   requireThat,
@@ -81,6 +83,7 @@ function listing(row: Row): InternalListing {
 function listingView(l: Listing, viewer: User | null = null): Listing {
   const result: Listing = {
     id: l.id,
+    createdAt: l.createdAt ?? null,
     ownerId: l.ownerId,
     title: l.title,
     neighborhood: l.neighborhood,
@@ -116,6 +119,44 @@ async function getListing(e: Env, key: string) {
   const l = (await listings(e, "WHERE l.id=?", key))[0];
   requireThat(l, 404, "Listing not found");
   return l;
+}
+type InternalRequest = SeekerRequest & { ownerSuspended: boolean };
+const requestSQL = "SELECT r.*,u.name ownerName,u.identity ownerIdentity,u.suspended ownerSuspended FROM seeker_requests r JOIN users u ON u.id=r.ownerId";
+function seekerRequest(row: Row): InternalRequest {
+  const { data, ...rest } = row;
+  return { ...JSON.parse(data as string), ...rest, ownerSuspended: !!rest.ownerSuspended } as InternalRequest;
+}
+function requestView(r: SeekerRequest): SeekerRequest {
+  return {
+    id: r.id, ownerId: r.ownerId, ownerName: r.ownerName,
+    ownerIdentity: r.ownerIdentity, title: r.title, description: r.description,
+    neighborhood: r.neighborhood, maxBudget: r.maxBudget, roomType: r.roomType,
+    startDate: r.startDate, endDate: r.endDate, amenities: r.amenities,
+    status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt,
+  };
+}
+const requests = async (e: Env, where: string, ...v: unknown[]) =>
+  (await all<Row>(e, requestSQL + " " + where, ...v)).map(seekerRequest);
+async function getRequest(e: Env, key: string) {
+  const r = (await requests(e, "WHERE r.id=?", key))[0];
+  requireThat(r, 404, "Request not found");
+  return r;
+}
+function requestData(b: Row) {
+  const interval = dates(b.startDate, b.endDate);
+  requireThat(interval.endDate > syracuseDate(), 400, "The requested stay must end in the future");
+  requireThat(["Any", "Private room", "Entire place"].includes(String(b.roomType)), 400, "Choose a room type");
+  const amenities = b.amenities ?? [];
+  requireThat(Array.isArray(amenities) && amenities.length <= 20, 400, "Use up to 20 preferences");
+  return {
+    title: text(b.title, "Title", 100),
+    description: text(b.description, "Description", 2000, 20),
+    neighborhood: text(b.neighborhood ?? "", "Preferred neighborhood", 80, 0),
+    maxBudget: number(b.maxBudget, "Monthly budget", 1, 20000),
+    roomType: b.roomType as SeekerRequest["roomType"],
+    ...interval,
+    amenities: amenities.map((a) => text(a, "Preference", 50)),
+  };
 }
 async function getBooking(e: Env, key: string) {
   const b = await one<Booking>(e, "SELECT * FROM bookings WHERE id=?", key);
@@ -312,6 +353,7 @@ function reviewed(l: InternalListing) {
 }
 
 const conversationSQL = `SELECT c.*, json_extract(l.data,'$.title') listingTitle,
+ (SELECT json_extract(r.data,'$.title') FROM seeker_requests r WHERE r.id=c.requestId) requestTitle,
  COALESCE(json_extract(l.data,'$.images[0]'),'') listingImage,peer.name peerName,
  COALESCE((SELECT body FROM messages m WHERE m.listingId=c.listingId AND
  ((m.senderId=c.buyerId AND m.recipientId=c.sellerId) OR (m.senderId=c.sellerId AND m.recipientId=c.buyerId))
@@ -791,7 +833,7 @@ async function route(req: Request, e: Env) {
       listings: (
         await listings(
           e,
-          "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid LIMIT 200",
+          "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid DESC LIMIT 200",
         )
       ).map((l) => listingView(l)),
     });
@@ -806,6 +848,14 @@ async function route(req: Request, e: Env) {
       "Listing not found",
     );
     return json({ listing: listingView(l, u) });
+  }
+  if (p === "/api/requests" && m === "GET")
+    return json({ requests: (await requests(e, "WHERE r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(requestView) });
+  const publicRequestMatch = p.match(/^\/api\/requests\/([^/]+)$/);
+  if (publicRequestMatch && publicRequestMatch[1] !== "mine" && m === "GET") {
+    const r = await getRequest(e, publicRequestMatch[1]);
+    requireThat((r.status === "active" && !r.ownerSuspended && r.endDate > syracuseDate()) || r.ownerId === u?.id || u?.role === "admin", 404, "Request not found");
+    return json({ request: requestView(r) });
   }
   const mediaMatch = p.match(/^\/api\/media\/([^/]+)$/);
   if (mediaMatch && m === "GET") {
@@ -878,6 +928,7 @@ async function route(req: Request, e: Env) {
           target.id,
         )
       ).map((l) => listingView(l)),
+      requests: (await requests(e, "WHERE r.ownerId=? AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).map(requestView),
       reviews: await all(
         e,
         "SELECT r.id,r.authorId,a.name authorName,r.rating,r.body,r.createdAt,json_extract(l.data,'$.title') listingTitle FROM profile_reviews r JOIN users a ON a.id=r.authorId JOIN bookings b ON b.id=r.bookingId JOIN listings l ON l.id=b.listingId WHERE r.targetId=? ORDER BY r.rowid DESC LIMIT 200",
@@ -1191,6 +1242,53 @@ async function route(req: Request, e: Env) {
         u.id,
       ),
     });
+  if (p === "/api/requests/mine" && m === "GET")
+    return json({ requests: (await requests(e, "WHERE r.ownerId=? ORDER BY r.createdAt DESC", u.id)).map(requestView) });
+  if (p === "/api/requests" && m === "POST") {
+    const data = requestData(await body(req));
+    const key = id(), at = now();
+    await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt) VALUES(?,?,'active',?,?,?)", key, u.id, JSON.stringify(data), at, at).run();
+    return json({ request: requestView(await getRequest(e, key)) }, 201);
+  }
+  if (publicRequestMatch && publicRequestMatch[1] !== "mine" && m === "POST") {
+    const r = await getRequest(e, publicRequestMatch[1]);
+    requireThat(r.ownerId === u.id, 403, "Only the request owner can change it");
+    requireThat(r.status !== "removed", 409, "This request was removed");
+    const b = await body(req);
+    const status = b.status === undefined ? r.status : String(b.status);
+    requireThat(["active", "paused", "closed"].includes(status), 400, "Choose an available request status");
+    const data = requestData({ ...r, ...b });
+    await stmt(e, "UPDATE seeker_requests SET status=?,data=?,updatedAt=? WHERE id=? AND ownerId=?", status, JSON.stringify(data), now(), r.id, u.id).run();
+    return json({ request: requestView(await getRequest(e, r.id)) });
+  }
+  if (p === "/api/matches" && m === "GET") {
+    requireThat(!u.suspended, 403, "Suspended accounts cannot view matches");
+    const sourceType = url.searchParams.get("sourceType"), sourceId = url.searchParams.get("sourceId") || "";
+    requireThat(sourceId.length > 0 && sourceId.length <= 80, 400, "Choose one of your posts");
+    if (sourceType === "request") {
+      const r = await getRequest(e, sourceId);
+      requireThat(r.ownerId === u.id, 403, "Choose one of your requests");
+      requireThat(r.status === "active", 409, "Publish this request to view matches");
+      const available = await listings(e, "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid DESC LIMIT 500");
+      const matches = available.flatMap((l) => {
+        const fit = matchListingToRequest(l, r);
+        return fit ? [{ listing: listingView(l), ...fit }] : [];
+      }).sort((a,b) => b.score - a.score || a.listing.id.localeCompare(b.listing.id));
+      return json({ matches: matches.slice(0, 50) });
+    }
+    if (sourceType === "listing") {
+      const l = await getListing(e, sourceId);
+      requireThat(l.ownerId === u.id, 403, "Choose one of your listings");
+      requireThat(l.status === "approved", 409, "Publish this listing to view matches");
+      const available = await requests(e, "WHERE r.status='active' AND u.suspended=0 ORDER BY r.createdAt DESC LIMIT 500");
+      const matches = available.flatMap((r) => {
+        const fit = matchListingToRequest(l, r);
+        return fit ? [{ request: requestView(r), ...fit }] : [];
+      }).sort((a,b) => b.score - a.score || a.request.id.localeCompare(b.request.id));
+      return json({ matches: matches.slice(0, 50) });
+    }
+    throw new HttpError(400, "Choose a listing or request");
+  }
   if (p === "/api/listings" && m === "POST") {
     const b = await body(req);
     const interval = dates(b.startDate, b.endDate);
@@ -1243,10 +1341,11 @@ async function route(req: Request, e: Env) {
     const key = id();
     await stmt(
       e,
-      "INSERT INTO listings(id,ownerId,data,status) VALUES(?,?,?,'approved')",
+      "INSERT INTO listings(id,ownerId,data,status,createdAt) VALUES(?,?,?,'approved',?)",
       key,
       u.id,
       JSON.stringify(data),
+      now(),
     ).run();
     return json({ listing: await getListing(e, key) }, 201);
   }
@@ -1301,6 +1400,16 @@ async function route(req: Request, e: Env) {
   if (p === "/api/conversations" && m === "POST") {
     const b = await body(req),
       l = await getListing(e, text(b.listingId, "Listing", 80));
+    if (b.requestId !== undefined) {
+      const r = await getRequest(e, text(b.requestId, "Request", 80));
+      requireThat(l.ownerId === u.id, 403, "Only the listing owner can respond to a request");
+      requireThat(r.status === "active" && !r.ownerSuspended && l.status === "approved", 404, "Post not available");
+      requireThat(matchListingToRequest(l, r), 409, "This listing does not cover the request's dates and budget");
+      const at = now();
+      await stmt(e, "INSERT INTO conversations(id,listingId,buyerId,sellerId,createdAt,updatedAt,requestId) VALUES(?,?,?,?,?,?,?) ON CONFLICT(listingId,buyerId) DO UPDATE SET requestId=excluded.requestId", id(), l.id, r.ownerId, u.id, at, at, r.id).run();
+      const c = await one<Conversation>(e, "SELECT * FROM conversations WHERE listingId=? AND buyerId=?", l.id, r.ownerId);
+      return json({ conversation: await getConversation(e, c!.id, u) }, 201);
+    }
     return json({ conversation: await openConversation(e, l, u) }, 201);
   }
   const conversationMatch = p.match(
@@ -1316,9 +1425,11 @@ async function route(req: Request, e: Env) {
         "SELECT b.* FROM bookings b JOIN offers o ON o.id=b.offerId WHERE o.conversationId=? ORDER BY b.createdAt",
         c.id,
       );
+      const relatedRequest = c.requestId ? await getRequest(e, c.requestId) : null;
       return json({
         conversation: c,
         listing: listingView(l, u.id === l.ownerId ? u : null),
+        request: relatedRequest && relatedRequest.status !== "removed" ? requestView(relatedRequest) : null,
         peer: {
           id: u.id === c.buyerId ? c.sellerId : c.buyerId,
           name: c.peerName,
@@ -1861,6 +1972,8 @@ async function route(req: Request, e: Env) {
         e,
         "SELECT * FROM reports ORDER BY rowid DESC LIMIT 200",
       ),
+      requests: (await requests(e, "ORDER BY r.createdAt DESC LIMIT 200")).map(requestView),
+      requestReports: await all(e, "SELECT * FROM request_reports ORDER BY rowid DESC LIMIT 200"),
       documents: await all(
         e,
         "SELECT id,listingId,name,kind,createdAt FROM documents ORDER BY rowid DESC LIMIT 500",
@@ -1868,6 +1981,45 @@ async function route(req: Request, e: Env) {
       bookings: await all(e, "SELECT * FROM bookings LIMIT 200"),
       audit: await all(e, "SELECT * FROM audit ORDER BY rowid DESC LIMIT 200"),
     });
+  const reportRequest = p.match(/^\/api\/requests\/([^/]+)\/report$/);
+  if (reportRequest && m === "POST") {
+    const r = await getRequest(e, reportRequest[1]);
+    requireThat(r.ownerId !== u.id, 400, "You cannot report your own request");
+    requireThat(r.status === "active" && !r.ownerSuspended, 404, "Request not found");
+    const reason = text((await body(req)).reason, "Report reason", 2000, 10);
+    requireThat(!(await one(e, "SELECT id FROM request_reports WHERE requestId=? AND reporterId=? AND status='open'", r.id, u.id)), 409, "You already have an open report for this request");
+    const report = { id: id(), requestId: r.id, reporterId: u.id, reason, status: "open", createdAt: now() };
+    await e.DB.batch([
+      stmt(e, "INSERT INTO request_reports(id,requestId,reporterId,reason,status,createdAt) VALUES(?,?,?,?,?,?)", report.id, report.requestId, report.reporterId, report.reason, report.status, report.createdAt),
+      audit(e, u, "request.report", report.id, reason),
+    ]);
+    return json({ report }, 201);
+  }
+  const adminRequestStatus = p.match(/^\/api\/admin\/requests\/([^/]+)\/status$/);
+  if (adminRequestStatus && m === "POST") {
+    const r = await getRequest(e, adminRequestStatus[1]);
+    requireThat(r.ownerId !== u.id, 403, "Staff cannot review their own request");
+    const b = await body(req), status = String(b.status);
+    requireThat(["removed", "active"].includes(status), 400, "Choose removed or active");
+    const reason = text(b.reason, "Moderation reason", 2000, 5);
+    await e.DB.batch([
+      stmt(e, "UPDATE seeker_requests SET status=?,updatedAt=? WHERE id=?", status, now(), r.id),
+      audit(e, u, status === "removed" ? "request.remove" : "request.restore", r.id, reason),
+    ]);
+    return json({ request: requestView(await getRequest(e, r.id)) });
+  }
+  const resolveRequestReport = p.match(/^\/api\/admin\/request-reports\/([^/]+)\/resolve$/);
+  if (resolveRequestReport && m === "POST") {
+    const report = await one<{ id: string; status: string }>(e, "SELECT * FROM request_reports WHERE id=?", resolveRequestReport[1]);
+    requireThat(report, 404, "Report not found");
+    requireThat(report.status === "open", 409, "Report is already resolved");
+    const reason = text((await body(req)).reason, "Resolution reason", 2000, 10);
+    await e.DB.batch([
+      stmt(e, "UPDATE request_reports SET status='resolved' WHERE id=?", report.id),
+      audit(e, u, "request-report.resolve", report.id, reason),
+    ]);
+    return json({ report: await one(e, "SELECT * FROM request_reports WHERE id=?", report.id) });
+  }
   const reportListing = p.match(/^\/api\/listings\/([^/]+)\/report$/);
   if (reportListing && m === "POST") {
     const b = await body(req),

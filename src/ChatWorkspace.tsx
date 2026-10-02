@@ -525,6 +525,7 @@ export default function ChatWorkspace({
                 src={detail.listing.images[0] || "/photo-pending.svg"}
                 alt={detail.listing.title}
               />
+              {detail.request && <div className="chat-request-context"><span className="eyebrow">MATCHED SEEKER REQUEST</span><strong>{detail.request.title}</strong><small>{date(detail.request.startDate)} – {date(detail.request.endDate)} · Up to {money(detail.request.maxBudget)} / month</small></div>}
               <span className="eyebrow">THE PLACE</span>
               <h2>{detail.listing.title}</h2>
               <p>

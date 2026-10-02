@@ -5,6 +5,7 @@ import type {
   ProfileReview,
   ReviewableBooking,
   Listing,
+  SeekerRequest,
   User,
 } from "../shared/types";
 import { api, money, date } from "./api";
@@ -13,6 +14,7 @@ import Checks, { IdentityBadge } from "./Checks";
 type Data = {
   profile: Profile;
   listings: Listing[];
+  requests: SeekerRequest[];
   reviews: ProfileReview[];
   reviewableBookings: ReviewableBooking[];
 };
@@ -165,6 +167,7 @@ export default function PublicProfile({
               </Empty>
             )}
           </section>
+          {data.requests.length > 0 && <section className="profile-listings"><div className="section-heading"><h2>{p.name.split(" ")[0]} is looking for</h2><span>{data.requests.length} {data.requests.length === 1 ? "request" : "requests"}</span></div>{data.requests.map((request) => <article className="profile-request" key={request.id}><span className="eyebrow">LOOKING FOR A SUBLET</span><h3>{request.title}</h3><p>{request.description}</p><small>{request.neighborhood || "Flexible on area"} · Up to {money(request.maxBudget)} / month · {date(request.startDate)} – {date(request.endDate)}</small></article>)}</section>}
           <section className="panel">
             <div className="section-heading">
               <h2>Reviews from completed leases</h2>
