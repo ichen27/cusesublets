@@ -43,7 +43,7 @@ The runtime test creates local test records and pauses its listings, preserving 
 
 ## What works
 
-- Public map/catalog with neighborhood, date, budget, room type, amenities, review and tour filters; local saved shortlist. Hosts choose an approximate listing pin.
+- Browse is the main marketplace page with recent apartment and seeker posts in a responsive three-column feed; apartments can be saved from Browse. The Apartments catalog retains neighborhood, date, budget, room type, amenity, review and tour filters plus the map. Saved is a separate shortlist. Hosts choose an approximate listing pin.
 - Listing details, photo gallery, validated Matterport embeds, direct media upload, and video player.
 - Cloudflare Access JWT validation and explicit server-side admin email allowlist.
 - Persistent listing submission, private document upload, review checklist and user identity review records.

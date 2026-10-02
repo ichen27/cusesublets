@@ -43,7 +43,7 @@ import ChatWorkspace, { type ChatIntent } from "./ChatWorkspace";
 import HostWorkspace from "./HostWorkspace";
 import Discovery from "./Discovery";
 type View =
-  | "recent"
+  | "browse"
   | "matches"
   | "explore"
   | "saved"
@@ -76,7 +76,7 @@ export default function App() {
                   ? "explore"
                   : location.hash === "#matches"
                     ? "matches"
-                    : "recent",
+                    : "browse",
     ),
     [listings, setListings] = useState<Listing[]>([]),
     [user, setUser] = useState<User | null>(null),
@@ -171,7 +171,7 @@ export default function App() {
     refresh();
   }, [refresh]);
   useEffect(() => {
-    if (view !== "recent" && view !== "matches") return;
+    if (view !== "browse" && view !== "matches") return;
     const timer = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 30000);
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
@@ -214,10 +214,11 @@ export default function App() {
         "#saved": "saved",
         "#admin": "admin",
         "#explore": "explore",
-        "#recent": "recent",
+        "#browse": "browse",
+        "#recent": "browse",
         "#matches": "matches",
-        "#": "recent",
-        "": "recent",
+        "#": "browse",
+        "": "browse",
       };
       if (views[hash]) setView(views[hash]);
     };
@@ -261,12 +262,9 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
   const candidates = useMemo(() => {
-    const items = filterListings(
-      view === "saved"
-        ? listings.filter((l) => saved.includes(l.id))
-        : listings,
-      filters,
-    );
+    const items = view === "saved"
+      ? listings.filter((l) => saved.includes(l.id))
+      : filterListings(listings, filters);
     return sort === "price"
       ? items.sort((a, b) => a.price - b.price)
       : sort === "walk"
@@ -274,8 +272,8 @@ export default function App() {
         : items;
   }, [listings, saved, view, filters, sort]);
   const items = useMemo(
-    () => listingsInBounds(candidates, mapBounds),
-    [candidates, mapBounds],
+    () => view === "saved" ? candidates : listingsInBounds(candidates, mapBounds),
+    [candidates, mapBounds, view],
   );
   async function signIn(role: string) {
     setBusy(true);
@@ -289,8 +287,8 @@ export default function App() {
         `Welcome, ${s.user.name.split(" ")[0]}. You're in the local demo.`,
       );
       if (role === "admin") setView("admin");
-      else setView("recent");
-      history.replaceState(null, "", role === "admin" ? "#admin" : "#recent");
+      else setView("browse");
+      history.replaceState(null, "", role === "admin" ? "#admin" : "#browse");
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -313,7 +311,7 @@ export default function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            navigate("recent");
+            navigate("browse");
           }}
         >
           <span className="brand-mark">
@@ -325,7 +323,7 @@ export default function App() {
           className={menu ? "main-nav open" : "main-nav"}
           aria-label="Main navigation"
         >
-          <button className={view === "recent" ? "active" : ""} onClick={() => navigate("recent")}>Recent</button>
+          <button className={view === "browse" ? "active" : ""} onClick={() => navigate("browse")}>Browse</button>
           <button className={view === "explore" ? "active" : ""} onClick={() => navigate("explore")}>Apartments</button>
           <button className={view === "matches" ? "active" : ""} onClick={() => navigate("matches")}>Top matches</button>
           <button
@@ -396,7 +394,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      {view === "recent" || view === "matches" ? (
+      {view === "browse" || view === "matches" ? (
         <Discovery
           mode={view}
           listings={listings}
@@ -408,61 +406,14 @@ export default function App() {
           onProfile={openProfile}
           onChat={openChat}
           notify={notify}
+          saved={saved}
+          onSave={save}
         />
       ) : view === "explore" || view === "saved" ? (
         <>
-          <section className="hero">
-            <div className="hero-copy">
-              <span className="eyebrow">
-                <span className="orange-dot" /> SYRACUSE SUBLETS · BUILT AROUND
-                TRUST
-              </span>
-              <h1>
-                {view === "saved" ? (
-                  <>
-                    Saved sublets.
-                    <br />
-                    <em>Compare your options.</em>
-                  </>
-                ) : (
-                  <>
-                    Find a sublet.
-                    <br />
-                    <em>List your place.</em>
-                  </>
-                )}
-              </h1>
-              <p>
-                {view === "saved"
-                  ? "Compare saved listings, review their checks, and contact the host."
-                  : "Find a place to sublease or someone to take over your lease in Syracuse. See what’s been verified and manage the conversation in one place."}
-              </p>
-              <div className="hero-proof">
-                <span className="proof-icon">
-                  <ShieldCheck size={17} />
-                </span>
-                <span>Identity, lease & sublet-permission checks.</span>
-              </div>
-            </div>
-            <div className="hero-art">
-              <img
-                src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1000&auto=format&fit=crop&q=85"
-                alt="Sunny living room with natural wood furnishings"
-              />
-              <span className="hero-image-label">
-                SUBLETTING, WITH TRUST AT THE CENTER.
-              </span>
-              <div className="hero-sticker">
-                <span className="sticker-sun">✳</span>
-                <span>
-                  Find it.
-                  <br />
-                  <b>Check it.</b>
-                </span>
-              </div>
-            </div>
-          </section>
-          <main className="discovery">
+          <main className={"discovery catalog-" + view}>
+            {view === "explore" && <div className="catalog-heading"><span className="eyebrow">APARTMENTS IN SYRACUSE</span><h1>Apartments</h1><p>Search available sublets by location, dates and budget.</p></div>}
+            {view === "explore" && (
             <div className="search-bar">
               <label className="search-field">
                 <MapPin size={19} />
@@ -525,6 +476,8 @@ export default function App() {
                 <span>Find my place</span>
               </button>
             </div>
+            )}
+            {view === "explore" && (
             <div className="filter-row">
               <div className="chips">
                 <button
@@ -604,24 +557,18 @@ export default function App() {
                 <SlidersHorizontal size={15} /> Filters
               </button>
             </div>
+            )}
             <div className="results-heading" id="results">
               <div>
-                <h2>
-                  {view === "saved"
-                    ? "Your saved places"
-                    : "Find a sublet in Syracuse."}
-                </h2>
+                {view === "saved" ? <h1>Saved places</h1> : <h2>Available apartments</h2>}
                 <p>
                   {items.length}{" "}
                   {view === "saved"
-                    ? "saved places"
+                    ? items.length === 1 ? "saved apartment" : "saved apartments"
                     : items.length === 1
                       ? "place in this map area"
                       : "places in this map area"}{" "}
-                  <span>·</span>{" "}
-                  {demo
-                    ? "Sample listings for the preview"
-                    : "Check verification before you commit"}
+                  {view === "explore" && <><span>·</span>{" "}{demo ? "Sample listings for the preview" : "Check verification before you commit"}</>}
                 </p>
               </div>
               <label className="sort">
@@ -638,6 +585,7 @@ export default function App() {
                 <ChevronDown size={13} />
               </label>
             </div>
+            {view === "explore" && (
             <button
               className="mobile-map-switch primary"
               onClick={() => setMobileMap(!mobileMap)}
@@ -645,12 +593,13 @@ export default function App() {
               {mobileMap ? <LayoutGrid size={16} /> : <Map size={16} />}{" "}
               {mobileMap ? "Show listings" : "Explore map"}
             </button>
+            )}
             <ErrorBox message={error} />
             {loading ? (
               <Busy />
             ) : (
               <div
-                className={"results-layout " + (mobileMap ? "show-map" : "")}
+                className={view === "saved" ? "results-layout saved-layout" : "results-layout " + (mobileMap ? "show-map" : "")}
               >
                 <div className="listing-grid">
                   {items.length ? (
@@ -740,17 +689,18 @@ export default function App() {
                       </article>
                     ))
                   ) : (
-                    <Empty title="No places match just yet.">
-                      Zoom out, move the map, or adjust your budget and dates.{" "}
-                      <button
-                        className="text-button"
-                        onClick={() => setFilters({})}
-                      >
-                        Clear filters
-                      </button>
+                    <Empty title={view === "saved" ? "No saved places yet." : "No places match just yet."}>
+                      {view === "saved" ? (
+                        <button className="text-button" onClick={() => navigate("browse")}>Browse posts <ArrowRight size={14} /></button>
+                      ) : (
+                        <>Zoom out, move the map, or adjust your budget and dates.{" "}
+                          <button className="text-button" onClick={() => setFilters({})}>Clear filters</button>
+                        </>
+                      )}
                     </Empty>
                   )}
                 </div>
+                {view === "explore" && (
                 <aside className="map-panel">
                   <MapView
                     listings={candidates}
@@ -769,31 +719,9 @@ export default function App() {
                     </span>
                   </div>
                 </aside>
+                )}
               </div>
             )}
-            <div className="community-banner">
-              <span className="community-icon">
-                <Home size={29} />
-              </span>
-              <div>
-                <h3>Your sublease, all in one place.</h3>
-                <p>
-                  Find a sublet or a sublessee, message each other, share
-                  documents, and negotiate offers. CuseSublets Checks help you
-                  understand who and what has been reviewed.
-                </p>
-                <p>
-                  We’re building one place to manage the entire agreement.
-                  Document signing and in-app payments are coming next.
-                </p>
-              </div>
-              <button
-                className="outline"
-                onClick={() => (user ? setPost(true) : setLogin(true))}
-              >
-                List your place <ArrowRight size={17} />
-              </button>
-            </div>
           </main>
         </>
       ) : view === "checks" ? (
@@ -848,7 +776,7 @@ export default function App() {
           onLogout={async () => {
             await api("/logout", {});
             setUser(null);
-            setView("recent");
+            setView("browse");
             if (!demo) location.assign("/cdn-cgi/access/logout");
           }}
         />
@@ -869,7 +797,7 @@ export default function App() {
         <a
           className="brand footer-brand"
           href="#"
-          onClick={() => navigate("explore")}
+          onClick={() => navigate("browse")}
         >
           <span className="brand-mark">
             <BrandMark size={30} />

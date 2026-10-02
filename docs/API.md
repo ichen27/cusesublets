@@ -100,7 +100,7 @@ Emails are not verified through signup. Identity badges require separate staff r
 
 ## Two-sided discovery
 
-Recent combines newly created apartment listings and seeker requests. Older listings keep a null post timestamp rather than inventing a date. Both public collections are capped at 200 posts. Public request projections contain the display name and housing criteria, never account email or phone. Expired, paused, closed, removed, and suspended-owner requests do not appear publicly.
+Browse combines newly created apartment listings and seeker requests. The former #recent URL remains a compatible alias for #browse. Older listings keep a null post timestamp rather than inventing a date. Both public collections are capped at 200 posts. Public request projections contain the display name and housing criteria, never account email or phone. Expired, paused, closed, removed, and suspended-owner requests do not appear publicly.
 
 - GET /api/requests returns public active requests, newest first.
 - GET /api/requests/:id returns a public active request or an owner/staff view.

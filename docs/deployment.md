@@ -119,6 +119,10 @@ Hosted service8918 was stopped, state backed up to state-before-password-2026091
 
 ## Two-sided discovery — October 2026
 
-The private beta now has a mixed Recent feed, public seeker request summaries, request editing and pause/repost/close controls, and Top Matches in both directions. Contact starts an authenticated listing-anchored conversation. Request reports and staff moderation use the existing admin surface. Email and phone remain private; details intentionally entered into a request description are public.
+The private beta now has a mixed Browse feed, public seeker request summaries, request editing and pause/repost/close controls, and Top Matches in both directions. Contact starts an authenticated listing-anchored conversation. Request reports and staff moderation use the existing admin surface. Email and phone remain private; details intentionally entered into a request description are public.
 
 Apply migrations 0007_discovery.sql and 0008_request_reports.sql to each intended local runtime with that service stopped. Back up its exact persistence directory first, and use wrangler d1 migrations apply DB --local --persist-to with that directory. Do not apply seeds/demo.sql to hosted state. Rebuild assets and restart through the launcher, then run tests/hosted-guards.py against the hosted loopback service and check anonymous HTTPS browsing. The separate demo runtime uses its own persistence directory and requires its own migration if updated. Existing listings have no recorded post date; newly created listings get a timestamp.
+
+## Browse layout — October 2, 2026
+
+Browse is the main marketplace page and default route. Its mixed apartment/request feed uses three columns on wide screens, two on medium screens and one on narrow screens. Apartment cards can be saved directly there. Apartments keeps the search and map as a focused catalog, Saved is a map-free shortlist, and Top Matches has a compact heading. The old #recent hash still opens Browse. This is a frontend-only update; no database migration or seed is required.

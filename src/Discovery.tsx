@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, Home, MapPin, MessageCircle, Plus, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, CalendarDays, Heart, Home, MapPin, MessageCircle, Plus, Sparkles, UserRound } from "lucide-react";
 import type { Listing, SeekerRequest, User } from "../shared/types";
 import { api, date, money, syracuseToday } from "./api";
 import { Busy, Empty, ErrorBox, Modal } from "./ui";
@@ -19,8 +19,8 @@ function timeLabel(value?: string | null) {
 function Stay({ start, end }: { start: string; end: string }) {
   return <span className="post-stay"><CalendarDays size={14} /> {date(start)} – {date(end)}, {end.slice(0, 4)}</span>;
 }
-export default function Discovery({ mode, listings, user, onLogin, onPostListing, onListing, onListingChat, onProfile, onChat, notify }: {
-  mode: "recent" | "matches";
+export default function Discovery({ mode, listings, user, onLogin, onPostListing, onListing, onListingChat, onProfile, onChat, notify, saved, onSave }: {
+  mode: "browse" | "matches";
   listings: Listing[];
   user: User | null;
   onLogin: () => void;
@@ -30,6 +30,8 @@ export default function Discovery({ mode, listings, user, onLogin, onPostListing
   onProfile: (id: string) => void;
   onChat: (id: string) => void;
   notify: (message: string) => void;
+  saved: string[];
+  onSave: (id: string) => void;
 }) {
   const [requests, setRequests] = useState<SeekerRequest[]>([]);
   const [mine, setMine] = useState<SeekerRequest[]>([]);
@@ -140,7 +142,7 @@ export default function Discovery({ mode, listings, user, onLogin, onPostListing
   }
   function ApartmentCard({ listing, reasons }: { listing: Listing; reasons?: string[] }) {
     return <article className="discovery-card apartment-card" key={listing.id}>
-      <div className="apartment-card-image"><img src={listing.images[0] || "/photo-pending.svg"} alt={listing.title} loading="lazy" /></div>
+      <div className="apartment-card-image"><img src={listing.images[0] || "/photo-pending.svg"} alt={listing.title} loading="lazy" /><button className={"post-save-button " + (saved.includes(listing.id) ? "saved" : "")} aria-label={saved.includes(listing.id) ? "Unsave " + listing.title : "Save " + listing.title} onClick={() => onSave(listing.id)}><Heart size={17} fill={saved.includes(listing.id) ? "currentColor" : "none"} /></button></div>
       <div className="apartment-card-content"><div className="discovery-card-top"><span className="post-type apartment-type"><Home size={14} /> Available sublet</span><span className="post-age">{timeLabel(listing.createdAt)}</span></div>
       <h3>{listing.title}</h3><button className="post-person" onClick={() => onProfile(listing.ownerId)}><span className="person-avatar">{listing.hostName.slice(0, 1).toUpperCase()}</span><span>{listing.hostName}</span>{listing.hostIdentity === "verified" && <IdentityBadge status={listing.hostIdentity} />}</button>
       <div className="post-facts"><Stay start={listing.startDate} end={listing.endDate} /><span><MapPin size={14} /> {listing.neighborhood}</span><span><b>{money(listing.price)}</b> / month</span><span>{listing.roomType}</span></div>
@@ -149,15 +151,30 @@ export default function Discovery({ mode, listings, user, onLogin, onPostListing
     </article>;
   }
   return <main className="discovery-page">
-    <section className="discovery-intro"><div><span className="eyebrow">CUSE​​SUB​​LETS · TWO SIDES, ONE MARKETPLACE</span><h1>{mode === "recent" ? <>See what’s <em>new.</em></> : <>Your <em>top matches.</em></>}</h1><p>{mode === "recent" ? "Browse places and people looking for a sublet in Syracuse. New posts from both sides appear here." : "Choose one of your posts to see fitting people or places. Every match explains why it appears."}</p></div><div className="discovery-intro-actions"><button className="primary" onClick={() => { if (user) { setEditing(null); setPost(true); } else onLogin(); }}><Plus size={16} /> Post what you need</button><button className="outline" onClick={() => user ? onPostListing() : onLogin()}><Home size={16} /> List your place</button></div></section>
+    {mode === "browse" ? (
+      <section className="discovery-intro browse-intro">
+        <div>
+          <span className="eyebrow">CUSESUBLETS · SYRACUSE SUBLETS</span>
+          <h1>Find a sublet.<br /><em>List your place.</em></h1>
+          <p>Browse apartments and requests from people looking for a sublet in Syracuse. Post what you need or list a place, then connect through CuseSublets.</p>
+          <small>Identity, lease and sublet-permission checks help you see what has been reviewed.</small>
+        </div>
+        <div className="discovery-intro-actions">
+          <button className="primary" onClick={() => { if (user) { setEditing(null); setPost(true); } else onLogin(); }}><Plus size={16} /> Post what you need</button>
+          <button className="outline" onClick={() => user ? onPostListing() : onLogin()}><Home size={16} /> List your place</button>
+        </div>
+      </section>
+    ) : (
+      <section className="matches-heading"><span className="eyebrow">FOR YOUR POSTS</span><h1>Top matches</h1><p>Choose one of your posts to see fitting people or places. Every match explains why it appears.</p></section>
+    )}
     <ErrorBox message={error} />
-    {loading ? <Busy /> : mode === "recent" ? <>
+    {loading ? <Busy /> : mode === "browse" ? <>
       {user && mine.length > 0 && <section className="my-requests"><div className="section-heading"><div><span className="eyebrow">YOUR SIDE OF THE MARKETPLACE</span><h2>My requests</h2></div></div><div className="my-request-list">{mine.map((request) => <div className="my-request" key={request.id}><div><b>{request.title}</b><span>{request.status === "active" && request.endDate <= syracuseToday() ? "Expired" : request.status === "active" ? "Public" : request.status === "paused" ? "Paused" : request.status === "closed" ? "Closed" : "Removed"} · {date(request.startDate)} – {date(request.endDate)}</span></div>{request.status !== "removed" && <div><button className="outline small" onClick={() => { setEditing(request); setPost(true); }}>Edit</button>{request.status === "active" ? <button className="outline small" onClick={() => changeStatus(request, "paused")}>Pause</button> : request.endDate > syracuseToday() ? <button className="outline small" onClick={() => changeStatus(request, "active")}>Repost</button> : null}{request.status !== "closed" && <button className="text-button" onClick={() => changeStatus(request, "closed")}>Close</button>}</div>}</div>)}</div></section>}
-      <div className="discovery-list-heading"><div><span className="eyebrow">THE LATEST POSTS</span><h2>Recent activity</h2><p>{posts.length} {posts.length === 1 ? "post" : "posts"} to explore</p></div><div className="discovery-tabs" role="group" aria-label="Filter posts"><button className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")}>All posts</button><button className={filter === "apartments" ? "selected" : ""} onClick={() => setFilter("apartments")}>Apartments</button><button className={filter === "requests" ? "selected" : ""} onClick={() => setFilter("requests")}>Looking for</button></div></div>
+      <div className="discovery-list-heading"><div><span className="eyebrow">THE LATEST POSTS</span><h2>Latest posts</h2><p>{posts.length} {posts.length === 1 ? "post" : "posts"} to explore</p></div><div className="discovery-tabs" role="group" aria-label="Filter posts"><button className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")}>All posts</button><button className={filter === "apartments" ? "selected" : ""} onClick={() => setFilter("apartments")}>Apartments</button><button className={filter === "requests" ? "selected" : ""} onClick={() => setFilter("requests")}>Looking for</button></div></div>
       <div className="discovery-feed">{posts.length ? posts.map((post) => post.kind === "request" ? <RequestCard key={post.item.id} request={post.item} /> : <ApartmentCard key={post.item.id} listing={post.item} />) : <Empty title="No posts yet.">Start the conversation by posting a place or what you’re looking for.</Empty>}</div>
     </> : !user ? <Empty title="Sign in to see your matches."><button className="primary" onClick={onLogin}>Log in</button></Empty> : !source ? <Empty title="Create a post to start matching.">Post what you need or list a place. Your best fits will appear here.</Empty> : <>
       <div className="matches-toolbar"><label>Find matches for<select value={source} onChange={(event) => setSource(event.target.value)}>{mine.filter((item) => item.status === "active").map((item) => <option key={item.id} value={`request:${item.id}`}>Looking for: {item.title}</option>)}{ownListings.filter((item) => item.status === "approved").map((item) => <option key={item.id} value={`listing:${item.id}`}>Listing: {item.title}</option>)}</select></label><span><Sparkles size={16} /> Ranked by dates, budget, area and preferences</span></div>
-      {matching ? <Busy /> : <div className="discovery-feed">{matches.length ? matches.map((match) => match.listing ? <ApartmentCard key={match.listing.id} listing={match.listing} reasons={match.reasons} /> : match.request ? <RequestCard key={match.request.id} request={match.request} reasons={match.reasons} /> : null) : <Empty title="No full matches yet.">As new posts come in, matches that cover the dates and budget will appear here. You can still browse all posts in Recent.</Empty>}</div>}
+      {matching ? <Busy /> : <div className="discovery-feed">{matches.length ? matches.map((match) => match.listing ? <ApartmentCard key={match.listing.id} listing={match.listing} reasons={match.reasons} /> : match.request ? <RequestCard key={match.request.id} request={match.request} reasons={match.reasons} /> : null) : <Empty title="No full matches yet.">As new posts come in, matches that cover the dates and budget will appear here. Browse shows every post, even when it is not a full match.</Empty>}</div>}
     </>}
     {post && <PostRequest existing={editing || undefined} onClose={() => { setPost(false); setEditing(null); }} onCreated={(request) => { setMine((current) => [request, ...current.filter((item) => item.id !== request.id)]); setRequests((current) => [request, ...current.filter((item) => item.id !== request.id)]); setSource(`request:${request.id}`); notify(editing ? "Request updated." : "Your request is live."); }} />}
     {reporting && <Modal title="Report this request" onClose={() => { setReporting(null); setReportReason(""); }}><form className="report-request-form" onSubmit={async (event) => { event.preventDefault(); setContactBusy(true); try { await api(`/requests/${encodeURIComponent(reporting.id)}/report`, { reason: reportReason }); notify("Report sent to the review team."); setReporting(null); setReportReason(""); } catch (cause) { notify((cause as Error).message); } finally { setContactBusy(false); } }}><p>Tell the review team what concerns you about this post.</p><label>Reason<textarea required minLength={10} maxLength={2000} rows={4} value={reportReason} onChange={(event) => setReportReason(event.target.value)} /></label><button className="primary" disabled={contactBusy}>Send report</button></form></Modal>}
