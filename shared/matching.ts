@@ -41,3 +41,36 @@ export function matchListingToRequest(
   if (amenityMatches.length) reasons.push(`${amenityMatches.length} requested amenit${amenityMatches.length === 1 ? "y" : "ies"}`);
   return { score, reasons };
 }
+
+import { pointInAnyArea } from "./geo";
+import type { HousingSearch } from "./types";
+
+// The same housing requirements apply whichever side opens Top Matches.
+export function matchListingToSearch(
+  listing: Listing,
+  search: HousingSearch,
+  today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
+): MatchResult | null {
+  if (listing.status !== "approved" || search.status !== "active" ||
+      listing.ownerId === search.ownerId ||
+      listing.endDate <= today || search.endDate <= today ||
+      listing.startDate > search.startDate || listing.endDate < search.endDate ||
+      listing.price > search.maxBudget ||
+      (search.minBudget != null && listing.price < search.minBudget) ||
+      (search.roomType !== "Any" && listing.roomType !== search.roomType) ||
+      (search.roomType === "Entire place" && listing.roomType === "Entire place" &&
+        search.minBedrooms != null && listing.beds < search.minBedrooms) ||
+      !pointInAnyArea(listing.lat, listing.lng, search.areas)) return null;
+
+  const offered = new Set(listing.amenities.map((item) => item.trim().toLowerCase()));
+  if (search.requiredAmenities.some((item) => !offered.has(item.trim().toLowerCase()))) return null;
+  const preferred = search.preferredAmenities.filter((item) => offered.has(item.trim().toLowerCase()));
+  const reasons = ["In a chosen area", "Covers the full stay", "Within budget"];
+  if (search.roomType !== "Any") reasons.push("Room type matches");
+  if (search.roomType === "Entire place" && search.minBedrooms != null) reasons.push("Enough bedrooms");
+  if (search.requiredAmenities.length) reasons.push("Includes required conditions");
+  if (preferred.length) reasons.push(`Includes ${preferred.length} preferred condition${preferred.length === 1 ? "" : "s"}`);
+  // Preference overlap dominates price; route sorting uses stable IDs for ties.
+  const score = preferred.length * 1000 + Math.max(0, search.maxBudget - listing.price);
+  return { score, reasons };
+}

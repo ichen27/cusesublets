@@ -221,3 +221,26 @@ export interface ReviewableBooking {
   listingTitle: string;
   endDate: string;
 }
+
+import type { SearchArea } from "./geo";
+
+export interface HousingSearch {
+  id: string;
+  ownerId: string;
+  ownerName: string;
+  ownerIdentity: ReviewStatus;
+  status: "active" | "paused" | "removed";
+  startDate: string;
+  endDate: string;
+  minBudget?: number;
+  maxBudget: number;
+  minBedrooms?: number;
+  roomType: "Private room" | "Entire place" | "Any";
+  requiredAmenities: string[];
+  preferredAmenities: string[];
+  areas: SearchArea[];
+  introduction: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
