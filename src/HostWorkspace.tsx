@@ -9,6 +9,7 @@ import type {
   Booking,
 } from "../shared/types";
 import Checks from "./Checks";
+import ListingEditor from "./ListingEditor";
 import UploadCard from "./UploadCard";
 import { api, money } from "./api";
 import { Busy, Empty, ErrorBox } from "./ui";
@@ -18,13 +19,17 @@ export default function HostWorkspace({
   onPost,
   onOpen,
   onPublished,
+  embedded = false,
 }: {
+  embedded?: boolean;
   user: User;
   onSelect: (l: Listing) => void;
   onPost: () => void;
   onOpen: (id: string) => void;
   onPublished: (listing: Listing) => void;
 }) {
+  const [editing, setEditing] = useState<Listing | null>(null);
+  const closeEditor = useCallback(() => setEditing(null), []);
   const [mine, setMine] = useState<Listing[]>([]),
     [documents, setDocuments] = useState<DocumentRecord[]>([]),
     [conversations, setConversations] = useState<ConversationSummary[]>([]),
@@ -61,12 +66,13 @@ export default function HostWorkspace({
     }, 10000);
     return () => clearInterval(timer);
   }, [refresh]);
+  const Root = embedded ? "section" : "main";
   return (
-    <main className="workspace">
+    <Root className={embedded ? "activity-subleases" : "workspace"}>
       <div className="workspace-heading">
         <div>
-          <span className="eyebrow">HOST WORKSPACE</span>
-          <h1>My listings</h1>
+          <span className="eyebrow">YOUR PLACES</span>
+          <h2>My subleases</h2>
           <p>Your places, incoming conversations, and next steps.</p>
         </div>
         <button className="primary" onClick={onPost}>
@@ -128,6 +134,14 @@ export default function HostWorkspace({
                       View listing <ArrowRight size={13} />
                     </button>
                   </div>
+                </div>
+                <div className="button-row listing-owner-actions">
+                  <button className="outline small" disabled={!!user.suspended} onClick={() => setEditing(l)}>Edit sublease</button>
+                  {l.status === "approved" && <button className="outline small" disabled={publishing !== null || !!user.suspended} onClick={async () => {
+                    setPublishing(l.id); setError("");
+                    try { const result = await api<{ listing: Listing }>("/listings/" + l.id + "/pause", {}); onPublished(result.listing); await refresh(); }
+                    catch (cause) { setError((cause as Error).message); } finally { setPublishing(null); }
+                  }}>Pause listing</button>}
                 </div>
                 {l.status === "pending" && !l.reviewNote && (
                   <div className="notice">
@@ -215,6 +229,7 @@ export default function HostWorkspace({
                       </p>
                     ))}
                 </div>
+                <details className="listing-details"><summary>Checks & documents</summary>
                 <Checks
                   identity={user.identity}
                   lease={l.leaseStatus}
@@ -265,6 +280,7 @@ export default function HostWorkspace({
                       </a>
                     ))}
                 </div>
+                </details>
               </div>
             ))
           ) : (
@@ -275,6 +291,7 @@ export default function HostWorkspace({
           )}
         </section>
       )}
-    </main>
+      {editing && <ListingEditor listing={editing} onClose={closeEditor} onSaved={(listing) => { onPublished(listing); refresh(); }} />}
+    </Root>
   );
 }

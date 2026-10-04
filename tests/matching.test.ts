@@ -87,3 +87,10 @@ describe("profile search fit", () => {
     expect(matchListingToSearch({ ...locatedListing, ownerId: search.ownerId }, search, "2026-12-01")).toBeNull();
   });
 });
+
+it("always ranks a preferred condition ahead of rent savings", () => {
+  const wideBudget = { ...search, minBudget: 1, maxBudget: 20000 };
+  const preferred = matchListingToSearch({ ...locatedListing, price: 19000 }, wideBudget, "2026-12-01");
+  const cheaper = matchListingToSearch({ ...locatedListing, price: 1, amenities: ["Furnished"] }, wideBudget, "2026-12-01");
+  expect(preferred!.score).toBeGreaterThan(cheaper!.score);
+});

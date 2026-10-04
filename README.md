@@ -72,3 +72,13 @@ Source: https://github.com/ichen27/cusesublets (private), stable branch `main`. 
 Email/password signup and login are available alongside Google. Public signup grants no staff role or identity badge. Account settings support changing the password with the current password; this signs out other password sessions. Automated email verification and forgotten-password recovery are not configured. See the [authentication API](docs/API.md#email-and-password-authentication).
 
 Password runtime checks use a separate staging runtime on 8922 and persistence at `/Volumes/SamsungSSD1/tools/cusesublets/.wrangler-password-test`; apply migrations there first, start Wrangler with `APP_ENV:staging`, `APP_ORIGIN:http://localhost:8922`, `ADMIN_EMAILS:staff@example.test`, `ACCESS_TEAM_DOMAIN:example.cloudflareaccess.com`, and `ACCESS_AUD:test`, then run `python3 tests/password-runtime.py`. These tests create only isolated fixtures and verify real workerd scrypt behavior, session rotation and guards.
+
+## Browse, housing searches, and My activity
+
+Browse is the main marketplace page, with All / Places / People, side filters, and a map. People appear for areas they want to live in; selecting a person highlights their desired regions. Wide list views use three columns.
+
+My activity replaces My listings. Members can edit and pause their subleases while independently turning their one profile-linked search on or off. Search setup includes dates, a rent range, room type, optional bedrooms, required/preferred conditions, and up to five map areas. Editing or toggling preserves the same search ID and creation order.
+
+Top matches supports both roles: choose your search to find places, or choose a published listing to find people. Every match covers the full stay, price range, room type, desired area and required conditions; preferences and rent order the eligible results. Identity and demographic traits do not affect ranking.
+
+Migration 0009 preserves legacy requests and conversation/report history, chooses one canonical search per owner, and switches old active requests off until area setup is completed. See docs/deployment.md before updating any running datastore.

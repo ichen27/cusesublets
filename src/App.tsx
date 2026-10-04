@@ -40,8 +40,10 @@ import Admin from "./Admin";
 import PublicProfile from "./PublicProfile";
 import { ChecksGuide, IdentityBadge } from "./Checks";
 import ChatWorkspace, { type ChatIntent } from "./ChatWorkspace";
-import HostWorkspace from "./HostWorkspace";
-import Discovery from "./Discovery";
+import MyActivity from "./MyActivity";
+import Browse from "./Browse";
+import Matches from "./Matches";
+import { PlaceCard } from "./HousingCards";
 type View =
   | "browse"
   | "matches"
@@ -210,6 +212,8 @@ export default function App() {
       const views: Record<string, View> = {
         "#account": "account",
         "#my-listings": "host",
+        "#host": "host",
+        "#activity": "host",
         "#checks": "checks",
         "#saved": "saved",
         "#admin": "admin",
@@ -256,7 +260,7 @@ export default function App() {
           ? `#chat/${encodeURIComponent(chatId)}`
           : "#chat"
         : v === "host"
-          ? "#my-listings"
+          ? "#activity"
           : `#${v}`,
     );
     window.scrollTo({ top: 0 });
@@ -323,31 +327,11 @@ export default function App() {
           className={menu ? "main-nav open" : "main-nav"}
           aria-label="Main navigation"
         >
-          <button className={view === "browse" ? "active" : ""} onClick={() => navigate("browse")}>Browse</button>
-          <button className={view === "explore" ? "active" : ""} onClick={() => navigate("explore")}>Apartments</button>
+          <button className={view === "browse" || view === "explore" ? "active" : ""} onClick={() => navigate("browse")}>Browse</button>
           <button className={view === "matches" ? "active" : ""} onClick={() => navigate("matches")}>Top matches</button>
-          <button
-            className={"nav-saved " + (view === "saved" ? "active" : "")}
-            onClick={() => navigate("saved")}
-          >
-            Saved <span className="nav-count">{saved.length || ""}</span>
-          </button>
-          {user && (
-            <button
-              className={view === "inbox" ? "active" : ""}
-              onClick={() => navigate("inbox")}
-            >
-              Inbox
-            </button>
-          )}
-          {user && (
-            <button
-              className={view === "host" ? "active" : ""}
-              onClick={() => navigate("host")}
-            >
-              My listings
-            </button>
-          )}
+          <button className={view === "inbox" ? "active" : ""} onClick={() => navigate("inbox")}>Inbox</button>
+          <button className={"nav-saved " + (view === "saved" ? "active" : "")} onClick={() => navigate("saved")}>Saved <span className="nav-count">{saved.length || ""}</span></button>
+          <button className={view === "host" ? "active" : ""} onClick={() => navigate("host")}>My activity</button>
           {user?.role === "admin" && (
             <button
               className={view === "admin" ? "active" : ""}
@@ -394,336 +378,17 @@ export default function App() {
           </button>
         </div>
       </header>
-      {view === "browse" || view === "matches" ? (
-        <Discovery
-          mode={view}
-          listings={listings}
-          user={user}
-          onLogin={() => setLogin(true)}
-          onPostListing={() => setPost(true)}
-          onListing={setSelected}
-          onListingChat={(listing) => listingChat(listing, "message")}
-          onProfile={openProfile}
-          onChat={openChat}
-          notify={notify}
-          saved={saved}
-          onSave={save}
-        />
-      ) : view === "explore" || view === "saved" ? (
-        <>
-          <main className={"discovery catalog-" + view}>
-            {view === "explore" && <div className="catalog-heading"><span className="eyebrow">APARTMENTS IN SYRACUSE</span><h1>Apartments</h1><p>Search available sublets by location, dates and budget.</p></div>}
-            {view === "explore" && (
-            <div className="search-bar">
-              <label className="search-field">
-                <MapPin size={19} />
-                <span>
-                  <small>WHERE</small>
-                  <input
-                    aria-label="Search neighborhood"
-                    placeholder="Search a neighborhood"
-                    value={filters.query || ""}
-                    onChange={(e) =>
-                      setFilters({ ...filters, query: e.target.value })
-                    }
-                  />
-                </span>
-              </label>
-              <label className="search-field date-field">
-                <CalendarDays size={18} />
-                <span>
-                  <small>MOVE IN</small>
-                  <input
-                    aria-label="Move-in date"
-                    type="date"
-                    value={filters.startDate || ""}
-                    onChange={(e) =>
-                      setFilters({ ...filters, startDate: e.target.value })
-                    }
-                  />
-                </span>
-              </label>
-              <label className="search-field budget-field">
-                <span>
-                  <small>YOUR BUDGET</small>
-                  <select
-                    aria-label="Monthly budget"
-                    value={filters.maxPrice || ""}
-                    onChange={(e) =>
-                      setFilters({
-                        ...filters,
-                        maxPrice: Number(e.target.value) || undefined,
-                      })
-                    }
-                  >
-                    <option value="">Any monthly budget</option>
-                    <option value="700">Up to $700 / month</option>
-                    <option value="900">Up to $900 / month</option>
-                    <option value="1200">Up to $1,200 / month</option>
-                    <option value="1600">Up to $1,600 / month</option>
-                  </select>
-                </span>
-              </label>
-              <button
-                className="primary search-button"
-                onClick={() =>
-                  document
-                    .getElementById("results")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
-              >
-                <Search size={18} />
-                <span>Find my place</span>
-              </button>
-            </div>
-            )}
-            {view === "explore" && (
-            <div className="filter-row">
-              <div className="chips">
-                <button
-                  className={!filters.roomType ? "chip selected" : "chip"}
-                  onClick={() =>
-                    setFilters({ ...filters, roomType: undefined })
-                  }
-                >
-                  <Home size={14} /> All places
-                </button>
-                <button
-                  className={
-                    filters.roomType === "Private room"
-                      ? "chip selected"
-                      : "chip"
-                  }
-                  onClick={() =>
-                    setFilters({
-                      ...filters,
-                      roomType:
-                        filters.roomType === "Private room"
-                          ? ""
-                          : "Private room",
-                    })
-                  }
-                >
-                  Private room
-                </button>
-                <button
-                  className={
-                    filters.roomType === "Entire place"
-                      ? "chip selected"
-                      : "chip"
-                  }
-                  onClick={() =>
-                    setFilters({
-                      ...filters,
-                      roomType:
-                        filters.roomType === "Entire place"
-                          ? ""
-                          : "Entire place",
-                    })
-                  }
-                >
-                  Entire place
-                </button>
-                <span className="chip-divider" />
-                <button
-                  className={filters.furnished ? "chip selected" : "chip"}
-                  onClick={() =>
-                    setFilters({ ...filters, furnished: !filters.furnished })
-                  }
-                >
-                  Furnished
-                </button>
-                <button
-                  className={filters.verified ? "chip selected" : "chip"}
-                  onClick={() =>
-                    setFilters({ ...filters, verified: !filters.verified })
-                  }
-                >
-                  <ShieldCheck size={14} /> Lease reviewed
-                </button>
-                <button
-                  className={filters.tour ? "chip selected" : "chip"}
-                  onClick={() =>
-                    setFilters({ ...filters, tour: !filters.tour })
-                  }
-                >
-                  3D tour
-                </button>
-              </div>
-              <button
-                className="chip more-filters"
-                onClick={() => setFilterOpen(true)}
-              >
-                <SlidersHorizontal size={15} /> Filters
-              </button>
-            </div>
-            )}
-            <div className="results-heading" id="results">
-              <div>
-                {view === "saved" ? <h1>Saved places</h1> : <h2>Available apartments</h2>}
-                <p>
-                  {items.length}{" "}
-                  {view === "saved"
-                    ? items.length === 1 ? "saved apartment" : "saved apartments"
-                    : items.length === 1
-                      ? "place in this map area"
-                      : "places in this map area"}{" "}
-                  {view === "explore" && <><span>·</span>{" "}{demo ? "Sample listings for the preview" : "Check verification before you commit"}</>}
-                </p>
-              </div>
-              <label className="sort">
-                Sort by{" "}
-                <select
-                  aria-label="Sort listings"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                >
-                  <option value="recommended">Recommended</option>
-                  <option value="price">Price: low to high</option>
-                  <option value="walk">Closest to campus</option>
-                </select>
-                <ChevronDown size={13} />
-              </label>
-            </div>
-            {view === "explore" && (
-            <button
-              className="mobile-map-switch primary"
-              onClick={() => setMobileMap(!mobileMap)}
-            >
-              {mobileMap ? <LayoutGrid size={16} /> : <Map size={16} />}{" "}
-              {mobileMap ? "Show listings" : "Explore map"}
-            </button>
-            )}
-            <ErrorBox message={error} />
-            {loading ? (
-              <Busy />
-            ) : (
-              <div
-                className={view === "saved" ? "results-layout saved-layout" : "results-layout " + (mobileMap ? "show-map" : "")}
-              >
-                <div className="listing-grid">
-                  {items.length ? (
-                    items.map((l) => (
-                      <article className="listing-card" key={l.id}>
-                        <div
-                          className="card-photo"
-                          onClick={() => setSelected(l)}
-                        >
-                          <img
-                            src={l.images[0] || "/photo-pending.svg"}
-                            alt={l.title}
-                            loading="lazy"
-                          />
-                          <div className="card-labels">
-                            {l.leaseStatus === "verified" && (
-                              <Badge>Lease reviewed</Badge>
-                            )}
-                            {l.matterportUrl && (
-                              <span className="tour-label">3D TOUR</span>
-                            )}
-                          </div>
-                          <button
-                            className={
-                              "save-button " +
-                              (saved.includes(l.id) ? "saved" : "")
-                            }
-                            aria-label={
-                              saved.includes(l.id)
-                                ? `Unsave ${l.title}`
-                                : `Save ${l.title}`
-                            }
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              save(l.id);
-                            }}
-                          >
-                            <Heart
-                              size={18}
-                              fill={
-                                saved.includes(l.id) ? "currentColor" : "none"
-                              }
-                            />
-                          </button>
-                          <div className="photo-bottom">
-                            <span>{l.roomType}</span>
-                            <span className="photo-dots">
-                              <i />
-                              <i />
-                              <i />
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          className="card-body"
-                          onClick={() => setSelected(l)}
-                        >
-                          <div className="card-price">
-                            <span>
-                              {money(l.price)}
-                              <small> / month</small>
-                            </span>
-                            <span className="walk">
-                              <Footprints size={12} />
-                              {l.walkMinutes} min to SU
-                            </span>
-                          </div>
-                          <h3>{l.title}</h3>
-                          {l.hostIdentity === "verified" && (
-                            <IdentityBadge status={l.hostIdentity} />
-                          )}
-                          <p>
-                            <MapPin size={12} />
-                            {l.neighborhood}, Syracuse
-                          </p>
-                          <div className="card-meta">
-                            <span>
-                              <BedDouble size={13} />
-                              {l.beds} bed · {l.baths} bath
-                            </span>
-                            <span>
-                              <CalendarDays size={13} />
-                              {date(l.startDate)} – {date(l.endDate)}
-                            </span>
-                          </div>
-                        </button>
-                      </article>
-                    ))
-                  ) : (
-                    <Empty title={view === "saved" ? "No saved places yet." : "No places match just yet."}>
-                      {view === "saved" ? (
-                        <button className="text-button" onClick={() => navigate("browse")}>Browse posts <ArrowRight size={14} /></button>
-                      ) : (
-                        <>Zoom out, move the map, or adjust your budget and dates.{" "}
-                          <button className="text-button" onClick={() => setFilters({})}>Clear filters</button>
-                        </>
-                      )}
-                    </Empty>
-                  )}
-                </div>
-                {view === "explore" && (
-                <aside className="map-panel">
-                  <MapView
-                    listings={candidates}
-                    onBoundsChange={setMapBounds}
-                    selected={selected?.id || null}
-                    onSelect={setSelected}
-                  />
-                  <div className="map-caption">
-                    <span className="orange-dot" /> AROUND SYRACUSE UNIVERSITY
-                  </div>
-                  <div className="map-note">
-                    <ShieldCheck size={15} />
-                    <span>
-                      Explore sublets by location.
-                      <small>Map pins show approximate locations.</small>
-                    </span>
-                  </div>
-                </aside>
-                )}
-              </div>
-            )}
-          </main>
-        </>
+      {view === "browse" || view === "explore" ? (
+        <Browse listings={listings} user={user} initialMode={view === "explore" ? "places" : "all"}
+          saved={saved} onSave={save} onListing={setSelected} onProfile={openProfile} onChat={openChat}
+          onLogin={() => setLogin(true)} onActivity={() => navigate("host")} notify={notify} />
+      ) : view === "matches" ? (
+        <Matches user={user} saved={saved} onSave={save} onListing={setSelected} onProfile={openProfile}
+          onChat={openChat} onLogin={() => setLogin(true)} onActivity={() => navigate("host")} notify={notify} />
+      ) : view === "saved" ? (
+        <main className="browse-page saved-page"><div className="browse-heading"><div><span className="eyebrow">YOUR SHORTLIST</span><h1>Saved places</h1><p>Keep the places you want to come back to.</p></div></div>
+          <div className="housing-grid">{listings.filter((l) => saved.includes(l.id)).length ? listings.filter((l) => saved.includes(l.id)).map((l) => <PlaceCard key={l.id} listing={l} saved onSave={() => save(l.id)} onOpen={() => setSelected(l)} />) : <Empty title="No saved places yet."><button className="text-button" onClick={() => navigate("browse")}>Browse places <ArrowRight size={14} /></button></Empty>}</div>
+        </main>
       ) : view === "checks" ? (
         <ChecksGuide />
       ) : view === "profile" ? (
@@ -749,16 +414,16 @@ export default function App() {
           onSelect={setSelected}
         />
       ) : user && view === "host" ? (
-        <HostWorkspace
+        <MyActivity
           key={user.id}
           user={user}
-          onSelect={setSelected}
+          onListing={setSelected}
           onPost={() => setPost(true)}
-          onOpen={openChat}
+          onChat={openChat}
           onPublished={(listing) =>
             setListings((current) => [
               ...current.filter((item) => item.id !== listing.id),
-              listing,
+              ...(listing.status === "approved" ? [listing] : []),
             ])
           }
         />
@@ -793,6 +458,13 @@ export default function App() {
           )}
         </main>
       )}
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        <button className={view === "browse" || view === "explore" ? "active" : ""} onClick={() => navigate("browse")}><Search size={19} />Browse</button>
+        <button className={view === "matches" ? "active" : ""} onClick={() => navigate("matches")}><Heart size={19} />Matches</button>
+        <button className={view === "inbox" ? "active" : ""} onClick={() => navigate("inbox")}><MessageCircle size={19} />Inbox</button>
+        <button className={view === "saved" ? "active" : ""} onClick={() => navigate("saved")}><LayoutGrid size={19} />Saved</button>
+        <button className={view === "host" ? "active" : ""} onClick={() => navigate("host")}><Home size={19} />My activity</button>
+      </nav>
       <footer>
         <a
           className="brand footer-brand"

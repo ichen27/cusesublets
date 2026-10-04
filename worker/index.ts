@@ -128,12 +128,13 @@ function seekerRequest(row: Row): InternalRequest {
   const { data, ...rest } = row;
   return { ...JSON.parse(data as string), ...rest, ownerSuspended: !!rest.ownerSuspended } as InternalRequest;
 }
-function requestView(r: SeekerRequest): SeekerRequest {
+function requestView(r: InternalRequest): SeekerRequest {
+  const current = r.profileSearch === 1 ? searchView(r) : null;
   return {
     id: r.id, ownerId: r.ownerId, ownerName: r.ownerName,
-    ownerIdentity: r.ownerIdentity, title: r.title, description: r.description,
-    neighborhood: r.neighborhood, maxBudget: r.maxBudget, roomType: r.roomType,
-    startDate: r.startDate, endDate: r.endDate, amenities: r.amenities,
+    ownerIdentity: r.ownerIdentity, title: r.title || "Looking for a sublease", description: current?.introduction ?? r.description,
+    neighborhood: current ? current.areas.map((a) => a.label).join(", ") : r.neighborhood, maxBudget: r.maxBudget, roomType: r.roomType,
+    startDate: r.startDate, endDate: r.endDate, amenities: current ? [...new Set([...current.requiredAmenities, ...current.preferredAmenities])] : r.amenities,
     status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
@@ -971,10 +972,11 @@ async function route(req: Request, e: Env) {
       listings: (
         await listings(
           e,
-          "WHERE l.ownerId=? AND l.status='approved'",
-          target.id,
+          "WHERE l.ownerId=? AND l.status='approved' AND json_extract(l.data,'$.endDate')>?",
+          target.id, syracuseDate(),
         )
       ).map((l) => listingView(l)),
+      search: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? LIMIT 1", target.id, syracuseDate())).map(searchView)[0] || null,
       requests: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).map(requestView),
       reviews: await all(
         e,
@@ -1299,7 +1301,8 @@ async function route(req: Request, e: Env) {
     const current = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
     requireThat(!current || current.status !== "removed", 409, "This search was removed by staff");
     if (current) {
-      await stmt(e, "UPDATE seeker_requests SET data=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1", JSON.stringify(data), now(), current.id, u.id).run();
+      const result = await stmt(e, "UPDATE seeker_requests SET data=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1 AND status<>'removed'", JSON.stringify(data), now(), current.id, u.id).run();
+      requireThat(result.meta.changes === 1, 409, "This search changed; refresh before editing");
     } else {
       const key = id(), at = now();
       await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt,profileSearch) VALUES(?,?,'paused',?,?,?,1)", key, u.id, JSON.stringify(data), at, at).run();
@@ -1315,7 +1318,8 @@ async function route(req: Request, e: Env) {
     requireThat(current.status !== "removed", 409, "This search was removed by staff");
     requireThat(!u.suspended, 403, "Suspended accounts cannot publish a search");
     if (b.status === "active") searchData(current as unknown as Row);
-    await stmt(e, "UPDATE seeker_requests SET status=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1", b.status, now(), current.id, u.id).run();
+    const result = await stmt(e, "UPDATE seeker_requests SET status=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1 AND status<>'removed' AND updatedAt=?", b.status, now(), current.id, u.id, current.updatedAt).run();
+    requireThat(result.meta.changes === 1, 409, "This search changed; refresh before changing visibility");
     return json({ search: searchView((await requests(e, "WHERE r.id=?", current.id))[0]) });
   }
   if (p === "/api/requests/mine" && m === "GET")
@@ -1411,6 +1415,40 @@ async function route(req: Request, e: Env) {
       now(),
     ).run();
     return json({ listing: await getListing(e, key) }, 201);
+  }
+
+  if (listingMatch && m === "POST") {
+    const l = await getListing(e, listingMatch[1]);
+    requireThat(l.ownerId === u.id, 403, "Only the listing owner can edit it");
+    const b = await body(req);
+    const raw = await one<{ data: string }>(e, "SELECT data FROM listings WHERE id=?", l.id);
+    const original = JSON.parse(raw!.data);
+    const interval = dates(b.startDate ?? l.startDate, b.endDate ?? l.endDate);
+    requireThat(interval.endDate > syracuseDate(), 400, "Availability must end in the future");
+    const amenities = b.amenities ?? l.amenities;
+    requireThat(Array.isArray(amenities) && amenities.length <= 20, 400, "Use up to 20 amenities");
+    const data = { ...original,
+      title: text(b.title ?? l.title, "Title", 100),
+      description: text(b.description ?? l.description, "Description", 4000, 20),
+      price: number(b.price ?? l.price, "Monthly rent", 1, 20000),
+      ...interval, amenities: amenities.map((a) => text(a, "Amenity", 50)),
+    };
+    await e.DB.batch([
+      stmt(e, "UPDATE listings SET data=? WHERE id=? AND ownerId=?", JSON.stringify(data), l.id, u.id),
+      audit(e, u, "listing.edit", l.id, "Owner edited public description, price, availability or amenities"),
+    ]);
+    return json({ listing: listingView(await getListing(e, l.id), u) });
+  }
+  const pauseListing = p.match(/^\/api\/listings\/([^/]+)\/pause$/);
+  if (pauseListing && m === "POST") {
+    const l = await getListing(e, pauseListing[1]);
+    requireThat(l.ownerId === u.id, 403, "Only the listing owner can pause it");
+    requireThat(l.status === "approved", 409, "Only published listings can be paused");
+    await e.DB.batch([
+      stmt(e, "UPDATE listings SET status='pending',reviewNote=NULL WHERE id=? AND ownerId=? AND status='approved'", l.id, u.id),
+      audit(e, u, "listing.pause", l.id, "Owner unpublished listing; checks retained"),
+    ]);
+    return json({ listing: listingView(await getListing(e, l.id), u) });
   }
 
   const publish = p.match(/^\/api\/listings\/([^/]+)\/publish$/);

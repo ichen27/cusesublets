@@ -48,3 +48,24 @@ export function listingsInBounds(
       l.lng <= bounds.east,
   );
 }
+
+import type { HousingSearch } from "../shared/types";
+import { areasIntersectBounds } from "../shared/geo";
+export function searchesInBounds(searches: HousingSearch[], bounds: MapBounds | null) {
+  const seen = new Set<string>();
+  return searches.filter((search) => {
+    if (seen.has(search.ownerId) || (bounds && !areasIntersectBounds(search.areas, bounds))) return false;
+    seen.add(search.ownerId);
+    return true;
+  });
+}
+export function filterHousingSearches(searches: HousingSearch[], f: Filters) {
+  if (f.startDate && f.endDate && f.startDate >= f.endDate) return [];
+  return searches.filter((s) =>
+    (!f.query || [s.ownerName, s.introduction, ...s.areas.map((a) => a.label)].join(" ").toLowerCase().includes(f.query.toLowerCase())) &&
+    (!f.maxPrice || (s.minBudget || 0) <= f.maxPrice) &&
+    (!f.roomType || s.roomType === "Any" || s.roomType === f.roomType) &&
+    (!f.startDate || s.endDate > f.startDate) &&
+    (!f.endDate || s.startDate < f.endDate) &&
+    (!f.furnished || [...s.requiredAmenities, ...s.preferredAmenities].includes("Furnished")));
+}

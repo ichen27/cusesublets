@@ -97,3 +97,15 @@ describe("visible map results", () => {
     ).toHaveLength(3);
   });
 });
+
+import { searchesInBounds } from "../src/search";
+import type { HousingSearch } from "../shared/types";
+it("filters people by area edges and includes an owner once", () => {
+  const person = { id: "a", ownerId: "person", areas: [{ id: "area", label: "Area", points: [
+    { lat: 43.02, lng: -76.15 }, { lat: 43.02, lng: -76.11 },
+    { lat: 43.06, lng: -76.11 }, { lat: 43.06, lng: -76.15 },
+  ] }] } as HousingSearch;
+  const bounds = { south: 43.03, north: 43.05, west: -76.17, east: -76.09 };
+  expect(searchesInBounds([person, { ...person, id: "duplicate" }], bounds)).toEqual([person]);
+  expect(searchesInBounds([person], { ...bounds, south: 43.08, north: 43.1 })).toEqual([]);
+});

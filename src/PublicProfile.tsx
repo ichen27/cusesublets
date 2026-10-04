@@ -5,7 +5,7 @@ import type {
   ProfileReview,
   ReviewableBooking,
   Listing,
-  SeekerRequest,
+  HousingSearch,
   User,
 } from "../shared/types";
 import { api, money, date } from "./api";
@@ -14,7 +14,7 @@ import Checks, { IdentityBadge } from "./Checks";
 type Data = {
   profile: Profile;
   listings: Listing[];
-  requests: SeekerRequest[];
+  search: HousingSearch | null;
   reviews: ProfileReview[];
   reviewableBookings: ReviewableBooking[];
 };
@@ -85,6 +85,8 @@ export default function PublicProfile({
           <h1>Meet {p.name}.</h1>
           <div className="profile-badges">
             <IdentityBadge status={p.identity} />
+            {data.listings.length > 0 && <span className="status approved">Offering a place</span>}
+            {data.search && <span className="status approved">Looking for a place</span>}
             {average && (
               <span>
                 <Star size={15} /> {average} · {data.reviews.length} review
@@ -167,7 +169,8 @@ export default function PublicProfile({
               </Empty>
             )}
           </section>
-          {data.requests.length > 0 && <section className="profile-listings"><div className="section-heading"><h2>{p.name.split(" ")[0]} is looking for</h2><span>{data.requests.length} {data.requests.length === 1 ? "request" : "requests"}</span></div>{data.requests.map((request) => <article className="profile-request" key={request.id}><span className="eyebrow">LOOKING FOR A SUBLET</span><h3>{request.title}</h3><p>{request.description}</p><small>{request.neighborhood || "Flexible on area"} · Up to {money(request.maxBudget)} / month · {date(request.startDate)} – {date(request.endDate)}</small></article>)}</section>}
+          {data.search && <section className="profile-listings"><div className="section-heading"><h2>{p.name.split(" ")[0]} is looking for a place</h2></div><article className="profile-request"><span className="eyebrow">ACTIVE HOUSING SEARCH</span><h3>Up to {money(data.search.maxBudget)} / month</h3><p>{data.search.introduction}</p><small>{data.search.areas.map((area) => area.label).join(" · ")} · {data.search.roomType} · {date(data.search.startDate)} – {date(data.search.endDate)}</small><div className="post-tags">{data.search.requiredAmenities.map((condition) => <span key={condition}>{condition}</span>)}</div></article></section>}
+
           <section className="panel">
             <div className="section-heading">
               <h2>Reviews from completed leases</h2>

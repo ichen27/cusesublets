@@ -138,7 +138,7 @@ export default function Workspace({
               })}
             </div>
             <button className="text-button" onClick={onManage}>
-              Manage my listings <ArrowUpRight size={14} />
+              Manage my activity <ArrowUpRight size={14} />
             </button>
           </aside>
           <section className="profile-editor-main">

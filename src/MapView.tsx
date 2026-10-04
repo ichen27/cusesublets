@@ -2,13 +2,18 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import type { Listing } from "../shared/types";
 import type { MapBounds } from "./search";
+import type { SearchArea } from "../shared/geo";
 import { money } from "./api";
 export default function MapView({
   listings,
   selected,
   onSelect,
   onBoundsChange,
+  areas = [],
+  areaOpacity = 0.2,
 }: {
+  areas?: SearchArea[];
+  areaOpacity?: number;
   listings: Listing[];
   selected: string | null;
   onSelect: (l: Listing) => void;
@@ -87,6 +92,11 @@ export default function MapView({
     const g = layer.current;
     if (!g) return;
     g.clearLayers();
+    areas.forEach((area) => {
+      const tooltip = document.createElement("span");
+      tooltip.textContent = area.label;
+      L.polygon(area.points.map((p) => [p.lat, p.lng] as [number, number]), { color: "#b65b35", fillColor: "#edb187", fillOpacity: areaOpacity, weight: 2 }).bindTooltip(tooltip).addTo(g);
+    });
     listings.forEach((l) => {
       L.marker([l.lat, l.lng], {
         title: l.title,
@@ -102,12 +112,12 @@ export default function MapView({
         .on("click", () => select.current(l))
         .addTo(g);
     });
-  }, [listings, selected]);
+  }, [listings, selected, areas, areaOpacity]);
   return (
     <div
       className="map-canvas"
       ref={el}
-      aria-label="Interactive map of Syracuse sublets"
+      aria-label="Interactive map of Syracuse sublets and desired areas"
     />
   );
 }
