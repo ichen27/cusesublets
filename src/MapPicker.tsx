@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import { SERVICE_BOUNDS } from "../shared/geo";
 export default function MapPicker({
   onPick,
 }: {
@@ -26,7 +27,7 @@ export default function MapPicker({
     let marker: L.Marker | undefined;
     m.on("click", (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
-      if (lat < 42.9 || lat > 43.15 || lng < -76.3 || lng > -75.95) return;
+      if (lat < SERVICE_BOUNDS.south || lat > SERVICE_BOUNDS.north || lng < SERVICE_BOUNDS.west || lng > SERVICE_BOUNDS.east) return;
       if (marker) marker.setLatLng(e.latlng);
       else
         marker = L.marker(e.latlng, {
