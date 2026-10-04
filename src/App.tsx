@@ -1,6 +1,6 @@
 import BrandMark from "./BrandMark";
 import { PasswordLogin } from "./PasswordAuth";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -22,8 +22,10 @@ import {
   Menu,
   X,
   LogOut,
+  UserRound,
+  Users,
 } from "lucide-react";
-import type { Listing, User } from "../shared/types";
+import type { Listing, User, HousingSearch } from "../shared/types";
 import { api, money, date } from "./api";
 import {
   filterListings,
@@ -44,6 +46,12 @@ import MyActivity from "./MyActivity";
 import Browse from "./Browse";
 import Matches from "./Matches";
 import { PlaceCard } from "./HousingCards";
+import Welcome from "./Welcome";
+import SearchEditor from "./SearchEditor";
+import DraftList from "./DraftList";
+import SavedPosts from "./SavedPosts";
+import CommunityPost, { PersonAvatar } from "./CommunityPost";
+import ContactNotice, { needsContactNotice } from "./ContactNotice";
 type View =
   | "browse"
   | "matches"
@@ -98,12 +106,99 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false);
+  const [welcome, setWelcome] = useState(false),
+    [pendingRole, setPendingRole] = useState<"find" | "offer" | null>(null);
+  const [editingSearch, setEditingSearch] = useState<{
+      search: HousingSearch | null;
+    } | null>(null),
+    [draftId, setDraftId] = useState<string | undefined>();
+  const [contactNotice, setContactNotice] = useState<{
+    listing: Listing;
+    intent: ChatIntent;
+  } | null>(null);
+  const browseScroll = useRef(0);
+  const [pendingContact, setPendingContact] = useState<{
+      listing: Listing;
+      intent: ChatIntent;
+    } | null>(null),
+    [pendingSave, setPendingSave] = useState<string | null>(null),
+    [pendingView, setPendingView] = useState<View | null>(null);
+  const detailReturnHash = useRef("#browse");
+  function showListing(listing: Listing) {
+    detailReturnHash.current = location.hash || "#browse";
+    setSelected(listing);
+    history.replaceState(
+      null,
+      "",
+      "#listing/" + encodeURIComponent(listing.id),
+    );
+  }
+  const [contactBusy, setContactBusy] = useState(false),
+    [contactError, setContactError] = useState("");
+  const [selectedSearch, setSelectedSearch] = useState<HousingSearch | null>(
+    null,
+  );
+  useEffect(() => {
+    setPost(false);
+    setEditingSearch(null);
+    setContactNotice(null);
+    setContactError("");
+  }, [user?.id]);
+  async function beginSearch() {
+    if (!user) {
+      setPendingRole("find");
+      setLogin(true);
+      return;
+    }
+    try {
+      const result = await api<{ search: HousingSearch | null }>("/my-search");
+      setEditingSearch(result);
+    } catch (e) {
+      setToast((e as Error).message);
+    }
+  }
+  function beginPost(id?: string) {
+    if (!user) {
+      setPendingRole("offer");
+      setLogin(true);
+      return;
+    }
+    setDraftId(id);
+    setPost(true);
+  }
+  function finishWelcome() {
+    localStorage.setItem("cusesublets-community-welcome", "seen");
+    setWelcome(false);
+  }
+  function chooseRole(role: "find" | "offer") {
+    finishWelcome();
+    if (role === "find") void beginSearch();
+    else beginPost();
+  }
+  useEffect(() => {
+    if (loading) return;
+    if (
+      !user &&
+      !location.hash &&
+      !localStorage.getItem("cusesublets-community-welcome")
+    )
+      setWelcome(true);
+  }, [loading, user?.id]);
+  useEffect(() => {
+    if (!user || !pendingRole) return;
+    const role = pendingRole;
+    setPendingRole(null);
+    if (role === "find") void beginSearch();
+    else beginPost();
+  }, [user?.id, pendingRole]);
   const [profileId, setProfileId] = useState(
     location.hash.startsWith("#profile/")
       ? routeId(location.hash.slice(9))
       : "",
   );
   function openProfile(id: string) {
+    if (view === "browse" || view === "explore")
+      browseScroll.current = window.scrollY;
     setSelected(null);
     setProfileId(id);
     setView("profile");
@@ -115,6 +210,8 @@ export default function App() {
   );
   const [chatIntent, setChatIntent] = useState<ChatIntent>("message");
   const openChat = (id: string) => {
+    if (view === "browse" || view === "explore")
+      browseScroll.current = window.scrollY;
     setSelected(null);
     setChatId(id);
     setChatIntent("message");
@@ -123,6 +220,22 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
   async function listingChat(listing: Listing, intent: ChatIntent) {
+    if (!user) {
+      setPendingContact({ listing, intent });
+      setLogin(true);
+      return;
+    }
+    if (needsContactNotice({ listing })) {
+      setSelected(null);
+      setContactError("");
+      setContactNotice({ listing, intent });
+      return;
+    }
+    await createListingChat(listing, intent);
+  }
+  async function createListingChat(listing: Listing, intent: ChatIntent) {
+    setContactBusy(true);
+    setContactError("");
     try {
       const result = await api<{ conversation: { id: string } }>(
         "/conversations",
@@ -130,22 +243,15 @@ export default function App() {
       );
       openChat(result.conversation.id);
       setChatIntent(intent);
+      setContactNotice(null);
     } catch (e) {
+      setContactError((e as Error).message);
       setToast((e as Error).message);
+    } finally {
+      setContactBusy(false);
     }
   }
-  const [saved, setSaved] = useState<string[]>(() => {
-    try {
-      const stored = JSON.parse(
-        localStorage.getItem("cusesublets-saved") || "[]",
-      );
-      return Array.isArray(stored)
-        ? stored.filter((v: unknown) => typeof v === "string")
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const [saved, setSaved] = useState<string[]>([]);
   const refresh = useCallback(async () => {
     try {
       const [l, s] = await Promise.all([
@@ -174,10 +280,15 @@ export default function App() {
   }, [refresh]);
   useEffect(() => {
     if (view !== "browse" && view !== "matches") return;
-    const timer = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 30000);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, 30000);
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
-    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [view, refresh]);
   useEffect(() => {
     let active = true;
@@ -185,6 +296,24 @@ export default function App() {
     const openLinkedListing = () => {
       const current = ++request;
       const hash = location.hash;
+      setSelectedSearch(null);
+      if (hash.startsWith("#search/")) {
+        const key = routeId(hash.slice(8));
+        api<{ searches: HousingSearch[] }>("/searches")
+          .then((result) => {
+            if (!active || current !== request) return;
+            const target = result.searches.find((x) => x.id === key);
+            if (target) {
+              setSelectedSearch(target);
+              setView("browse");
+            } else setToast("This search is currently unavailable.");
+          })
+          .catch((e) => {
+            if (active && current === request) setToast(e.message);
+          });
+        return;
+      }
+
       if (hash.startsWith("#listing/")) {
         api<{ listing: Listing }>(
           `/listings/${encodeURIComponent(routeId(hash.slice(9)))}`,
@@ -214,6 +343,7 @@ export default function App() {
         "#my-listings": "host",
         "#host": "host",
         "#activity": "host",
+        "#you": "host",
         "#checks": "checks",
         "#saved": "saved",
         "#admin": "admin",
@@ -240,14 +370,66 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
   useEffect(() => {
-    localStorage.setItem("cusesublets-saved", JSON.stringify(saved));
-  }, [saved]);
+    let current = true;
+    async function loadSaves() {
+      if (!user) {
+        setSaved([]);
+        return;
+      }
+      try {
+        const ids: string[] = [];
+        let cursor: string | null = null;
+        do {
+          const result: {
+            items: { targetType: string; targetId: string }[];
+            nextCursor: string | null;
+          } = await api(
+            "/social/saved" +
+              (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""),
+          );
+          ids.push(
+            ...result.items
+              .filter((x) => x.targetType === "listing")
+              .map((x) => x.targetId),
+          );
+          cursor = result.nextCursor;
+        } while (cursor);
+        if (current) setSaved(ids);
+      } catch (e) {
+        if (current) setToast((e as Error).message);
+      }
+    }
+    void loadSaves();
+    const reload = () => void loadSaves();
+    window.addEventListener("social-saved-changed", reload);
+    return () => {
+      current = false;
+      window.removeEventListener("social-saved-changed", reload);
+    };
+  }, [user?.id]);
   const notify = (s: string) => setToast(s);
-  const save = (id: string) =>
-    setSaved((s) => (s.includes(id) ? s.filter((v) => v !== id) : [...s, id]));
+  const save = async (id: string) => {
+    if (!user) {
+      setPendingSave(id);
+      setLogin(true);
+      return;
+    }
+    try {
+      await api("/social/listing/" + encodeURIComponent(id) + "/save", {
+        saved: !saved.includes(id),
+      });
+      window.dispatchEvent(new Event("social-saved-changed"));
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  };
   const navigate = (v: View) => {
+    if (view === "browse" || view === "explore")
+      browseScroll.current = window.scrollY;
+    setWelcome(false);
     setMenu(false);
-    if (["inbox", "account", "admin", "host"].includes(v) && !user) {
+    if (["inbox", "account", "admin", "host", "saved"].includes(v) && !user) {
+      setPendingView(v);
       setLogin(true);
       return;
     }
@@ -260,15 +442,40 @@ export default function App() {
           ? `#chat/${encodeURIComponent(chatId)}`
           : "#chat"
         : v === "host"
-          ? "#activity"
+          ? "#you"
           : `#${v}`,
     );
-    window.scrollTo({ top: 0 });
+    requestAnimationFrame(() =>
+      window.scrollTo({ top: v === "browse" ? browseScroll.current : 0 }),
+    );
   };
+  useEffect(() => {
+    if (!user) return;
+    if (pendingContact) {
+      const target = pendingContact;
+      setPendingContact(null);
+      void listingChat(target.listing, target.intent);
+    }
+    if (pendingSave) {
+      const target = pendingSave;
+      setPendingSave(null);
+      void api("/social/listing/" + encodeURIComponent(target) + "/save", {
+        saved: true,
+      })
+        .then(() => window.dispatchEvent(new Event("social-saved-changed")))
+        .catch((e) => setToast(e.message));
+    }
+    if (pendingView) {
+      const target = pendingView;
+      setPendingView(null);
+      navigate(target);
+    }
+  }, [user?.id]);
   const candidates = useMemo(() => {
-    const items = view === "saved"
-      ? listings.filter((l) => saved.includes(l.id))
-      : filterListings(listings, filters);
+    const items =
+      view === "saved"
+        ? listings.filter((l) => saved.includes(l.id))
+        : filterListings(listings, filters);
     return sort === "price"
       ? items.sort((a, b) => a.price - b.price)
       : sort === "walk"
@@ -276,7 +483,8 @@ export default function App() {
         : items;
   }, [listings, saved, view, filters, sort]);
   const items = useMemo(
-    () => view === "saved" ? candidates : listingsInBounds(candidates, mapBounds),
+    () =>
+      view === "saved" ? candidates : listingsInBounds(candidates, mapBounds),
     [candidates, mapBounds, view],
   );
   async function signIn(role: string) {
@@ -299,7 +507,11 @@ export default function App() {
       setBusy(false);
     }
   }
-  const closeDetail = useCallback(() => setSelected(null), []),
+  const closeDetail = useCallback(() => {
+      setSelected(null);
+      if (location.hash.startsWith("#listing/"))
+        history.replaceState(null, "", detailReturnHash.current);
+    }, []),
     closeLogin = useCallback(() => setLogin(false), []),
     closePost = useCallback(() => setPost(false), []),
     closeFilters = useCallback(() => setFilterOpen(false), []);
@@ -327,33 +539,45 @@ export default function App() {
           className={menu ? "main-nav open" : "main-nav"}
           aria-label="Main navigation"
         >
-          <button className={view === "browse" || view === "explore" ? "active" : ""} onClick={() => navigate("browse")}>Browse</button>
-          <button className={view === "matches" ? "active" : ""} onClick={() => navigate("matches")}>Top matches</button>
-          <button className={view === "inbox" ? "active" : ""} onClick={() => navigate("inbox")}>Inbox</button>
-          <button className={"nav-saved " + (view === "saved" ? "active" : "")} onClick={() => navigate("saved")}>Saved <span className="nav-count">{saved.length || ""}</span></button>
-          <button className={view === "host" ? "active" : ""} onClick={() => navigate("host")}>My activity</button>
-          {user?.role === "admin" && (
-            <button
-              className={view === "admin" ? "active" : ""}
-              onClick={() => navigate("admin")}
-            >
-              Admin
-            </button>
-          )}
+          <button
+            className={view === "browse" || view === "explore" ? "active" : ""}
+            onClick={() => navigate("browse")}
+          >
+            Browse
+          </button>
+          <button
+            className={view === "matches" ? "active" : ""}
+            onClick={() => navigate("matches")}
+          >
+            Matches
+          </button>
+          <button
+            className={view === "inbox" ? "active" : ""}
+            onClick={() => navigate("inbox")}
+          >
+            Inbox
+          </button>
+          <button
+            className={
+              ["host", "account", "saved", "admin"].includes(view)
+                ? "active"
+                : ""
+            }
+            onClick={() => navigate("host")}
+          >
+            You
+          </button>
         </nav>
         <div className="header-actions">
-          <button
-            className="outline small"
-            onClick={() => (user ? setPost(true) : setLogin(true))}
-          >
-            <Plus size={15} /> List your place
+          <button className="outline small" onClick={() => beginPost()}>
+            <Plus size={15} /> Post a place
           </button>
           {user ? (
             <button
               className="avatar"
               title="Your account"
               aria-label="Your account"
-              onClick={() => navigate("account")}
+              onClick={() => navigate("host")}
             >
               {user.name
                 .split(" ")
@@ -378,17 +602,66 @@ export default function App() {
           </button>
         </div>
       </header>
-      {view === "browse" || view === "explore" ? (
-        <Browse listings={listings} user={user} initialMode={view === "explore" ? "places" : "all"}
-          saved={saved} onSave={save} onListing={setSelected} onProfile={openProfile} onChat={openChat}
-          onLogin={() => setLogin(true)} onActivity={() => navigate("host")} notify={notify} />
-      ) : view === "matches" ? (
-        <Matches user={user} saved={saved} onSave={save} onListing={setSelected} onProfile={openProfile}
-          onChat={openChat} onLogin={() => setLogin(true)} onActivity={() => navigate("host")} notify={notify} />
+      {welcome ? (
+        <Welcome onChoose={chooseRole} onSkip={finishWelcome} />
+      ) : null}
+      <div hidden={welcome || (view !== "browse" && view !== "explore")}>
+        <Browse
+          listings={listings}
+          user={user}
+          initialMode={view === "explore" ? "places" : "all"}
+          saved={saved}
+          onSave={save}
+          onListing={showListing}
+          onProfile={openProfile}
+          onChat={openChat}
+          onLogin={() => setLogin(true)}
+          onActivity={() => navigate("host")}
+          onPost={() => beginPost()}
+          onMessage={(l) => listingChat(l, "message")}
+          notify={notify}
+        />
+      </div>
+      {!welcome &&
+        ["host", "account", "saved", "admin", "checks"].includes(view) && (
+          <nav className="you-subnav" aria-label="Your account sections">
+            <a href="#you" className={view === "host" ? "active" : ""}>
+              My activity
+            </a>
+            <a href="#saved" className={view === "saved" ? "active" : ""}>
+              Saved
+            </a>
+            <a href="#account" className={view === "account" ? "active" : ""}>
+              Profile & verification
+            </a>
+            <a href="#checks" className={view === "checks" ? "active" : ""}>
+              About checks
+            </a>
+            {user?.role === "admin" && <a href="#admin">Review dashboard</a>}
+          </nav>
+        )}
+      {welcome || view === "browse" || view === "explore" ? null : view ===
+        "matches" ? (
+        <Matches
+          user={user}
+          saved={saved}
+          onSave={save}
+          onListing={showListing}
+          onProfile={openProfile}
+          onChat={openChat}
+          onLogin={() => setLogin(true)}
+          onActivity={() => navigate("host")}
+          notify={notify}
+        />
       ) : view === "saved" ? (
-        <main className="browse-page saved-page"><div className="browse-heading"><div><span className="eyebrow">YOUR SHORTLIST</span><h1>Saved places</h1><p>Keep the places you want to come back to.</p></div></div>
-          <div className="housing-grid">{listings.filter((l) => saved.includes(l.id)).length ? listings.filter((l) => saved.includes(l.id)).map((l) => <PlaceCard key={l.id} listing={l} saved onSave={() => save(l.id)} onOpen={() => setSelected(l)} />) : <Empty title="No saved places yet."><button className="text-button" onClick={() => navigate("browse")}>Browse places <ArrowRight size={14} /></button></Empty>}</div>
-        </main>
+        <SavedPosts
+          key={user?.id || "guest"}
+          user={user}
+          listings={listings}
+          onListing={showListing}
+          onProfile={openProfile}
+          onLogin={() => setLogin(true)}
+        />
       ) : view === "checks" ? (
         <ChecksGuide />
       ) : view === "profile" ? (
@@ -396,7 +669,7 @@ export default function App() {
           key={profileId}
           id={profileId}
           user={user}
-          onSelect={setSelected}
+          onSelect={showListing}
           onEdit={() => navigate("account")}
           onChecks={() => navigate("checks")}
         />
@@ -411,22 +684,41 @@ export default function App() {
           intent={chatIntent}
           onProfile={openProfile}
           onOpen={openChat}
-          onSelect={setSelected}
+          onSelect={showListing}
         />
       ) : user && view === "host" ? (
-        <MyActivity
-          key={user.id}
-          user={user}
-          onListing={setSelected}
-          onPost={() => setPost(true)}
-          onChat={openChat}
-          onPublished={(listing) =>
-            setListings((current) => [
-              ...current.filter((item) => item.id !== listing.id),
-              ...(listing.status === "approved" ? [listing] : []),
-            ])
-          }
-        />
+        <div className="you-page" key={user.id}>
+          <aside className="you-profile panel">
+            <PersonAvatar name={user.name} src={user.avatar} />
+            <h2>{user.name}</h2>
+            <p>Your corner of the community.</p>
+            <a className="outline full" href="#account">
+              Edit profile <ArrowRight size={15} />
+            </a>
+            <button className="text-button" onClick={() => setWelcome(true)}>
+              Explore the welcome flow
+            </button>
+          </aside>
+          <div className="you-content">
+            <DraftList
+              onSearch={() => void beginSearch()}
+              onListing={(id) => beginPost(id)}
+            />
+            <MyActivity
+              key={user.id}
+              user={user}
+              onListing={showListing}
+              onPost={() => beginPost()}
+              onChat={openChat}
+              onPublished={(listing) =>
+                setListings((current) => [
+                  ...current.filter((item) => item.id !== listing.id),
+                  ...(listing.status === "approved" ? [listing] : []),
+                ])
+              }
+            />
+          </div>
+        </div>
       ) : user ? (
         <Workspace
           view={view}
@@ -436,8 +728,8 @@ export default function App() {
           user={user}
           demo={demo}
           notify={notify}
-          onSelect={setSelected}
-          onPost={() => setPost(true)}
+          onSelect={showListing}
+          onPost={() => beginPost()}
           onLogout={async () => {
             await api("/logout", {});
             setUser(null);
@@ -458,13 +750,40 @@ export default function App() {
           )}
         </main>
       )}
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        <button className={view === "browse" || view === "explore" ? "active" : ""} onClick={() => navigate("browse")}><Search size={19} />Browse</button>
-        <button className={view === "matches" ? "active" : ""} onClick={() => navigate("matches")}><Heart size={19} />Matches</button>
-        <button className={view === "inbox" ? "active" : ""} onClick={() => navigate("inbox")}><MessageCircle size={19} />Inbox</button>
-        <button className={view === "saved" ? "active" : ""} onClick={() => navigate("saved")}><LayoutGrid size={19} />Saved</button>
-        <button className={view === "host" ? "active" : ""} onClick={() => navigate("host")}><Home size={19} />My activity</button>
-      </nav>
+      {!welcome && (
+        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+          <button
+            className={view === "browse" || view === "explore" ? "active" : ""}
+            onClick={() => navigate("browse")}
+          >
+            <Home size={21} />
+            Browse
+          </button>
+          <button
+            className={view === "matches" ? "active" : ""}
+            onClick={() => navigate("matches")}
+          >
+            <Users size={21} />
+            Matches
+          </button>
+          <button
+            className={view === "inbox" ? "active" : ""}
+            onClick={() => navigate("inbox")}
+          >
+            <MessageCircle size={21} />
+            Inbox
+          </button>
+          <button
+            className={
+              ["host", "account", "saved"].includes(view) ? "active" : ""
+            }
+            onClick={() => navigate("host")}
+          >
+            <UserRound size={21} />
+            You
+          </button>
+        </nav>
+      )}
       <footer>
         <a
           className="brand footer-brand"
@@ -476,7 +795,7 @@ export default function App() {
           </span>
           Cuse<span>Sublets</span>
         </a>
-        <span>Simpler subletting. Clear verification. One place.</span>
+        <span>A place for your next chapter.</span>
         <button onClick={() => navigate("checks")}>
           CuseSublets Checks <ArrowUpRight size={12} />
         </button>
@@ -514,6 +833,24 @@ export default function App() {
           </button>
         </div>
       )}
+      {selectedSearch && (
+        <Modal
+          title={selectedSearch.ownerName + "’s search"}
+          wide
+          onClose={() => {
+            setSelectedSearch(null);
+            history.replaceState(null, "", "#browse");
+          }}
+        >
+          <CommunityPost
+            search={selectedSearch}
+            user={user}
+            onProfile={openProfile}
+            onAreas={() => openProfile(selectedSearch.ownerId)}
+            onLogin={() => setLogin(true)}
+          />
+        </Modal>
+      )}
       {selected && (
         <ListingDetail
           listing={selected}
@@ -536,12 +873,43 @@ export default function App() {
           notify={notify}
         />
       )}
+      {editingSearch && (
+        <SearchEditor
+          search={editingSearch.search}
+          onSaved={() => {
+            setToast(
+              "Your search is saved. Your current status is shown below.",
+            );
+            window.dispatchEvent(new Event("housing-changed"));
+            navigate("host");
+          }}
+          onClose={() => setEditingSearch(null)}
+        />
+      )}
+      {contactNotice && (
+        <ContactNotice
+          busy={contactBusy}
+          error={contactError}
+          listing={contactNotice.listing}
+          onClose={() => setContactNotice(null)}
+          onContinue={async () => {
+            const current = contactNotice;
+            await createListingChat(current.listing, current.intent);
+          }}
+          onChecks={() => {
+            setContactNotice(null);
+            navigate("checks");
+          }}
+        />
+      )}
       {post && (
         <PostListing
+          draftId={draftId}
           onClose={closePost}
           notify={notify}
           onCreated={() => {
             refresh();
+            window.dispatchEvent(new Event("housing-changed"));
             navigate("host");
           }}
         />
@@ -608,8 +976,7 @@ export default function App() {
                 onSignedIn={(user) => {
                   setUser(user);
                   setLogin(false);
-                  const destination =
-                    user.role === "admin" ? "admin" : "account";
+                  const destination = user.role === "admin" ? "admin" : view;
                   setView(destination);
                   setMenu(false);
                   history.replaceState(null, "", "#" + destination);

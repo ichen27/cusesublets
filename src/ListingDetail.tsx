@@ -1,7 +1,8 @@
+import SocialActions from "./SocialActions";
 import { useState } from "react";
 import {
   ArrowRight,
-  Heart,
+  Bookmark,
   MapPin,
   ShieldCheck,
   Footprints,
@@ -92,7 +93,7 @@ export default function ListingDetail({
             </p>
           </div>
           <button className="outline small" onClick={onSave}>
-            <Heart size={16} fill={saved ? "currentColor" : "none"} />
+            <Bookmark size={16} fill={saved ? "currentColor" : "none"} />
             {saved ? "Saved" : "Save"}
           </button>
         </div>
@@ -322,6 +323,17 @@ export default function ListingDetail({
             )}
           </aside>
         </div>
+        <section className="detail-social">
+          <h2>The conversation</h2>
+          <p>Comments are public. Share contact details privately.</p>
+          <SocialActions
+            targetType="listing"
+            targetId={l.id}
+            user={user}
+            onLogin={onLogin}
+            onProfile={onProfile}
+          />
+        </section>
       </div>
     </Modal>
   );

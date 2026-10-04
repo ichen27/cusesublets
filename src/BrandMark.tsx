@@ -1,4 +1,3 @@
-/** Architectural C: an open enclosure with a clear entrance. */
 export default function BrandMark({ size = 40 }: { size?: number }) {
   return (
     <svg
@@ -10,7 +9,7 @@ export default function BrandMark({ size = 40 }: { size?: number }) {
       focusable="false"
     >
       <path
-        d="M38 6H17L6 17V31L17 42H38V32H22L16 26V22L22 16H38V6Z"
+        d="M42 16a19 19 0 1 0 0 16L31 28a7 7 0 1 1 0-8Z"
         fill="currentColor"
       />
     </svg>

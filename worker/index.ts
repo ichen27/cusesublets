@@ -1,3 +1,5 @@
+import { socialRoute } from "./social";
+import { draftRoute } from "./drafts";
 import {
   passwordAuth,
   passwordUser,
@@ -848,6 +850,10 @@ async function route(req: Request, e: Env) {
   }
   const authenticated = preview ? null : await authenticate(req, e, demo);
   const u = authenticated ? userView(authenticated) : null;
+  const socialResponse=await socialRoute(req,e,u);
+  if(socialResponse)return socialResponse;
+  const draftResponse=await draftRoute(req,e,u);
+  if(draftResponse)return draftResponse;
   if (p === "/api/auth/status" && m === "GET") {
     requireThat(u && !u.suspended, 401, "Sign in required");
     return json({

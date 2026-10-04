@@ -19,13 +19,21 @@ import type {
   Audit,
   ReviewStatus,
 } from "../shared/types";
+import SocialModeration from "./SocialModeration";
 import IdentityReviews from "./IdentityReviews";
 import { api, money } from "./api";
 import { Busy, Empty, ErrorBox } from "./ui";
 interface Data {
   listings: Listing[];
   requests: SeekerRequest[];
-  requestReports: { id: string; requestId: string; reporterId: string; reason: string; status: string; createdAt: string }[];
+  requestReports: {
+    id: string;
+    requestId: string;
+    reporterId: string;
+    reason: string;
+    status: string;
+    createdAt: string;
+  }[];
   users: User[];
   documents: DocumentRecord[];
   bookings: Booking[];
@@ -182,7 +190,10 @@ export default function Admin({
             >
               Reports{" "}
               <span>
-                {(data.reports?.filter((r) => r.status === "open").length || 0) + (data.requestReports?.filter((r) => r.status === "open").length || 0)}
+                {(data.reports?.filter((r) => r.status === "open").length ||
+                  0) +
+                  (data.requestReports?.filter((r) => r.status === "open")
+                    .length || 0)}
               </span>
             </button>
             <button
@@ -191,7 +202,15 @@ export default function Admin({
             >
               Listing reviews
             </button>
-            <button className={tab === "requests" ? "active" : ""} onClick={() => setTab("requests")}>Profile searches <span>{data.requests.filter((r) => r.status === "active").length}</span></button>
+            <button
+              className={tab === "requests" ? "active" : ""}
+              onClick={() => setTab("requests")}
+            >
+              Profile searches{" "}
+              <span>
+                {data.requests.filter((r) => r.status === "active").length}
+              </span>
+            </button>
             <button
               className={tab === "users" ? "active" : ""}
               onClick={() => setTab("users")}
@@ -459,13 +478,127 @@ export default function Admin({
                 ))
               ) : !data.requestReports?.length ? (
                 <Empty title="A place for community concerns.">
-                  Reports from listings and seeker posts appear here for staff review.
+                  Reports from listings and seeker posts appear here for staff
+                  review.
                 </Empty>
               ) : null}
-              {data.requestReports?.map((report) => { const request = data.requests.find((item) => item.id === report.requestId); return <div className="audit-item" key={report.id}><AlertCircle size={18} /><div><span className={"status " + report.status}>{report.status}</span><h3>Search: {request?.title || report.requestId}</h3><p>{report.reason}</p><small>Reported {new Date(report.createdAt).toLocaleString()}</small>{report.status === "open" && <div className="button-row"><button className="outline small" onClick={() => setTab("requests")}>Review search</button><button className="outline small" disabled={busy} onClick={() => { const reason = prompt("Explain how this report was investigated and resolved."); if (reason) action(`/admin/request-reports/${report.id}/resolve`, { reason }, "Request report resolved."); }}>Resolve report</button></div>}</div></div>; })}
+              {data.requestReports?.map((report) => {
+                const request = data.requests.find(
+                  (item) => item.id === report.requestId,
+                );
+                return (
+                  <div className="audit-item" key={report.id}>
+                    <AlertCircle size={18} />
+                    <div>
+                      <span className={"status " + report.status}>
+                        {report.status}
+                      </span>
+                      <h3>Search: {request?.title || report.requestId}</h3>
+                      <p>{report.reason}</p>
+                      <small>
+                        Reported {new Date(report.createdAt).toLocaleString()}
+                      </small>
+                      {report.status === "open" && (
+                        <div className="button-row">
+                          <button
+                            className="outline small"
+                            onClick={() => setTab("requests")}
+                          >
+                            Review search
+                          </button>
+                          <button
+                            className="outline small"
+                            disabled={busy}
+                            onClick={() => {
+                              const reason = prompt(
+                                "Explain how this report was investigated and resolved.",
+                              );
+                              if (reason)
+                                action(
+                                  `/admin/request-reports/${report.id}/resolve`,
+                                  { reason },
+                                  "Request report resolved.",
+                                );
+                            }}
+                          >
+                            Resolve report
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : tab === "requests" ? (
-            <section className="panel admin-requests"><div className="section-heading"><h2>Profile searches</h2><span>{data.requests.length} posts</span></div>{data.requests.length ? data.requests.map((request) => <article className="admin-request" key={request.id}><div><span className={"status " + request.status}>{request.status}</span><h3>{request.title}</h3><p>{request.description}</p><small>{request.ownerName} · {request.neighborhood || "Any area"} · {money(request.maxBudget)} / month · {request.startDate} to {request.endDate}</small></div><div>{request.status === "removed" ? <button className="outline small" disabled={busy || request.ownerId === user?.id} onClick={() => { const reason = prompt("Why are you restoring this search?"); if (reason) action(`/admin/requests/${request.id}/status`, { status: "active", reason }, "Search restored off for owner review."); }}>Restore</button> : <button className="outline small" disabled={busy || request.ownerId === user?.id} onClick={() => { const reason = prompt("Why are you removing this search?"); if (reason) action(`/admin/requests/${request.id}/status`, { status: "removed", reason }, "Search removed from public view."); }}>Remove search</button>}</div></article>) : <Empty title="No searches yet.">New searches will appear here.</Empty>}</section>
+            <section className="panel admin-requests">
+              <div className="section-heading">
+                <h2>Profile searches</h2>
+                <span>{data.requests.length} posts</span>
+              </div>
+              {data.requests.length ? (
+                data.requests.map((request) => (
+                  <article className="admin-request" key={request.id}>
+                    <div>
+                      <span className={"status " + request.status}>
+                        {request.status}
+                      </span>
+                      <h3>{request.title}</h3>
+                      <p>{request.description}</p>
+                      <small>
+                        {request.ownerName} ·{" "}
+                        {request.neighborhood || "Any area"} ·{" "}
+                        {money(request.maxBudget)} / month · {request.startDate}{" "}
+                        to {request.endDate}
+                      </small>
+                    </div>
+                    <div>
+                      {request.status === "removed" ? (
+                        <button
+                          className="outline small"
+                          disabled={busy || request.ownerId === user?.id}
+                          onClick={() => {
+                            const reason = prompt(
+                              "Why are you restoring this search?",
+                            );
+                            if (reason)
+                              action(
+                                `/admin/requests/${request.id}/status`,
+                                { status: "active", reason },
+                                "Search restored off for owner review.",
+                              );
+                          }}
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <button
+                          className="outline small"
+                          disabled={busy || request.ownerId === user?.id}
+                          onClick={() => {
+                            const reason = prompt(
+                              "Why are you removing this search?",
+                            );
+                            if (reason)
+                              action(
+                                `/admin/requests/${request.id}/status`,
+                                { status: "removed", reason },
+                                "Search removed from public view.",
+                              );
+                          }}
+                        >
+                          Remove search
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <Empty title="No searches yet.">
+                  New searches will appear here.
+                </Empty>
+              )}
+            </section>
           ) : tab === "users" ? (
             <div>
               <IdentityReviews user={user} onRefresh={refresh} />
@@ -631,6 +764,7 @@ export default function Admin({
           )}
         </>
       )}
+      <SocialModeration />
     </main>
   );
 }

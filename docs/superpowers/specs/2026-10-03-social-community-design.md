@@ -1,6 +1,6 @@
 # CuseSublets: social community and guided participation
 
-Status: proposed written specification for Ivan's review, October 3, 2026. The product direction was approved in conversation; this specification and the illustrated visual treatment require review before implementation. The current deployed application is unchanged.
+Status: implementation approved October 4, 2026 after Ivan reviewed and preferred the interactive website prototype. Production integration is tracked in ../plans/2026-10-04-social-app.md.
 
 ## Intent and acceptance criteria
 
@@ -82,4 +82,4 @@ Use a feature branch, pass GitHub checks, back up each exact persistence directo
 
 ## Review focus
 
-Confirm the proposed visual treatment, feed-first four-tab navigation, optional resumable setup, social actions and moderation scope, and Interested opening a composer rather than sending automatically. After this written spec is reviewed, prepare the implementation plan and execution sequence. No product code or live data changes are authorized by this design artifact alone.
+Confirm the proposed visual treatment, feed-first four-tab navigation, optional resumable setup, social actions and moderation scope, and Interested opening a composer rather than sending automatically. After this written spec is reviewed, prepare the implementation plan and execution sequence. Ivan subsequently authorized implementation on October 4; preserve existing records during rollout.

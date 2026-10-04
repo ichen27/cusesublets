@@ -18,6 +18,8 @@ jobs:
       - run: npm test
       - run: python3 tests/housing-search-migration.py
       - run: python3 tests/search-write-races.py
+      - run: python3 tests/social-write-races.py
+      - run: python3 tests/private-drafts-races.py
       - run: npm run build
       - run: npx tsc --noEmit -p prototype/tsconfig.json
       - run: npx vite build --config prototype/vite.config.ts
