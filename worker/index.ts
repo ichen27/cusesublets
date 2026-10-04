@@ -1363,6 +1363,12 @@ async function route(req: Request, e: Env) {
   }
   if (p === "/api/listings" && m === "POST") {
     const b = await body(req);
+    const createKey = b.clientPublishId ?? null;
+    requireThat(createKey === null || (typeof createKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(createKey)), 400, "Invalid publication ID");
+    if (createKey) {
+      const previous = await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey);
+      if (previous) return json({ listing: listingView(await getListing(e, previous.id), u) });
+    }
     const interval = dates(b.startDate, b.endDate);
     requireThat(
       interval.endDate > syracuseDate(),
@@ -1413,13 +1419,17 @@ async function route(req: Request, e: Env) {
     const key = id();
     await stmt(
       e,
-      "INSERT INTO listings(id,ownerId,data,status,createdAt) VALUES(?,?,?,'approved',?)",
+      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,'approved',?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
       key,
       u.id,
       JSON.stringify(data),
       now(),
+      createKey,
+      u.id,
     ).run();
-    return json({ listing: await getListing(e, key) }, 201);
+    const published = createKey ? await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey) : {id:key};
+    requireThat(published, 409, "Publication could not be completed. Try again.");
+    return json({ listing: listingView(await getListing(e, published.id), u) }, published.id === key ? 201 : 200);
   }
 
   if (listingMatch && m === "POST") {
