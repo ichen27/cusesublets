@@ -122,7 +122,7 @@ Migration `0009_profile_search.sql` retains all historical seeker-request IDs, i
 
 - GET `/api/searches` → `{searches:HousingSearch[]}`: active, unexpired, nonsuspended public searches only.
 - GET `/api/my-search` → `{search:HousingSearch|null}`: authenticated owner.
-- POST `/api/my-search` → `{search:HousingSearch}`: upsert criteria with stable ID and creation time. Requires dates, budget maximum, room type and 1–5 valid desired polygons; optional minimum budget, minimum bedrooms, conditions and introduction. First save is off.
+- POST `/api/my-search` → `{search:HousingSearch}`: upsert criteria with stable ID and creation time. Requires dates, budget maximum, room type and 1–5 valid desired polygons; optional minimum budget, minimum bedrooms, conditions and introduction. Optional `status:"active"|"paused"` saves criteria and visibility atomically; first save defaults to off.
 - POST `/api/my-search/status` `{status:"active"|"paused"}` → `{search:HousingSearch}`: on/off; activation revalidates criteria. A staff-removed search cannot be changed by its owner.
 - GET `/api/requests` and GET `/api/requests/:id` remain public read aliases for active canonical searches. Legacy request POST routes return 410.
 
@@ -132,4 +132,4 @@ Migration `0009_profile_search.sql` retains all historical seeker-request IDs, i
 - POST `/api/listings/:id/pause` unpublishes an approved owned listing. Existing `/publish` rules permit republishing an owner-unpublished listing; staff-held states remain blocked.
 - Staff search restoration returns the canonical search to off. Existing conversations remain readable after a search is turned off or removed.
 
-Isolated checks: `tests/housing-search-runtime.py`, `tests/housing-search-migration.py`, and `tests/listing-manage-runtime.py`. The discovery runtime entry point delegates to the canonical-search suite.
+Isolated checks: `tests/housing-search-runtime.py`, `tests/housing-search-migration.py`, `tests/search-write-races.py`, and `tests/listing-manage-runtime.py`. The discovery runtime entry point delegates to the canonical-search suite.
