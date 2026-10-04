@@ -11,3 +11,5 @@ playwright-report/
 .playwright-cli/
 
 __pycache__/
+
+prototype-dist/
