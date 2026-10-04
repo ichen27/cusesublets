@@ -63,7 +63,7 @@ const one = <T>(e: Env, sql: string, ...v: unknown[]) =>
   stmt(e, sql, ...v).first<T>();
 const listingSQL =
   "SELECT l.*,u.name hostName,u.identity hostIdentity,u.suspended hostSuspended FROM listings l JOIN users u ON u.id=l.ownerId";
-type InternalListing = Listing & { hostSuspended: boolean };
+type InternalListing = Listing & { hostSuspended: boolean; revisionData: string };
 const userView = (u: User): User => ({
   id: u.id,
   name: u.name,
@@ -79,6 +79,7 @@ function listing(row: Row): InternalListing {
     ...JSON.parse(data as string),
     ...rest,
     hostSuspended: !!rest.hostSuspended,
+    revisionData: data as string,
   } as InternalListing;
 }
 // Explicit public projection: private review reasons and future database columns stay private.
@@ -122,11 +123,11 @@ async function getListing(e: Env, key: string) {
   requireThat(l, 404, "Listing not found");
   return l;
 }
-type InternalRequest = SeekerRequest & { ownerSuspended: boolean; profileSearch: number };
+type InternalRequest = SeekerRequest & { ownerSuspended: boolean; profileSearch: number; revisionData: string };
 const requestSQL = "SELECT r.*,u.name ownerName,u.identity ownerIdentity,u.suspended ownerSuspended FROM seeker_requests r JOIN users u ON u.id=r.ownerId";
 function seekerRequest(row: Row): InternalRequest {
   const { data, ...rest } = row;
-  return { ...JSON.parse(data as string), ...rest, ownerSuspended: !!rest.ownerSuspended } as InternalRequest;
+  return { ...JSON.parse(data as string), ...rest, ownerSuspended: !!rest.ownerSuspended, revisionData: data as string } as InternalRequest;
 }
 function requestView(r: InternalRequest): SeekerRequest {
   const current = r.profileSearch === 1 ? searchView(r) : null;
@@ -1297,15 +1298,19 @@ async function route(req: Request, e: Env) {
   }
   if (p === "/api/my-search" && m === "POST") {
     requireThat(!u.suspended, 403, "Suspended accounts cannot publish a search");
-    const data = searchData(await body(req));
+    const b = await body(req);
+    const data = searchData(b);
+    requireThat(b.status === undefined || b.status === "active" || b.status === "paused", 400, "Choose on or off");
     const current = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
     requireThat(!current || current.status !== "removed", 409, "This search was removed by staff");
+    const status = b.status ?? (current?.status === "active" ? "active" : "paused");
     if (current) {
-      const result = await stmt(e, "UPDATE seeker_requests SET data=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1 AND status<>'removed'", JSON.stringify(data), now(), current.id, u.id).run();
+      const result = await stmt(e, "UPDATE seeker_requests SET data=?,status=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1 AND status<>'removed'", JSON.stringify(data), status, now(), current.id, u.id).run();
       requireThat(result.meta.changes === 1, 409, "This search changed; refresh before editing");
     } else {
       const key = id(), at = now();
-      await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt,profileSearch) VALUES(?,?,'paused',?,?,?,1)", key, u.id, JSON.stringify(data), at, at).run();
+      const inserted = await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt,profileSearch) VALUES(?,?,?,?,?,?,1) ON CONFLICT(ownerId) WHERE profileSearch=1 DO NOTHING", key, u.id, status, JSON.stringify(data), at, at).run();
+      requireThat(inserted.meta.changes === 1, 409, "Your search was created elsewhere; refresh before editing");
     }
     const saved = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
     return json({ search: searchView(saved) }, current ? 200 : 201);
@@ -1421,20 +1426,18 @@ async function route(req: Request, e: Env) {
     const l = await getListing(e, listingMatch[1]);
     requireThat(l.ownerId === u.id, 403, "Only the listing owner can edit it");
     const b = await body(req);
-    const raw = await one<{ data: string }>(e, "SELECT data FROM listings WHERE id=?", l.id);
-    const original = JSON.parse(raw!.data);
     const interval = dates(b.startDate ?? l.startDate, b.endDate ?? l.endDate);
     requireThat(interval.endDate > syracuseDate(), 400, "Availability must end in the future");
     const amenities = b.amenities ?? l.amenities;
     requireThat(Array.isArray(amenities) && amenities.length <= 20, 400, "Use up to 20 amenities");
-    const data = { ...original,
+    const data = {
       title: text(b.title ?? l.title, "Title", 100),
       description: text(b.description ?? l.description, "Description", 4000, 20),
       price: number(b.price ?? l.price, "Monthly rent", 1, 20000),
       ...interval, amenities: amenities.map((a) => text(a, "Amenity", 50)),
     };
     await e.DB.batch([
-      stmt(e, "UPDATE listings SET data=? WHERE id=? AND ownerId=?", JSON.stringify(data), l.id, u.id),
+      stmt(e, "UPDATE listings SET data=json_patch(data,?) WHERE id=? AND ownerId=?", JSON.stringify(data), l.id, u.id),
       audit(e, u, "listing.edit", l.id, "Owner edited public description, price, availability or amenities"),
     ]);
     return json({ listing: listingView(await getListing(e, l.id), u) });
@@ -1507,7 +1510,8 @@ async function route(req: Request, e: Env) {
       requireThat(r.profileSearch === 1 && r.status === "active" && r.endDate > syracuseDate() && !r.ownerSuspended && l.status === "approved", 404, "Search not available");
       requireThat(matchListingToSearch(l, searchView(r)), 409, "This listing does not fit the search");
       const at = now();
-      await stmt(e, "INSERT INTO conversations(id,listingId,buyerId,sellerId,createdAt,updatedAt,requestId) VALUES(?,?,?,?,?,?,?) ON CONFLICT(listingId,buyerId) DO UPDATE SET requestId=excluded.requestId", id(), l.id, r.ownerId, u.id, at, at, r.id).run();
+      const inserted = await stmt(e, "INSERT INTO conversations(id,listingId,buyerId,sellerId,createdAt,updatedAt,requestId) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM seeker_requests r JOIN users buyer ON buyer.id=r.ownerId WHERE r.id=? AND r.profileSearch=1 AND r.status='active' AND r.updatedAt=? AND r.data=? AND buyer.suspended=0) AND EXISTS(SELECT 1 FROM listings l JOIN users seller ON seller.id=l.ownerId WHERE l.id=? AND l.status='approved' AND l.data=? AND seller.suspended=0) ON CONFLICT(listingId,buyerId) DO UPDATE SET requestId=excluded.requestId", id(), l.id, r.ownerId, u.id, at, at, r.id, r.id, r.updatedAt, r.revisionData, l.id, l.revisionData).run();
+      requireThat(inserted.meta.changes === 1, 409, "The search or listing changed. Refresh matches before contacting.");
       const c = await one<Conversation>(e, "SELECT * FROM conversations WHERE listingId=? AND buyerId=?", l.id, r.ownerId);
       return json({ conversation: await getConversation(e, c!.id, u) }, 201);
     }
@@ -2019,20 +2023,11 @@ async function route(req: Request, e: Env) {
     await insertDocument.run();
     if (isMedia) {
       const media = "/api/media/" + key;
-      const data = await one<{ data: string }>(
-        e,
-        "SELECT data FROM listings WHERE id=?",
-        l.id,
-      );
-      const value = JSON.parse(data!.data);
-      if (kind === "video") value.videoUrl = media;
-      else value.images = [...value.images, media].slice(-12);
-      await stmt(
-        e,
-        "UPDATE listings SET data=? WHERE id=?",
-        JSON.stringify(value),
-        l.id,
-      ).run();
+      if (kind === "video") {
+        await stmt(e, "UPDATE listings SET data=json_set(data,'$.videoUrl',?) WHERE id=?", media, l.id).run();
+      } else {
+        await stmt(e, "UPDATE listings SET data=json_insert(CASE WHEN json_array_length(data,'$.images')>=12 THEN json_remove(data,'$.images[0]') ELSE data END,'$.images[#]',?) WHERE id=?", media, l.id).run();
+      }
       return json({ url: media, listing: await getListing(e, l.id) }, 201);
     }
     return json({ document }, 201);

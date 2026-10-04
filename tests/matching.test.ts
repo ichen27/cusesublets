@@ -94,3 +94,9 @@ it("always ranks a preferred condition ahead of rent savings", () => {
   const cheaper = matchListingToSearch({ ...locatedListing, price: 1, amenities: ["Furnished"] }, wideBudget, "2026-12-01");
   expect(preferred!.score).toBeGreaterThan(cheaper!.score);
 });
+
+it("gives equal host-side scores for equal preferences regardless of budget ceiling", () => {
+  const ordinary = matchListingToSearch(locatedListing, search, "2026-12-01");
+  const higherBudget = matchListingToSearch(locatedListing, { ...search, maxBudget: 20000 }, "2026-12-01");
+  expect(ordinary!.score).toBe(higherBudget!.score);
+});

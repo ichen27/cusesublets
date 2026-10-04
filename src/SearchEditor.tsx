@@ -22,12 +22,11 @@ export default function SearchEditor({ search, onSaved, onClose }: {
   async function save(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      let result = await api<{ search: HousingSearch }>("/my-search", {
+      const result = await api<{ search: HousingSearch }>("/my-search", {
+        status: activate ? "active" : "paused",
         ...draft, minBudget: draft.minBudget ? Number(draft.minBudget) : undefined,
         maxBudget: Number(draft.maxBudget), minBedrooms: draft.minBedrooms ? Number(draft.minBedrooms) : undefined,
       });
-      const status = activate ? "active" : "paused";
-      if (result.search.status !== status) result = await api<{ search: HousingSearch }>("/my-search/status", { status });
       onSaved(result.search); onClose();
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(false); }

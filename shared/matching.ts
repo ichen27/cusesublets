@@ -71,6 +71,6 @@ export function matchListingToSearch(
   if (search.requiredAmenities.length) reasons.push("Includes required conditions");
   if (preferred.length) reasons.push(`Includes ${preferred.length} preferred condition${preferred.length === 1 ? "" : "s"}`);
   // Preference overlap dominates price; route sorting uses stable IDs for ties.
-  const score = preferred.length + Math.max(0, search.maxBudget - listing.price) / 20001;
+  const score = preferred.length - listing.price / 20001;
   return { score, reasons };
 }

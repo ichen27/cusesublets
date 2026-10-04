@@ -15,19 +15,31 @@ export default function Matches({ user, saved, onSave, onListing, onProfile, onC
   const [source, setSource] = useState(""), [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(!!user), [matching, setMatching] = useState(false), [error, setError] = useState("");
   const [mapMode, setMapMode] = useState(false), [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (!user) { setLoading(false); setSource(""); return; }
     let current = true;
     setLoading(true);
+    let pending = false;
+    const refresh = () => {
+    if (pending) return;
+    pending = true;
     Promise.all([api<{ search: HousingSearch | null }>("/my-search"), api<{ listings: Listing[] }>("/mine")])
       .then(([mine, places]) => {
         if (!current) return;
         setSearch(mine.search);
         const live = places.listings.filter((l) => l.status === "approved" && l.endDate > syracuseToday());
         setListings(live);
-        setSource(mine.search?.status === "active" && mine.search.endDate > syracuseToday() ? "search:" + mine.search.id : live.length ? "listing:" + live[0].id : "");
-      }).catch((cause) => { if (current) setError(cause.message); }).finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
+        const sources = [...(mine.search?.status === "active" && mine.search.endDate > syracuseToday() ? ["search:" + mine.search.id] : []), ...live.map((listing) => "listing:" + listing.id)];
+        setSource((selected) => sources.includes(selected) ? selected : sources[0] || "");
+        setRevision((value) => value + 1);
+        setError("");
+      }).catch((cause) => { if (current) setError(cause.message); }).finally(() => { pending = false; if (current) setLoading(false); });
+    };
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => { current = false; clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [user?.id]);
   useEffect(() => {
     if (!source) { setMatches([]); return; }
@@ -41,9 +53,8 @@ export default function Matches({ user, saved, onSave, onListing, onProfile, onC
         .finally(() => { if (current) setMatching(false); });
     };
     refresh();
-    const timer = setInterval(refresh, 30000);
-    return () => { current = false; clearInterval(timer); };
-  }, [source]);
+    return () => { current = false; };
+  }, [source, revision]);
   const forSearch = source.startsWith("search:");
   const sourceListing = listings.find((l) => "listing:" + l.id === source);
   const people = matches.flatMap((m) => m.search ? [m.search] : []);

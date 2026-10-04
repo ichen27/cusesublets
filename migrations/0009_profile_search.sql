@@ -15,4 +15,4 @@ WHERE id IN (
 );
 -- No old post becomes public until its owner chooses areas and turns it on.
 UPDATE seeker_requests SET status='paused', updatedAt=datetime('now')
-WHERE status='active';
+WHERE status='active' OR (profileSearch=1 AND status='closed');
