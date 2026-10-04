@@ -10,6 +10,7 @@ import type {
   User,
   Listing,
   SeekerRequest,
+  HousingSearch,
   Booking,
   Offer,
   DocumentRecord,
@@ -19,6 +20,7 @@ import type {
   ChatAttachment,
 } from "../shared/types";
 import { matchListingToRequest } from "../shared/matching";
+import { validateAreas } from "../shared/geo";
 import {
   HttpError,
   requireThat,
@@ -120,7 +122,7 @@ async function getListing(e: Env, key: string) {
   requireThat(l, 404, "Listing not found");
   return l;
 }
-type InternalRequest = SeekerRequest & { ownerSuspended: boolean };
+type InternalRequest = SeekerRequest & { ownerSuspended: boolean; profileSearch: number };
 const requestSQL = "SELECT r.*,u.name ownerName,u.identity ownerIdentity,u.suspended ownerSuspended FROM seeker_requests r JOIN users u ON u.id=r.ownerId";
 function seekerRequest(row: Row): InternalRequest {
   const { data, ...rest } = row;
@@ -133,6 +135,49 @@ function requestView(r: SeekerRequest): SeekerRequest {
     neighborhood: r.neighborhood, maxBudget: r.maxBudget, roomType: r.roomType,
     startDate: r.startDate, endDate: r.endDate, amenities: r.amenities,
     status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt,
+  };
+}
+function searchView(r: InternalRequest): HousingSearch {
+  return {
+    id: r.id, ownerId: r.ownerId, ownerName: r.ownerName,
+    ownerIdentity: r.ownerIdentity, status: r.status === "active" ? "active" : r.status === "removed" ? "removed" : "paused",
+    startDate: r.startDate, endDate: r.endDate,
+    minBudget: typeof (r as unknown as Row).minBudget === "number" ? (r as unknown as Row).minBudget as number : undefined,
+    maxBudget: r.maxBudget,
+    minBedrooms: typeof (r as unknown as Row).minBedrooms === "number" ? (r as unknown as Row).minBedrooms as number : undefined,
+    roomType: r.roomType,
+    requiredAmenities: Array.isArray((r as unknown as Row).requiredAmenities) ? (r as unknown as Row).requiredAmenities as string[] : [],
+    preferredAmenities: Array.isArray((r as unknown as Row).preferredAmenities) ? (r as unknown as Row).preferredAmenities as string[] : r.amenities || [],
+    areas: Array.isArray((r as unknown as Row).areas) ? (r as unknown as Row).areas as HousingSearch["areas"] : [],
+    introduction: typeof (r as unknown as Row).introduction === "string" ? (r as unknown as Row).introduction as string : r.description || "",
+    createdAt: r.createdAt, updatedAt: r.updatedAt,
+  };
+}
+function searchData(b: Row) {
+  const interval = dates(b.startDate, b.endDate);
+  requireThat(interval.endDate > syracuseDate(), 400, "The requested stay must end in the future");
+  requireThat(["Any", "Private room", "Entire place"].includes(String(b.roomType)), 400, "Choose a room type");
+  const minBudget = b.minBudget == null || b.minBudget === "" ? undefined : number(b.minBudget, "Minimum rent", 1, 20000);
+  const maxBudget = number(b.maxBudget, "Maximum rent", 1, 20000);
+  requireThat(minBudget === undefined || minBudget <= maxBudget, 400, "Minimum rent must be at most maximum rent");
+  const minBedrooms = b.minBedrooms == null || b.minBedrooms === "" ? undefined : number(b.minBedrooms, "Minimum bedrooms", 1, 20);
+  requireThat(minBedrooms === undefined || Number.isInteger(minBedrooms), 400, "Use a whole number of bedrooms");
+  const conditions = (input: unknown, label: string) => {
+    requireThat(Array.isArray(input) && input.length <= 20, 400, "Use up to 20 " + label.toLowerCase());
+    const result = input.map((value) => text(value, label, 50));
+    requireThat(new Set(result.map((value) => value.toLowerCase())).size === result.length, 400, "Remove duplicate conditions");
+    return result;
+  };
+  let areas: HousingSearch["areas"];
+  try { areas = validateAreas(b.areas); }
+  catch (error) { throw new HttpError(400, error instanceof Error ? error.message : "Invalid desired areas"); }
+  return {
+    ...interval, minBudget, maxBudget, minBedrooms,
+    roomType: b.roomType as HousingSearch["roomType"],
+    requiredAmenities: conditions(b.requiredAmenities ?? [], "Required condition"),
+    preferredAmenities: conditions(b.preferredAmenities ?? [], "Preferred condition"),
+    areas,
+    introduction: text(b.introduction ?? "", "Introduction", 500, 0),
   };
 }
 const requests = async (e: Env, where: string, ...v: unknown[]) =>
@@ -849,12 +894,14 @@ async function route(req: Request, e: Env) {
     );
     return json({ listing: listingView(l, u) });
   }
+  if (p === "/api/searches" && m === "GET")
+    return json({ searches: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(searchView) });
   if (p === "/api/requests" && m === "GET")
-    return json({ requests: (await requests(e, "WHERE r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(requestView) });
+    return json({ requests: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(requestView) });
   const publicRequestMatch = p.match(/^\/api\/requests\/([^/]+)$/);
   if (publicRequestMatch && publicRequestMatch[1] !== "mine" && m === "GET") {
     const r = await getRequest(e, publicRequestMatch[1]);
-    requireThat((r.status === "active" && !r.ownerSuspended && r.endDate > syracuseDate()) || r.ownerId === u?.id || u?.role === "admin", 404, "Request not found");
+    requireThat((r.profileSearch === 1 && r.status === "active" && !r.ownerSuspended && r.endDate > syracuseDate()) || r.ownerId === u?.id || u?.role === "admin", 404, "Request not found");
     return json({ request: requestView(r) });
   }
   const mediaMatch = p.match(/^\/api\/media\/([^/]+)$/);
@@ -928,7 +975,7 @@ async function route(req: Request, e: Env) {
           target.id,
         )
       ).map((l) => listingView(l)),
-      requests: (await requests(e, "WHERE r.ownerId=? AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).map(requestView),
+      requests: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).map(requestView),
       reviews: await all(
         e,
         "SELECT r.id,r.authorId,a.name authorName,r.rating,r.body,r.createdAt,json_extract(l.data,'$.title') listingTitle FROM profile_reviews r JOIN users a ON a.id=r.authorId JOIN bookings b ON b.id=r.bookingId JOIN listings l ON l.id=b.listingId WHERE r.targetId=? ORDER BY r.rowid DESC LIMIT 200",
@@ -1242,25 +1289,39 @@ async function route(req: Request, e: Env) {
         u.id,
       ),
     });
+  if (p === "/api/my-search" && m === "GET") {
+    const current = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
+    return json({ search: current ? searchView(current) : null });
+  }
+  if (p === "/api/my-search" && m === "POST") {
+    requireThat(!u.suspended, 403, "Suspended accounts cannot publish a search");
+    const data = searchData(await body(req));
+    const current = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
+    requireThat(!current || current.status !== "removed", 409, "This search was removed by staff");
+    if (current) {
+      await stmt(e, "UPDATE seeker_requests SET data=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1", JSON.stringify(data), now(), current.id, u.id).run();
+    } else {
+      const key = id(), at = now();
+      await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt,profileSearch) VALUES(?,?,'paused',?,?,?,1)", key, u.id, JSON.stringify(data), at, at).run();
+    }
+    const saved = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
+    return json({ search: searchView(saved) }, current ? 200 : 201);
+  }
+  if (p === "/api/my-search/status" && m === "POST") {
+    const b = await body(req);
+    requireThat(b.status === "active" || b.status === "paused", 400, "Choose on or off");
+    const current = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
+    requireThat(current, 404, "Set up your search first");
+    requireThat(current.status !== "removed", 409, "This search was removed by staff");
+    requireThat(!u.suspended, 403, "Suspended accounts cannot publish a search");
+    if (b.status === "active") searchData(current as unknown as Row);
+    await stmt(e, "UPDATE seeker_requests SET status=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1", b.status, now(), current.id, u.id).run();
+    return json({ search: searchView((await requests(e, "WHERE r.id=?", current.id))[0]) });
+  }
   if (p === "/api/requests/mine" && m === "GET")
     return json({ requests: (await requests(e, "WHERE r.ownerId=? ORDER BY r.createdAt DESC", u.id)).map(requestView) });
-  if (p === "/api/requests" && m === "POST") {
-    const data = requestData(await body(req));
-    const key = id(), at = now();
-    await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt) VALUES(?,?,'active',?,?,?)", key, u.id, JSON.stringify(data), at, at).run();
-    return json({ request: requestView(await getRequest(e, key)) }, 201);
-  }
-  if (publicRequestMatch && publicRequestMatch[1] !== "mine" && m === "POST") {
-    const r = await getRequest(e, publicRequestMatch[1]);
-    requireThat(r.ownerId === u.id, 403, "Only the request owner can change it");
-    requireThat(r.status !== "removed", 409, "This request was removed");
-    const b = await body(req);
-    const status = b.status === undefined ? r.status : String(b.status);
-    requireThat(["active", "paused", "closed"].includes(status), 400, "Choose an available request status");
-    const data = requestData({ ...r, ...b });
-    await stmt(e, "UPDATE seeker_requests SET status=?,data=?,updatedAt=? WHERE id=? AND ownerId=?", status, JSON.stringify(data), now(), r.id, u.id).run();
-    return json({ request: requestView(await getRequest(e, r.id)) });
-  }
+  if ((p === "/api/requests" || (publicRequestMatch && publicRequestMatch[1] !== "mine")) && m === "POST")
+    throw new HttpError(410, "Request posts have moved to My search. Update your profile search there.");
   if (p === "/api/matches" && m === "GET") {
     requireThat(!u.suspended, 403, "Suspended accounts cannot view matches");
     const sourceType = url.searchParams.get("sourceType"), sourceId = url.searchParams.get("sourceId") || "";
