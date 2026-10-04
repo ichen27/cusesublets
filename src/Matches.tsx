@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, ChevronRight, Flag, Home, MapPin, RotateCcw, ShieldCheck, Users } from "lucide-react";
 import type { HousingSearch, Listing, User } from "../shared/types";
 import { api, date, money, syracuseToday } from "./api";
@@ -20,9 +20,13 @@ export default function Matches({ user, saved, onSave, onListing, onProfile, onC
   const matches = resultSource === source ? results : [];
   const [loading, setLoading] = useState(!!user), [matching, setMatching] = useState(false), [error, setError] = useState("");
   const [revision, setRevision] = useState(0), [index, setIndex] = useState(0);
-  const [notice, setNotice] = useState<Match | null>(null), [contacting, setContacting] = useState(false);
+  const [notice, setNotice] = useState<Match | null>(null), [contacting, setContacting] = useState(false), [contactError, setContactError] = useState("");
+  const [savedPeople, setSavedPeople] = useState<Record<string, boolean>>({}), [savingPerson, setSavingPerson] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState(""), [saveRevision, setSaveRevision] = useState(0);
+  const savedReadVersion = useRef(0), savePending = useRef(false), accountRef = useRef(user?.id);
+  accountRef.current = user?.id;
   useEffect(() => {
-    setSearch(null); setListings([]); setMatches([]); setSource(""); setIndex(0); setNotice(null);
+    setSearch(null); setListings([]); setMatches([]); setSource(""); setIndex(0); setNotice(null); setSavedPeople({}); setContactError("");
     if (!user) { setLoading(false); return; }
     let current = true, pending = false;
     setLoading(true);
@@ -60,6 +64,35 @@ export default function Matches({ user, saved, onSave, onListing, onProfile, onC
   const forSearch = source.startsWith("search:");
   const sourceListing = listings.find((l) => "listing:" + l.id === source);
   const current = matches[index], place = current?.listing, person = current?.search;
+  useEffect(() => {
+    if (!person || !user) return;
+    let active = true;
+    const id = person.id;
+    const refreshSave = () => {
+      const version = ++savedReadVersion.current;
+      setSaveError("");
+      api<{ saved: boolean }>("/social/search/" + encodeURIComponent(id))
+        .then((result) => { if (active && version === savedReadVersion.current) setSavedPeople((old) => ({ ...old, [id]: result.saved })); })
+        .catch((cause) => { if (active && version === savedReadVersion.current) setSaveError((cause as Error).message); });
+    };
+    refreshSave();
+    window.addEventListener("social-saved-changed", refreshSave);
+    return () => { active = false; window.removeEventListener("social-saved-changed", refreshSave); };
+  }, [person?.id, user?.id, saveRevision]);
+  async function savePerson(seeker: HousingSearch) {
+    if (!user) { onLogin(); return; }
+    if (savePending.current || savedPeople[seeker.id] === undefined) return;
+    savePending.current = true; savedReadVersion.current++;
+    setSavingPerson(seeker.id); setSaveError("");
+    const next = !savedPeople[seeker.id], accountId = user.id;
+    try {
+      await api("/social/search/" + encodeURIComponent(seeker.id) + "/save", { saved: next });
+      if (accountRef.current !== accountId) return;
+      setSavedPeople((old) => ({ ...old, [seeker.id]: next }));
+      window.dispatchEvent(new Event("social-saved-changed"));
+    } catch (cause) { notify((cause as Error).message); }
+    finally { savePending.current = false; setSavingPerson(null); }
+  }
   const mapListings = forSearch ? matches.flatMap((m) => m.listing ? [m.listing] : []) : sourceListing ? [sourceListing] : [];
   const mapAreas = forSearch ? search?.areas || [] : person?.areas || [];
   const summary = forSearch && search ? `${money(search.maxBudget)} maximum · ${date(search.startDate)} – ${date(search.endDate)}` : sourceListing ? `${sourceListing.title} · ${money(sourceListing.price)} / month` : "";
@@ -67,15 +100,16 @@ export default function Matches({ user, saved, onSave, onListing, onProfile, onC
     if (contacting) return;
     if (!user) { onLogin(); return; }
     if (match.search && !sourceListing) { notify("Choose a live listing before contacting someone."); return; }
-    setContacting(true);
+    setContacting(true); setContactError("");
     try {
       const body = match.listing ? { listingId: match.listing.id } : { listingId: sourceListing!.id, requestId: match.search!.id };
       const result = await api<{ conversation: { id: string } }>("/conversations", body);
       setNotice(null); onChat(result.conversation.id);
-    } catch (cause) { notify((cause as Error).message); }
+    } catch (cause) { setContactError((cause as Error).message); notify((cause as Error).message); }
     finally { setContacting(false); }
   }
   function interested(match: Match) {
+    setContactError("");
     if (needsContactNotice({ listing: match.listing, person: match.search })) setNotice(match);
     else void contact(match);
   }
@@ -104,13 +138,14 @@ export default function Matches({ user, saved, onSave, onListing, onProfile, onC
             <h3 className="fit-reasons-heading">Why it fits</h3><ul className="focused-fit-tags">{current.reasons.map((reason) => <li key={reason}><Check size={15} />{reason}</li>)}</ul>
             <div className="focused-checks">{place ? <>{place.hostIdentity === "verified" && <span><ShieldCheck size={14} /> Identity checked</span>}{place.leaseStatus === "verified" && <span><ShieldCheck size={14} /> Lease checked</span>}{place.permissionStatus === "verified" && <span><ShieldCheck size={14} /> Permission checked</span>}{needsContactNotice({ listing: place }) && <button className="text-button" onClick={() => onListing(place)}>Some checks incomplete <ArrowRight size={14} /></button>}</> : person?.ownerIdentity === "verified" ? <span><ShieldCheck size={14} /> Identity checked</span> : <span className="check-incomplete">Identity not yet verified</span>}</div>
             <p className="focused-match-introduction">{place?.description || person?.introduction || "Get to know each other in a private conversation."}</p>
-            <div className="focused-match-actions"><button className="outline" onClick={() => setIndex((position) => position + 1)}>Next <ChevronRight size={17} /></button>{place && <button className="outline match-save" aria-label={saved.includes(place.id) ? "Unsave matching place" : "Save matching place"} aria-pressed={saved.includes(place.id)} onClick={() => onSave(place.id)}><Bookmark size={19} fill={saved.includes(place.id) ? "currentColor" : "none"} /></button>}<button className="primary" disabled={contacting || matching} onClick={() => interested(current)}>{contacting ? "Opening…" : forSearch ? "I’m interested" : "Say hello"} <ArrowRight size={17} /></button></div>
+            <div className="focused-match-actions"><button className="outline" onClick={() => setIndex((position) => position + 1)}>Next <ChevronRight size={17} /></button>{place && <button className="outline match-save" aria-label={saved.includes(place.id) ? "Unsave matching place" : "Save matching place"} aria-pressed={saved.includes(place.id)} onClick={() => onSave(place.id)}><Bookmark size={19} fill={saved.includes(place.id) ? "currentColor" : "none"} /></button>}{person && <button className="outline match-save" aria-label={savedPeople[person.id] ? "Unsave matching search" : "Save matching search privately"} aria-pressed={savedPeople[person.id] ?? false} disabled={savingPerson !== null || savedPeople[person.id] === undefined} onClick={() => void savePerson(person)}><Bookmark size={19} fill={savedPeople[person.id] ? "currentColor" : "none"} /></button>}<button className="primary" disabled={contacting || matching} onClick={() => interested(current)}>{contacting ? "Opening…" : forSearch ? "I’m interested" : "Say hello"} <ArrowRight size={17} /></button></div>
+            {person && saveError && <div role="alert" className="match-save-error">{saveError} <button className="text-button" onClick={() => setSaveRevision((value) => value + 1)}>Retry saved status</button></div>}
             <button className="text-button focused-full-post" onClick={() => place ? onListing(place) : (window.location.hash = "search/" + person!.id)}>View post & conversation <ArrowRight size={15} /></button>
           </div>
         </article>
         <aside className="focused-match-context"><section><h2>{forSearch ? "In your corner of Syracuse." : "Where they want to live."}</h2><div className="focused-match-map"><MapView key={source} listings={mapListings} areas={mapAreas} selected={place?.id || sourceListing?.id || null} onSelect={(listing) => { const position = matches.findIndex((match) => match.listing?.id === listing.id); if (position >= 0) setIndex(position); else onListing(listing); }} onBoundsChange={() => {}} /></div><p className="match-context-areas"><MapPin size={17} />{mapAreas.map((area) => area.label).join(" · ")}</p><div className="match-context-divider" /><h3>{forSearch ? "Your search" : "Your place"}</h3><p>{summary}</p><button className="text-button" onClick={onActivity}>Edit {forSearch ? "criteria" : "listing"} <ArrowRight size={15} /></button><div className="match-context-divider" /><h3>A good starting point.</h3><p>These matches meet your housing requirements. Get to know each other and review the details before making a commitment.</p></section><nav className="focused-match-pagination" aria-label="Match cards"><button className="text-button" disabled={index === 0} onClick={() => setIndex((position) => Math.max(0, position - 1))}><ArrowLeft size={16} /> Back</button><span aria-live="polite">{index + 1} of {matches.length}</span><button className="text-button" onClick={() => setIndex((position) => position + 1)}>Next <ArrowRight size={16} /></button></nav>{person && <button className="text-button match-report" onClick={() => report(person)}><Flag size={13} /> Report this search</button>}</aside>
       </div>}
     </>}
-    {notice && <ContactNotice listing={notice.listing} person={notice.search} busy={contacting} onClose={() => { if (!contacting) setNotice(null); }} onContinue={() => contact(notice)} onChecks={notice.listing ? () => { const listing = notice.listing!; setNotice(null); onListing(listing); } : undefined} />}
+    {notice && <ContactNotice listing={notice.listing} person={notice.search} busy={contacting} error={contactError} onClose={() => { if (!contacting) setNotice(null); }} onContinue={() => contact(notice)} onChecks={notice.listing ? () => { const listing = notice.listing!; setNotice(null); onListing(listing); } : undefined} />}
   </main>;
 }
