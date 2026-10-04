@@ -19,7 +19,7 @@ import type {
   ConversationSummary,
   ChatAttachment,
 } from "../shared/types";
-import { matchListingToRequest } from "../shared/matching";
+import { matchListingToSearch } from "../shared/matching";
 import { validateAreas } from "../shared/geo";
 import {
   HttpError,
@@ -1325,14 +1325,15 @@ async function route(req: Request, e: Env) {
   if (p === "/api/matches" && m === "GET") {
     requireThat(!u.suspended, 403, "Suspended accounts cannot view matches");
     const sourceType = url.searchParams.get("sourceType"), sourceId = url.searchParams.get("sourceId") || "";
-    requireThat(sourceId.length > 0 && sourceId.length <= 80, 400, "Choose one of your posts");
-    if (sourceType === "request") {
+    requireThat(sourceId.length > 0 && sourceId.length <= 80, 400, "Choose one of your activities");
+    if (sourceType === "search" || sourceType === "request") {
       const r = await getRequest(e, sourceId);
-      requireThat(r.ownerId === u.id, 403, "Choose one of your requests");
-      requireThat(r.status === "active", 409, "Publish this request to view matches");
+      requireThat(r.ownerId === u.id && r.profileSearch === 1, 403, "Choose your search");
+      requireThat(r.status === "active" && r.endDate > syracuseDate(), 409, "Turn on a current search to view matches");
+      const search = searchView(r);
       const available = await listings(e, "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid DESC LIMIT 500");
       const matches = available.flatMap((l) => {
-        const fit = matchListingToRequest(l, r);
+        const fit = matchListingToSearch(l, search);
         return fit ? [{ listing: listingView(l), ...fit }] : [];
       }).sort((a,b) => b.score - a.score || a.listing.id.localeCompare(b.listing.id));
       return json({ matches: matches.slice(0, 50) });
@@ -1341,14 +1342,15 @@ async function route(req: Request, e: Env) {
       const l = await getListing(e, sourceId);
       requireThat(l.ownerId === u.id, 403, "Choose one of your listings");
       requireThat(l.status === "approved", 409, "Publish this listing to view matches");
-      const available = await requests(e, "WHERE r.status='active' AND u.suspended=0 ORDER BY r.createdAt DESC LIMIT 500");
+      const available = await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 500", syracuseDate());
       const matches = available.flatMap((r) => {
-        const fit = matchListingToRequest(l, r);
-        return fit ? [{ request: requestView(r), ...fit }] : [];
-      }).sort((a,b) => b.score - a.score || a.request.id.localeCompare(b.request.id));
+        const search = searchView(r);
+        const fit = matchListingToSearch(l, search);
+        return fit ? [{ search, request: requestView(r), ...fit }] : [];
+      }).sort((a,b) => b.score - a.score || a.search.id.localeCompare(b.search.id));
       return json({ matches: matches.slice(0, 50) });
     }
-    throw new HttpError(400, "Choose a listing or request");
+    throw new HttpError(400, "Choose a listing or search");
   }
   if (p === "/api/listings" && m === "POST") {
     const b = await body(req);
@@ -1464,8 +1466,8 @@ async function route(req: Request, e: Env) {
     if (b.requestId !== undefined) {
       const r = await getRequest(e, text(b.requestId, "Request", 80));
       requireThat(l.ownerId === u.id, 403, "Only the listing owner can respond to a request");
-      requireThat(r.status === "active" && !r.ownerSuspended && l.status === "approved", 404, "Post not available");
-      requireThat(matchListingToRequest(l, r), 409, "This listing does not cover the request's dates and budget");
+      requireThat(r.profileSearch === 1 && r.status === "active" && r.endDate > syracuseDate() && !r.ownerSuspended && l.status === "approved", 404, "Search not available");
+      requireThat(matchListingToSearch(l, searchView(r)), 409, "This listing does not fit the search");
       const at = now();
       await stmt(e, "INSERT INTO conversations(id,listingId,buyerId,sellerId,createdAt,updatedAt,requestId) VALUES(?,?,?,?,?,?,?) ON CONFLICT(listingId,buyerId) DO UPDATE SET requestId=excluded.requestId", id(), l.id, r.ownerId, u.id, at, at, r.id).run();
       const c = await one<Conversation>(e, "SELECT * FROM conversations WHERE listingId=? AND buyerId=?", l.id, r.ownerId);
@@ -2046,7 +2048,7 @@ async function route(req: Request, e: Env) {
   if (reportRequest && m === "POST") {
     const r = await getRequest(e, reportRequest[1]);
     requireThat(r.ownerId !== u.id, 400, "You cannot report your own request");
-    requireThat(r.status === "active" && !r.ownerSuspended, 404, "Request not found");
+    requireThat(r.profileSearch === 1 && r.status === "active" && r.endDate > syracuseDate() && !r.ownerSuspended, 404, "Search not found");
     const reason = text((await body(req)).reason, "Report reason", 2000, 10);
     requireThat(!(await one(e, "SELECT id FROM request_reports WHERE requestId=? AND reporterId=? AND status='open'", r.id, u.id)), 409, "You already have an open report for this request");
     const report = { id: id(), requestId: r.id, reporterId: u.id, reason, status: "open", createdAt: now() };
@@ -2061,10 +2063,11 @@ async function route(req: Request, e: Env) {
     const r = await getRequest(e, adminRequestStatus[1]);
     requireThat(r.ownerId !== u.id, 403, "Staff cannot review their own request");
     const b = await body(req), status = String(b.status);
-    requireThat(["removed", "active"].includes(status), 400, "Choose removed or active");
+    requireThat(r.profileSearch === 1, 409, "Only current profile searches can be moderated");
+    requireThat(["removed", "active"].includes(status), 400, "Choose removed or restore");
     const reason = text(b.reason, "Moderation reason", 2000, 5);
     await e.DB.batch([
-      stmt(e, "UPDATE seeker_requests SET status=?,updatedAt=? WHERE id=?", status, now(), r.id),
+      stmt(e, "UPDATE seeker_requests SET status=?,updatedAt=? WHERE id=? AND profileSearch=1", status === "active" ? "paused" : "removed", now(), r.id),
       audit(e, u, status === "removed" ? "request.remove" : "request.restore", r.id, reason),
     ]);
     return json({ request: requestView(await getRequest(e, r.id)) });
