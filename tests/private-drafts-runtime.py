@@ -30,6 +30,15 @@ class Drafts(unittest.TestCase):
   self.assertEqual(owner.call("/api/drafts/search",payload)[0],409) # tombstone prevents stale resurrection
   current=owner.call("/api/drafts/search")[1];self.assertEqual(current,{"draft":None,"revision":3})
   self.assertEqual(owner.call("/api/drafts/search",{**payload,"revision":3})[1]["revision"],4)
+  area={"id":"test","label":"Campus","points":[{"lat":43.01,"lng":-76.15},{"lat":43.01,"lng":-76.10},{"lat":43.04,"lng":-76.10}]}
+  public=dict(startDate="2027-01-01",endDate="2027-05-31",maxBudget=900,roomType="Any",areas=[area],requiredAmenities=[],preferredAmenities=[])
+  self.assertEqual(owner.call("/api/my-search",{**public,"clientDraftRevision":3})[0],409)
+  self.assertEqual(owner.call("/api/my-search")[1]["search"],None)
+  self.assertEqual(owner.call("/api/my-search",{**public,"clientDraftRevision":4})[0],201)
+  self.assertEqual(owner.call("/api/drafts/search",{**payload,"revision":4})[1]["revision"],5)
+  self.assertEqual(owner.call("/api/my-search",{**public,"maxBudget":50,"clientDraftRevision":4})[0],409)
+  self.assertEqual(owner.call("/api/my-search")[1]["search"]["maxBudget"],900)
+
  def test_concurrent_revision_and_publication_retry(self):
   owner,other=member("Publisher"),member("Second publisher")
   key=str(uuid.uuid4());path="/api/drafts/"+key
@@ -41,6 +50,8 @@ class Drafts(unittest.TestCase):
   self.assertEqual(other.call(path)[1]["draft"],None)
   self.assertEqual(other.call(path+"/delete",{"revision":2})[0],409)
   listing=dict(clientPublishId=key,title="Publication retry test",neighborhood="Westcott",address="Near Westcott",price=800,beds=1,baths=1,roomType="Private room",startDate="2027-01-01",endDate="2027-05-31",description="A test of reliable publication retries, not a real listing.",amenities=[],images=[],lat=43.03,lng=-76.13)
+  self.assertEqual(owner.call("/api/listings",{**listing,"clientDraftRevision":1})[0],409)
+  listing["clientDraftRevision"]=2
   with concurrent.futures.ThreadPoolExecutor(2) as executor:
    results=list(executor.map(lambda _:owner.call("/api/listings",listing),range(2)))
   self.assertTrue(all(r[0] in (200,201) for r in results),results)
@@ -48,7 +59,7 @@ class Drafts(unittest.TestCase):
   retry=owner.call("/api/listings",{**listing,"title":"Accidental retry change"})
   self.assertEqual(retry[1]["listing"]["id"],next(iter(ids)))
   self.assertEqual(retry[1]["listing"]["title"],listing["title"])
-  separate=other.call("/api/listings",listing)
+  separate=other.call("/api/listings",{k:v for k,v in listing.items() if k!="clientDraftRevision"})
   self.assertNotEqual(separate[1]["listing"]["id"],next(iter(ids)))
   self.assertEqual(owner.call("/api/listings",{**listing,"clientPublishId":"bad-key"})[0],400)
 if __name__=="__main__":unittest.main()

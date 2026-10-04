@@ -42,6 +42,7 @@ export function usePrivateDraft(
     );
     revision.current = result.revision;
     setSaved(true);
+    window.dispatchEvent(new Event("drafts-changed"));
     return result.draft;
   }
   async function clear() {
@@ -51,6 +52,7 @@ export function usePrivateDraft(
     });
     revision.current = result.revision;
     setSaved(false);
+    window.dispatchEvent(new Event("drafts-changed"));
   }
   return { ready, saved, error, save, clear, load };
 }

@@ -29,14 +29,18 @@ export default function DraftList({
       void load();
     };
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    window.addEventListener("drafts-changed", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("drafts-changed", refresh);
+    };
   }, []);
   async function discard(draft: PrivateDraft) {
     setBusy(draft.id);
     setError("");
     try {
       await api(`/drafts/${draft.id}/delete`, { revision: draft.revision });
-      await load();
+      window.dispatchEvent(new Event("drafts-changed"));
       onChange?.();
     } catch (cause) {
       setError((cause as Error).message);

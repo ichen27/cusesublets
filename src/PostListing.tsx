@@ -89,12 +89,14 @@ export default function PostListing({
     setBusy(true);
     setError("");
     try {
+      let draftRevision: number | undefined;
       if (!created) {
         if (step === 2 && form.endDate <= form.startDate)
           throw new Error(
             "Choose an end date after the start of your availability.",
           );
-        await draft.save(form, step < 4 ? step + 1 : step);
+        draftRevision = (await draft.save(form, step < 4 ? step + 1 : step))
+          .revision;
         if (step < 4) {
           setStep(step + 1);
           return;
@@ -106,6 +108,7 @@ export default function PostListing({
           await api<{ listing: Listing }>("/listings", {
             ...form,
             clientPublishId: id,
+            clientDraftRevision: draftRevision,
             images: form.images
               .split("\n")
               .map((s) => s.trim())

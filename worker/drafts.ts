@@ -81,13 +81,13 @@ export async function draftRoute(
   );
   const revision = Number(body.revision),
     timestamp = new Date().toISOString();
-  let changed: D1Result;
+  let changed: Row | null;
   if (match[2]) {
     changed = await env.DB.prepare(
-      "UPDATE private_drafts SET deleted=1,data='{}',revision=revision+1,updatedAt=? WHERE ownerId=? AND id=? AND revision=? AND deleted=0 AND EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0)",
+      "UPDATE private_drafts SET deleted=1,data='{}',revision=revision+1,updatedAt=? WHERE ownerId=? AND id=? AND revision=? AND deleted=0 AND EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) RETURNING *",
     )
       .bind(timestamp, user.id, draftId, revision, user.id)
-      .run();
+      .first<Row>();
   } else {
     const kind: DraftKind = draftId === "search" ? "search" : "listing";
     requireThat(body.kind === kind, 400, "Draft type does not match its ID.");
@@ -106,7 +106,7 @@ export async function draftRoute(
     }
     if (revision === 0) {
       changed = await env.DB.prepare(
-        "INSERT INTO private_drafts(ownerId,id,kind,step,revision,data,updatedAt) SELECT ?,?,?,?,1,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (SELECT COUNT(*) FROM private_drafts WHERE ownerId=? AND kind=? AND deleted=0) < ? ON CONFLICT(ownerId,id) DO NOTHING",
+        "INSERT INTO private_drafts(ownerId,id,kind,step,revision,data,updatedAt) SELECT ?,?,?,?,1,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (SELECT COUNT(*) FROM private_drafts WHERE ownerId=? AND kind=? AND deleted=0) < ? ON CONFLICT(ownerId,id) DO NOTHING RETURNING *",
       )
         .bind(
           user.id,
@@ -120,10 +120,10 @@ export async function draftRoute(
           kind,
           kind === "search" ? 1 : 20,
         )
-        .run();
+        .first<Row>();
     } else {
       changed = await env.DB.prepare(
-        "UPDATE private_drafts SET step=?,data=?,revision=revision+1,deleted=0,updatedAt=? WHERE ownerId=? AND id=? AND revision=? AND kind=? AND EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (deleted=0 OR (SELECT COUNT(*) FROM private_drafts WHERE ownerId=? AND kind=? AND deleted=0) < ?)",
+        "UPDATE private_drafts SET step=?,data=?,revision=revision+1,deleted=0,updatedAt=? WHERE ownerId=? AND id=? AND revision=? AND kind=? AND EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (deleted=0 OR (SELECT COUNT(*) FROM private_drafts WHERE ownerId=? AND kind=? AND deleted=0) < ?) RETURNING *",
       )
         .bind(
           body.step,
@@ -138,17 +138,16 @@ export async function draftRoute(
           kind,
           kind === "search" ? 1 : 20,
         )
-        .run();
+        .first<Row>();
     }
   }
   requireThat(
-    changed.meta.changes,
+    changed,
     409,
     "This draft changed in another tab, or your draft limit was reached. Your entries are still here. Reload the saved version to review before saving again.",
   );
-  const row = await read();
   return json({
-    draft: row && !row.deleted ? view(row) : null,
-    revision: row?.revision || 0,
+    draft: !changed.deleted ? view(changed) : null,
+    revision: changed.revision,
   });
 }

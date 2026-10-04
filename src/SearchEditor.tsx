@@ -99,13 +99,14 @@ export default function SearchEditor({
         throw new Error(
           "Select at least one area where you would like to live.",
         );
-      await draft.save(form, step < 4 ? step + 1 : step);
+      const savedDraft = await draft.save(form, step < 4 ? step + 1 : step);
       if (step < 4) {
         setStep(step + 1);
         return;
       }
       const result = await api<{ search: HousingSearch }>("/my-search", {
         ...form,
+        clientDraftRevision: savedDraft.revision,
         status: form.activate ? "active" : "paused",
         minBudget: form.minBudget ? Number(form.minBudget) : undefined,
         maxBudget: Number(form.maxBudget),

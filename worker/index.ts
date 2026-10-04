@@ -1299,18 +1299,20 @@ async function route(req: Request, e: Env) {
   if (p === "/api/my-search" && m === "POST") {
     requireThat(!u.suspended, 403, "Suspended accounts cannot publish a search");
     const b = await body(req);
+    const draftRevision = b.clientDraftRevision ?? null;
+    requireThat(draftRevision === null || (Number.isSafeInteger(draftRevision) && Number(draftRevision) > 0), 400, "Invalid draft revision");
     const data = searchData(b);
     requireThat(b.status === undefined || b.status === "active" || b.status === "paused", 400, "Choose on or off");
     const current = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
     requireThat(!current || current.status !== "removed", 409, "This search was removed by staff");
     const status = b.status ?? (current?.status === "active" ? "active" : "paused");
     if (current) {
-      const result = await stmt(e, "UPDATE seeker_requests SET data=?,status=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1 AND status<>'removed'", JSON.stringify(data), status, now(), current.id, u.id).run();
-      requireThat(result.meta.changes === 1, 409, "This search changed; refresh before editing");
+      const result = await stmt(e, "UPDATE seeker_requests SET data=?,status=?,updatedAt=? WHERE id=? AND ownerId=? AND profileSearch=1 AND status<>'removed' AND EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id='search' AND revision=? AND deleted=0))", JSON.stringify(data), status, now(), current.id, u.id, u.id, draftRevision, u.id, draftRevision).run();
+      requireThat(result.meta.changes === 1, 409, "This search or draft changed in another tab. Your entries are still here; reload the saved version before editing.");
     } else {
       const key = id(), at = now();
-      const inserted = await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt,profileSearch) VALUES(?,?,?,?,?,?,1) ON CONFLICT(ownerId) WHERE profileSearch=1 DO NOTHING", key, u.id, status, JSON.stringify(data), at, at).run();
-      requireThat(inserted.meta.changes === 1, 409, "Your search was created elsewhere; refresh before editing");
+      const inserted = await stmt(e, "INSERT INTO seeker_requests(id,ownerId,status,data,createdAt,updatedAt,profileSearch) SELECT ?,?,?,?,?,?,1 WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id='search' AND revision=? AND deleted=0)) ON CONFLICT(ownerId) WHERE profileSearch=1 DO NOTHING", key, u.id, status, JSON.stringify(data), at, at, u.id, draftRevision, u.id, draftRevision).run();
+      requireThat(inserted.meta.changes === 1, 409, "Your search or draft changed in another tab. Your entries are still here; reload the saved version before editing.");
     }
     const saved = (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1", u.id))[0];
     return json({ search: searchView(saved) }, current ? 200 : 201);
@@ -1365,6 +1367,8 @@ async function route(req: Request, e: Env) {
     const b = await body(req);
     const createKey = b.clientPublishId ?? null;
     requireThat(createKey === null || (typeof createKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(createKey)), 400, "Invalid publication ID");
+    const draftRevision = b.clientDraftRevision ?? null;
+    requireThat(draftRevision === null || (createKey && Number.isSafeInteger(draftRevision) && Number(draftRevision) > 0), 400, "Invalid draft revision");
     if (createKey) {
       const previous = await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey);
       if (previous) return json({ listing: listingView(await getListing(e, previous.id), u) });
@@ -1417,18 +1421,22 @@ async function route(req: Request, e: Env) {
       sample: demo,
     };
     const key = id();
-    await stmt(
+    const creation = await stmt(
       e,
-      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,'approved',?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
+      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,'approved',?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id=? AND revision=? AND deleted=0)) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
       key,
       u.id,
       JSON.stringify(data),
       now(),
       createKey,
       u.id,
+      draftRevision,
+      u.id,
+      createKey,
+      draftRevision,
     ).run();
-    const published = createKey ? await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey) : {id:key};
-    requireThat(published, 409, "Publication could not be completed. Try again.");
+    const published = createKey ? await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey) : creation.meta.changes ? {id:key} : null;
+    requireThat(published, 409, "This draft changed in another tab or publication is no longer available. Your entries are still here. Reload the saved version before trying again.");
     return json({ listing: listingView(await getListing(e, published.id), u) }, published.id === key ? 201 : 200);
   }
 
