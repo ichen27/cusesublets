@@ -38,7 +38,7 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
   -derivedDataPath work/ios-build CODE_SIGNING_ALLOWED=NO test
 ```
 
-The UI test creates synthetic accounts and private drafts only on port 8936. Never point tests at operational data. Schema migration 0012 is required for room layouts and native Google sign-in. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
+The UI test creates synthetic accounts, saves/resumes a private draft, and publishes a synthetic listing only on port 8936. Never point tests at operational data. Schema migration 0012 is required for room layouts and native Google sign-in. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
 
 ## Try it
 
