@@ -89,6 +89,15 @@ struct LoginView: View {
   @State private var signup = false
   @State private var busy = false
   @State private var google = GoogleSignIn()
+  private var passwordContentType: UITextContentType {
+    #if DEBUG
+      // Keep synthetic credential entry independent of the system password-generator sheet.
+      if ProcessInfo.processInfo.environment["CUSE_UI_MANUAL_PASSWORD"] == "1" {
+        return .password
+      }
+    #endif
+    return signup ? .newPassword : .password
+  }
   var body: some View {
     NavigationStack {
       Form {
@@ -105,8 +114,7 @@ struct LoginView: View {
           TextField("Email", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(
             .never
           ).autocorrectionDisabled().textContentType(.username)
-          SecureField("Password", text: $password).textContentType(
-            signup ? .newPassword : .password)
+          SecureField("Password", text: $password).textContentType(passwordContentType)
           if signup {
             Text("Use 15–128 characters. Signing up does not verify your identity.").font(.caption)
           }
@@ -135,6 +143,13 @@ struct LoginView: View {
           .secondary)
       }.scrollDismissesKeyboard(.interactively).navigationTitle("Welcome").toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+        ToolbarItemGroup(placement: .keyboard) {
+          Spacer()
+          Button("Done") {
+            UIApplication.shared.sendAction(
+              #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+          }.accessibilityIdentifier("dismiss-keyboard")
+        }
       }
     }
   }

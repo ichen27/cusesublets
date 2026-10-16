@@ -183,6 +183,13 @@ struct ListingEditor: View {
     }.scrollDismissesKeyboard(.interactively)
     .navigationTitle(existing == nil ? "List your place" : "Edit listing").toolbar {
       ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(busy) }
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("Done") {
+          UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }.accessibilityIdentifier("dismiss-keyboard")
+      }
     }.interactiveDismissDisabled(busy).task { await load() }
   }
   func load() async {

@@ -40,6 +40,8 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 Simulator interaction tests use local ad-hoc signing so Keychain session storage has a signed application identity. No Apple signing team or paid membership is needed for this simulator step. An unsigned compile alone cannot verify authentication.
 
+The UI test sets `CUSE_UI_MANUAL_PASSWORD=1` in Debug to type its synthetic password without the system's new-password generator sheet. Normal builds retain new-password AutoFill, and Release ignores this switch. Password-manager interaction needs a separate device check; the automated test exercises manual credential entry.
+
 The UI test creates synthetic accounts, saves/resumes a private draft, and publishes a synthetic listing only on port 8936. Never point tests at operational data. Schema migration 0012 is required for room layouts and native Google sign-in. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
 
 ## Try it

@@ -5,6 +5,7 @@ final class MarketplaceTests: XCTestCase {
     continueAfterFailure = false
     let app = XCUIApplication()
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
+    app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     app.launch()
     XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
     XCTAssertTrue(app.staticTexts["Find a sublet.\nList your place."].exists)
@@ -70,15 +71,24 @@ final class MarketplaceTests: XCTestCase {
     app.navigationBars.buttons.firstMatch.tap()
     app.buttons["Done"].tap()
     app.tabBars.buttons["You"].tap()
-    app.swipeUp()
+    reveal(app.buttons["Log out"], in: app)
     app.buttons["Log out"].tap()
     app.tabBars.buttons["You"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
   }
   @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    if app.keyboards.firstMatch.exists {
+      let done = app.buttons["dismiss-keyboard"]
+      XCTAssertTrue(done.waitForExistence(timeout: 10))
+      done.tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+    }
     for _ in 0..<8 {
       if element.exists && element.isHittable { return }
-      app.swipeUp()
+      // Scroll along the form margin so embedded maps do not consume the gesture.
+      let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.75))
+      let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.3))
+      start.press(forDuration: 0.05, thenDragTo: end)
     }
     XCTAssertTrue(element.exists && element.isHittable, "Expected a visible form control")
   }

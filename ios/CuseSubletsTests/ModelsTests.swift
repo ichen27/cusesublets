@@ -36,8 +36,9 @@ final class ModelsTests: XCTestCase {
   func testSyracuseDateDoesNotUseDeviceTimeZone() {
     let date = Date(timeIntervalSince1970: 1_792_116_000)
     let expected = isoDay(date)
+    let originalZone = NSTimeZone.default
+    defer { NSTimeZone.default = originalZone }
     NSTimeZone.default = TimeZone(secondsFromGMT: 12 * 3600)!
-    defer { NSTimeZone.resetSystemTimeZone() }
     XCTAssertEqual(isoDay(date), expected)
   }
 }
