@@ -110,6 +110,7 @@ struct ProfileEditor: View {
   @State private var note = ""
   @State private var error = ""
   @State private var busy = false
+  @State private var loaded = false
   @State private var picking = false
   @State private var uploadKind = "identity"
   var body: some View {
@@ -130,7 +131,8 @@ struct ProfileEditor: View {
                 "/api/profile",
                 [
                   "name": name, "phone": phone, "bio": bio,
-                  "socials": ["instagram": instagram, "website": website].filter {
+                  "socials": preservedSocials.merging(["instagram": instagram, "website": website])
+                  { _, new in new }.filter {
                     !$0.value.isEmpty
                   },
                 ])
@@ -139,7 +141,7 @@ struct ProfileEditor: View {
               error = ""
             } catch { self.error = error.localizedDescription }
           }
-        }.disabled(busy)
+        }.disabled(busy || !loaded)
       }
       Section("Photos and private identity check") {
         Button("Upload profile photo") {
@@ -170,6 +172,7 @@ struct ProfileEditor: View {
         instagram = r.profile.socials["instagram"] ?? ""
         website = r.profile.socials["website"] ?? ""
         note = r.identityNote ?? ""
+        loaded = true
       } catch { self.error = error.localizedDescription }
     }
     .fileImporter(
@@ -256,8 +259,6 @@ struct SavedView: View {
           + (more
             ? "?cursor=" + (cursor ?? "").addingPercentEncoding(
               withAllowedCharacters: .urlQueryAllowed)! : ""))
-      let ls: ListingsResponse = try await state.api.get("/api/listings")
-      let ss: SearchesResponse = try await state.api.get("/api/searches")
       if !more {
         listings = []
         searches = []
@@ -266,12 +267,21 @@ struct SavedView: View {
       for item in page.items {
         if !item.available {
           unavailable += 1
-        } else if item.targetType == "listing",
-          let l = ls.listings.first(where: { $0.id == item.targetId })
-        {
-          listings.append(l)
-        } else if let s = ss.searches.first(where: { $0.id == item.targetId }) {
-          searches.append(s)
+        } else {
+          do {
+            if item.targetType == "listing" {
+              let result: ListingResponse = try await state.api.get(
+                "/api/listings/\(item.targetId)")
+              listings.append(result.listing)
+            } else {
+              let result: MySearchResponse = try await state.api.get(
+                "/api/searches/\(item.targetId)")
+              if let search = result.search { searches.append(search) }
+            }
+          } catch {
+            // A target may disappear between fetching the saved page and its details.
+            if (error as? APIError)?.status == 404 { unavailable += 1 } else { throw error }
+          }
         }
       }
       cursor = page.nextCursor

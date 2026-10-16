@@ -76,10 +76,22 @@ struct KeychainSession {
   func upload(_ path: String, file: URL, fields: [String: String] = [:]) async throws {
     let scoped = file.startAccessingSecurityScopedResource()
     defer { if scoped { file.stopAccessingSecurityScopedResource() } }
-    let data = try Data(contentsOf: file)
-    guard data.count <= 25 * 1024 * 1024 else {
+    let limit =
+      ["mp4", "webm"].contains(file.pathExtension.lowercased()) ? 25 * 1024 * 1024 : 5 * 1024 * 1024
+    guard let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0,
+      size <= limit
+    else {
       throw APIError(message: "Choose a file under 25 MB. Documents and photos must be under 5 MB.")
     }
+    let data = try await Task.detached(priority: .userInitiated) {
+      let handle = try FileHandle(forReadingFrom: file)
+      defer { try? handle.close() }
+      let bytes = try handle.read(upToCount: limit + 1) ?? Data()
+      guard !bytes.isEmpty, bytes.count <= limit else {
+        throw APIError(message: "File is empty or too large")
+      }
+      return bytes
+    }.value
     let ext = file.pathExtension.lowercased()
     let types = [
       "pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -166,7 +178,8 @@ struct KeychainSession {
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
       throw APIError(
         message: json?["error"] as? String
-          ?? "The server returned \(response.statusCode). Please try again.")
+          ?? "The server returned \(response.statusCode). Please try again.",
+        status: response.statusCode)
     }
   }
   func clearSession() throws {

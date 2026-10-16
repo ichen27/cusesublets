@@ -911,6 +911,12 @@ async function route(req: Request, e: Env) {
   }
   if (p === "/api/searches" && m === "GET")
     return json({ searches: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(searchView) });
+  const publicSearchMatch = p.match(/^\/api\/searches\/([^/]+)$/);
+  if (publicSearchMatch && m === "GET") {
+    const r = await getRequest(e, publicSearchMatch[1]);
+    requireThat(r.profileSearch === 1 && r.status === "active" && !r.ownerSuspended && r.endDate > syracuseDate(), 404, "Search not found");
+    return json({ search: searchView(r) });
+  }
   if (p === "/api/requests" && m === "GET")
     return json({ requests: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(requestView) });
   const publicRequestMatch = p.match(/^\/api\/requests\/([^/]+)$/);

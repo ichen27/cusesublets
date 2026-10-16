@@ -38,9 +38,37 @@ final class MarketplaceTests: XCTestCase {
     save.tap()
     XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
     app.swipeUp()
+    let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
+      .firstMatch
+    XCTAssertTrue(resume.waitForExistence(timeout: 10))
+    resume.tap()
+    let neighborhood = app.textFields["Neighborhood"]
+    XCTAssertTrue(neighborhood.waitForExistence(timeout: 10))
+    neighborhood.tap()
+    neighborhood.typeText("Westcott")
+    app.textFields["Approximate public address"].tap()
+    app.textFields["Approximate public address"].typeText("Near Westcott — synthetic UI test")
+    app.swipeUp()
+    let description = app.textFields["Describe your place"]
+    XCTAssertTrue(description.waitForExistence(timeout: 5))
+    description.tap()
+    description.typeText("Synthetic simulator listing only. This is not an available property.")
+    app.swipeUp()
+    app.swipeUp()
+    app.swipeUp()
+    app.buttons["Publish listing"].tap()
     XCTAssertTrue(
-      app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place")).firstMatch
-        .waitForExistence(timeout: 10))
+      app.staticTexts["Your place is published. Checks are still independent."].waitForExistence(
+        timeout: 15))
+    attach(app, "Published sample listing")
+    app.buttons["Add photos, room scans & documents"].tap()
+    app.buttons["Capture or manage room layouts"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
+    attach(app, "Room capture capability")
+    // Dismiss the listing sheet before signing out.
+    app.swipeDown()
+    app.tabBars.buttons["You"].tap()
     app.swipeUp()
     app.buttons["Log out"].tap()
     app.tabBars.buttons["You"].tap()

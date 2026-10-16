@@ -32,7 +32,7 @@ class IPhoneRuntime(unittest.TestCase):
   updated=host.call('/api/listings/'+key)[1]['listing'];self.assertEqual(original,(updated['leaseStatus'],updated['permissionStatus'],updated['hostIdentity']))
   self.assertEqual(host.call(route+'/delete',{})[0],200)
   self.assertEqual(host.call(route+'/visibility',dict(published=True))[0],404)
- def test_mobile_pkce_expiry_replay_and_logout(self):
+ def test_mobile_pkce_replay_and_logout(self):
   host=rt.Client();host.login('host')
   verifier='a'*64;challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
   state=str(uuid.uuid4());base=os.environ.get('API_BASE','http://127.0.0.1:8917')

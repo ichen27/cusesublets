@@ -61,9 +61,16 @@ struct DraftResponse: Decodable {
 struct ListingEditor: View {
   @EnvironmentObject var state: AppState
   @Environment(\.dismiss) var dismiss
-  var draftID: String = UUID().uuidString
+  @State private var draftID: String
   var existing: Listing?
   let onSaved: () -> Void
+  init(draftID: String = UUID().uuidString, existing: Listing? = nil, onSaved: @escaping () -> Void)
+  {
+    _draftID = State(initialValue: draftID)
+    self.existing = existing
+    self.onSaved = onSaved
+  }
+  @State private var walkMinutes = 10.0
   @State private var title = ""
   @State private var neighborhood = ""
   @State private var address = ""
@@ -92,7 +99,8 @@ struct ListingEditor: View {
       "beds": beds, "baths": baths, "roomType": roomType, "startDate": isoDay(start),
       "endDate": isoDay(end), "description": description,
       "amenities": amenities.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
-      "matterportUrl": tour, "videoUrl": video, "images": images, "walkMinutes": 0, "lat": lat,
+      "matterportUrl": tour, "videoUrl": video, "images": images, "walkMinutes": walkMinutes,
+      "lat": lat,
       "lng": lng,
     ]
   }
@@ -111,6 +119,10 @@ struct ListingEditor: View {
           TextField("Listing title", text: $title)
           TextField("Neighborhood", text: $neighborhood).disabled(existing != nil)
           TextField("Approximate public address", text: $address).disabled(existing != nil)
+          if existing == nil {
+            TextField("Estimated walk to campus (minutes)", value: $walkMinutes, format: .number)
+              .keyboardType(.numberPad)
+          }
           Picker("Room type", selection: $roomType) {
             Text("Private room").tag("Private room")
             Text("Entire place").tag("Entire place")
@@ -197,6 +209,7 @@ struct ListingEditor: View {
           neighborhood = v["neighborhood"] as? String ?? ""
           address = v["address"] as? String ?? ""
           price = v["price"] as? Double ?? 800
+          walkMinutes = max(1, v["walkMinutes"] as? Double ?? 10)
           beds = v["beds"] as? Double ?? 1
           baths = v["baths"] as? Double ?? 1
           roomType = v["roomType"] as? String ?? "Private room"

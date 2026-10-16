@@ -217,6 +217,7 @@ struct ScansResponse: Decodable { let scans: [RoomScan] }
 struct EmptyResponse: Decodable {}
 struct APIError: LocalizedError {
   let message: String
+  var status: Int? = nil
   var errorDescription: String? { message }
 }
 func dollars(_ value: Double) -> String {
