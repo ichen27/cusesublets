@@ -26,7 +26,16 @@ The following remain release work, not implied by a successful build:
 - End-to-end hosted Google authentication and any additional Apple sign-in/account-deletion requirements for the chosen distribution.
 - Accessibility and full web/mobile parity review, including all discovery filters, comment editing, profile gallery management, completed-lease reviews and staff tools.
 - Reliable photographic capture/reconstruction jobs and Gaussian-splat playback: the prior experiment showed artifacts and lacks independent quality validation. No fake or automatic completion state is presented.
-- Push notifications, verified email and password recovery, legal signing and real payments are not configured.
+
+Existing product limitations also remain: verified email/password recovery, legal signing and real payments are not configured on the website either. Native delivery does not create those capabilities. Push notifications are a separate mobile enhancement; none should be presented as already available.
+
+## Next implementation slices
+
+1. Finish the isolated native interaction flow, retain its screenshots, and resolve any failures before calling the app validated.
+2. Close web/mobile parity gaps: complete discovery filters, editable comments, profile gallery management and completed-lease reviews. Keep staff administration accessible through the existing web workspace.
+3. Test capture on a supported physical iPhone: repeat the same room, compare a few independently measured dimensions, interrupt capture and upload, and verify a private scan can be recovered after relaunch without publishing it.
+4. Integrate photographic reconstruction as its own job lifecycle: capture/upload, processing, failure/retry, private review and explicit publication. Use the existing apartment reconstruction experiment as a starting point; evaluate artifacts and novel viewpoints before calling the result a tour. Keep original captures and virtual staging clearly distinguished.
+5. Configure the owner's signing team and bundle identity, test hosted authentication and distribution requirements, and prepare a TestFlight build. TestFlight requires account/provisioning setup; the checked-in simulator project is not an installable phone package.
 
 ## Acceptance checks
 

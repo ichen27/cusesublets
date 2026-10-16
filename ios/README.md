@@ -35,8 +35,10 @@ In another terminal:
 API_BASE=http://127.0.0.1:8936 python3 tests/iphone-runtime.py
 xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
   -destination 'platform=iOS Simulator,name=YOUR_INSTALLED_IPHONE' \
-  -derivedDataPath work/ios-build CODE_SIGNING_ALLOWED=NO test
+  -derivedDataPath work/ios-build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
 ```
+
+Simulator interaction tests use local ad-hoc signing so Keychain session storage has a signed application identity. No Apple signing team or paid membership is needed for this simulator step. An unsigned compile alone cannot verify authentication.
 
 The UI test creates synthetic accounts, saves/resumes a private draft, and publishes a synthetic listing only on port 8936. Never point tests at operational data. Schema migration 0012 is required for room layouts and native Google sign-in. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
 

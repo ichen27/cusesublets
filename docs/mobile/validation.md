@@ -2,11 +2,14 @@
 
 This is an initial implementation under validation. A simulator build does not establish device capture quality or App Store readiness.
 
+Current executable change under test: enable local simulator signing for Keychain access and add a save/read/delete check. The prior UI failure and its evidence are retained below; see the PR's latest iPhone check for the new execution result.
+
 ## Verified
 
 - Web/Worker typecheck, all 45 unit tests and production web build passed locally. The existing large JavaScript bundle warning remains.
 - An unsigned iPhone simulator build passed using Xcode 27.1. No signing or global developer-tool configuration was changed.
-- Logs recovered from the superseded first GitHub run confirm all four native model tests passed. Its UI test reached Browse, Matches, Inbox and login, then failed to find the name field after tapping the signup toggle. The form now uses an explicit signup/login button; the test waits for the new field, scrolls controls into view, identifies multiline input explicitly and closes the editor through navigation. A fresh run is required; the initial UI failure is not treated as a pass.
+- Logs recovered from superseded GitHub runs confirm all four native model tests passed. Their UI test reached Browse, Matches, Inbox and login, then failed to find the name field after tapping the signup toggle. The captured accessibility tree showed the outer toggle row and inner switch separately, with the switch still off. The form now uses an explicit signup/login button; the test waits for the new field, scrolls controls into view, identifies multiline input explicitly and closes the editor through navigation. The initial UI failure is not treated as a pass.
+- The run at `78f32b4` passed those four model tests and progressed through signup submission. Its API log shows successful account creation; the UI hierarchy shows Keychain storage failed in the unsigned simulator build. CI now uses local ad-hoc simulator signing and includes a Keychain save/read/delete test. Session storage has not been weakened or replaced with an insecure fallback. The revised native suite still requires a passing result.
 - Two runtime tests passed against a fresh, isolated local database with migrations and synthetic seed data. They cover room-scan ownership, private upload, explicit publication/hiding, revocation when a listing is paused, unchanged verification fields, malformed input and retry behavior; and mobile-auth verifier binding, one-use codes and logout.
 - GitHub [Checks at 1c37d81](https://github.com/ichen27/cusesublets/actions/runs/38959265778) passed. The [PR iPhone workflow](https://github.com/ichen27/cusesublets/actions/runs/38959265752) also passed its build/setup/API-runtime steps; its native test result was pending when this record was first written. Earlier duplicate and superseded native runs were cancelled.
 - A browser check against the isolated API confirmed a published synthetic layout renders on the public listing with zero console warnings/errors. The checked-in [screenshot](screenshots/web-room-layout.png) and [sample geometry](fixtures/sample-room.json) are reusable evidence; they are not a real scan or a native-app screenshot.
@@ -24,7 +27,7 @@ This is an initial implementation under validation. A simulator build does not e
 
 Migration 0012 was applied only to isolated test data. No operational database was migrated or seeded. The hosted preview watches its checkout: it briefly picked up development assets before this was discovered. The canonical checkout was restored to stable main (`2e6d7b4`), rebuilt, and the public site was verified serving its stable bundle (`index-B-K9E7JA.js`). Feature work continues in a separate Git worktree. See the [deployment runbook](../deployment.md).
 
-CI retains its result bundle and isolated API log as the `iphone-validation` artifact. Those contain synthetic test data only. No useful native simulator screenshots or signed distribution package are available yet. GitHub reports no protection on `main`; this draft is unmerged and does not claim enforced branch checks.
+CI retains its result bundle and isolated API log as the `iphone-validation` artifact. Those contain synthetic test data only. The [Browse screenshot](screenshots/iphone-browse.png) was recovered from the run at `1c37d81`; its browsing screen is unchanged by the later signup fix. It demonstrates actual simulator rendering, not a completed interaction test. No signed distribution package is available. GitHub reports no protection on `main`; this draft is unmerged and does not claim enforced branch checks.
 
 ## Sample artifact
 

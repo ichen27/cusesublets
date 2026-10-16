@@ -3,6 +3,15 @@ import XCTest
 @testable import CuseSublets
 
 final class ModelsTests: XCTestCase {
+  func testSessionKeychainRoundTrip() throws {
+    let vault = KeychainSession(account: "isolated-unit-test-" + UUID().uuidString)
+    defer { try? vault.save(nil) }
+    try vault.save(
+      SessionCredential(cookie: "synthetic-session=value", expires: Date().addingTimeInterval(60)))
+    XCTAssertEqual(vault.read()?.cookie, "synthetic-session=value")
+    try vault.save(nil)
+    XCTAssertNil(vault.read())
+  }
   func testRoomLayoutPreservesColumnMajorTransform() throws {
     let matrix: [Float] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, 2, 1, 1]
     let original = RoomLayout(elements: [
