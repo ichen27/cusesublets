@@ -9,7 +9,7 @@ Use a Mac with Xcode and an installed iOS simulator runtime. Open `CuseSublets.x
 ```sh
 xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath work/ios-build CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath work/ios-build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 ```
 
 Run these commands from the repository root. If your active developer tools are the command-line tools, prefix with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. No global toolchain changes are required.
@@ -38,7 +38,7 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
   -derivedDataPath work/ios-build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test
 ```
 
-Simulator interaction tests use local ad-hoc signing so Keychain session storage has a signed application identity. No Apple signing team or paid membership is needed for this simulator step. An unsigned compile alone cannot verify authentication.
+Simulator builds and interaction tests use local ad-hoc signing so Keychain session storage has a signed application identity. No Apple signing team or paid membership is needed for this simulator step. An unsigned compile alone cannot verify authentication.
 
 The UI test sets `CUSE_UI_MANUAL_PASSWORD=1` in Debug to type its synthetic password without the system's new-password generator sheet. Normal builds retain new-password AutoFill, and Release ignores this switch. Password-manager interaction needs a separate device check; the automated test exercises manual credential entry.
 

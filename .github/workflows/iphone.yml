@@ -1,6 +1,7 @@
 name: iPhone
 on:
   push:
+    branches: [main]
     paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', '.github/workflows/iphone.yml']
   pull_request:
     paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', '.github/workflows/iphone.yml']
