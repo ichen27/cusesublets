@@ -225,6 +225,7 @@ struct SavedView: View {
   @State private var unavailable = 0
   @State private var cursor: String?
   @State private var error = ""
+  @State private var loading = false
   var body: some View {
     ScrollView {
       VStack(spacing: 16) {
@@ -243,7 +244,9 @@ struct SavedView: View {
           }.buttonStyle(.plain)
         }
         if unavailable > 0 { Text("\(unavailable) saved posts are no longer available.") }
-        if cursor != nil { Button("Load more") { Task { await load(more: true) } } }
+        if cursor != nil {
+          Button("Load more") { Task { await load(more: true) } }.disabled(loading)
+        }
         if !error.isEmpty { Text(error).foregroundStyle(.red) }
         if listings.isEmpty && searches.isEmpty && unavailable == 0 {
           EmptyState(
@@ -253,38 +256,43 @@ struct SavedView: View {
     }.navigationTitle("Saved").task { await load() }
   }
   func load(more: Bool = false) async {
+    guard !loading else { return }
+    loading = true
+    defer { loading = false }
     do {
       let page: SavedResponse = try await state.api.get(
         "/api/social/saved"
           + (more
             ? "?cursor=" + (cursor ?? "").addingPercentEncoding(
               withAllowedCharacters: .urlQueryAllowed)! : ""))
-      if !more {
-        listings = []
-        searches = []
-        unavailable = 0
-      }
+      var pageListings: [Listing] = []
+      var pageSearches: [HousingSearch] = []
+      var pageUnavailable = 0
       for item in page.items {
         if !item.available {
-          unavailable += 1
+          pageUnavailable += 1
         } else {
           do {
             if item.targetType == "listing" {
               let result: ListingResponse = try await state.api.get(
                 "/api/listings/\(item.targetId)")
-              listings.append(result.listing)
+              pageListings.append(result.listing)
             } else {
               let result: MySearchResponse = try await state.api.get(
                 "/api/searches/\(item.targetId)")
-              if let search = result.search { searches.append(search) }
+              if let search = result.search { pageSearches.append(search) }
             }
           } catch {
             // A target may disappear between fetching the saved page and its details.
-            if (error as? APIError)?.status == 404 { unavailable += 1 } else { throw error }
+            if (error as? APIError)?.status == 404 { pageUnavailable += 1 } else { throw error }
           }
         }
       }
+      listings = (more ? listings : []) + pageListings
+      searches = (more ? searches : []) + pageSearches
+      unavailable = (more ? unavailable : 0) + pageUnavailable
       cursor = page.nextCursor
+      error = ""
     } catch { self.error = error.localizedDescription }
   }
 }

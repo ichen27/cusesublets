@@ -12,6 +12,7 @@ struct SocialView: View {
   @State private var clientID = UUID().uuidString
   @State private var error = ""
   @State private var busy = false
+  @State private var loadingComments = false
   @State private var reportID: String?
   @State private var reportReason = ""
   var base: String { "/api/social/\(type)/\(targetID)" }
@@ -60,7 +61,9 @@ struct SocialView: View {
           }
         }.padding(.leading, c.parentId == nil ? 0 : 18)
       }
-      if cursor != nil { Button("More comments") { Task { await more() } } }
+      if cursor != nil {
+        Button("More comments") { Task { await more() } }.disabled(loadingComments)
+      }
       if reply != nil {
         HStack {
           Text("Replying to a comment").font(.caption)
@@ -84,6 +87,8 @@ struct SocialView: View {
       }
       if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
     }.task(id: state.user?.id) { await load() }
+      .onChange(of: draft) { _, _ in if !busy { clientID = UUID().uuidString } }
+      .onChange(of: reply) { _, _ in if !busy { clientID = UUID().uuidString } }
       .alert(
         "Report comment",
         isPresented: Binding(get: { reportID != nil }, set: { if !$0 { reportID = nil } })
@@ -123,12 +128,14 @@ struct SocialView: View {
     } catch { self.error = error.localizedDescription }
   }
   func more() async {
-    guard let cursor else { return }
+    guard let cursor, !loadingComments else { return }
+    loadingComments = true
+    defer { loadingComments = false }
     do {
       let page: CommentsPage = try await state.api.get(
         base + "/comments?cursor=" + cursor.addingPercentEncoding(
           withAllowedCharacters: .urlQueryAllowed)!)
-      comments += page.comments
+      comments += page.comments.filter { next in !comments.contains(where: { $0.id == next.id }) }
       self.cursor = page.nextCursor
     } catch { self.error = error.localizedDescription }
   }

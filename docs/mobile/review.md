@@ -1,0 +1,19 @@
+# iPhone implementation review
+
+Baseline: `2e6d7b4`. Initial implementation: `bb319d3`. Follow-up: `c1adcea` plus pagination hardening.
+
+## Standards
+
+- Bounded uploads: the initial client loaded a whole file before checking its size. Corrected to inspect size before reading, read at most the permitted size plus one byte, and perform file I/O away from the UI actor.
+- Saved-target resolution: initial saved items depended on the newest 200 feed entries. Corrected to fetch each authorized target directly, including a public canonical search-detail endpoint.
+- Follow-up pagination review: a failed page could append partial results while retaining the previous cursor. Corrected to commit each page atomically and prevent overlapping loads.
+
+## Spec
+
+- Initial listing publication sent a zero walk-time value rejected by the API. Corrected with a visible editable field, a valid default and recovery of old zero-valued drafts. Added a simulator publication flow test.
+- Initial profile updates could erase existing social links not exposed in the form. Corrected by preserving those values and disabling save until the profile has loaded.
+- Draft identity is now stable across native view reconstruction.
+
+Scoped static rechecks confirmed the original upload, saved-target, publication and profile findings resolved. Validation evidence belongs in `validation.md`; static review is not a device-test result.
+
+The full migration remains broader than this first implementation. Photographic reconstruction, device capture quality, distribution and the parity items listed in `iphone-plan.md` remain explicit open work.
