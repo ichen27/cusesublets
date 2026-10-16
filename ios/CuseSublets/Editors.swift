@@ -137,6 +137,7 @@ struct ListingEditor: View {
         }
         Section("Details") {
           TextField("Describe your place", text: $description, axis: .vertical).lineLimit(4...10)
+            .accessibilityIdentifier("listing-description")
           TextField("Amenities, separated by commas", text: $amenities)
         }
         if existing == nil {
@@ -179,7 +180,8 @@ struct ListingEditor: View {
       if busy { ProgressView() }
       if !notice.isEmpty { Text(notice) }
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
-    }.navigationTitle(existing == nil ? "List your place" : "Edit listing").toolbar {
+    }.scrollDismissesKeyboard(.interactively)
+    .navigationTitle(existing == nil ? "List your place" : "Edit listing").toolbar {
       ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(busy) }
     }.interactiveDismissDisabled(busy).task { await load() }
   }

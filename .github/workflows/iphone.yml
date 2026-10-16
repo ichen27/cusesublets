@@ -6,6 +6,9 @@ on:
     paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', '.github/workflows/iphone.yml']
 permissions:
   contents: read
+concurrency:
+  group: iphone-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   iphone:
     runs-on: macos-latest

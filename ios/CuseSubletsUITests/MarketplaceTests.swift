@@ -2,6 +2,7 @@ import XCTest
 
 final class MarketplaceTests: XCTestCase {
   @MainActor func testPublicBrowseAndSignedInNavigation() throws {
+    continueAfterFailure = false
     let app = XCUIApplication()
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
     app.launch()
@@ -14,15 +15,17 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Your conversations"].waitForExistence(timeout: 5))
     app.tabBars.buttons["You"].tap()
     app.buttons["Log in or create an account"].tap()
-    let create = app.switches["Create an account"]
-    XCTAssertTrue(create.waitForExistence(timeout: 5))
+    let create = app.buttons["Create an account"]
+    XCTAssertTrue(create.waitForExistence(timeout: 15))
     create.tap()
+    XCTAssertTrue(app.textFields["Your name"].waitForExistence(timeout: 15))
     app.textFields["Your name"].tap()
     app.textFields["Your name"].typeText("iPhone UI Test")
     app.textFields["Email"].tap()
     app.textFields["Email"].typeText("iphone-\(UUID().uuidString)@example.test")
     app.secureTextFields["Password"].tap()
     app.secureTextFields["Password"].typeText("isolated-test-password-2026")
+    reveal(app.buttons["Create account"], in: app)
     app.buttons["Create account"].tap()
     XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 20))
     attach(app, "Account")
@@ -30,11 +33,8 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.textFields["Listing title"].waitForExistence(timeout: 10))
     app.textFields["Listing title"].tap()
     app.textFields["Listing title"].typeText("Private iPhone draft")
-    app.swipeUp()
-    app.swipeUp()
-    app.swipeUp()
     let save = app.buttons["Save private draft & finish later"]
-    XCTAssertTrue(save.waitForExistence(timeout: 5))
+    reveal(save, in: app)
     save.tap()
     XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
     app.swipeUp()
@@ -49,13 +49,12 @@ final class MarketplaceTests: XCTestCase {
     app.textFields["Approximate public address"].tap()
     app.textFields["Approximate public address"].typeText("Near Westcott — synthetic UI test")
     app.swipeUp()
-    let description = app.textFields["Describe your place"]
-    XCTAssertTrue(description.waitForExistence(timeout: 5))
+    let description = app.descendants(matching: .any).matching(identifier: "listing-description")
+      .firstMatch
+    reveal(description, in: app)
     description.tap()
     description.typeText("Synthetic simulator listing only. This is not an available property.")
-    app.swipeUp()
-    app.swipeUp()
-    app.swipeUp()
+    reveal(app.buttons["Publish listing"], in: app)
     app.buttons["Publish listing"].tap()
     XCTAssertTrue(
       app.staticTexts["Your place is published. Checks are still independent."].waitForExistence(
@@ -66,13 +65,22 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
     attach(app, "Room capture capability")
-    // Dismiss the listing sheet before signing out.
-    app.swipeDown()
+    // Return through the two pushed screens and close the editor explicitly.
+    app.navigationBars.buttons.firstMatch.tap()
+    app.navigationBars.buttons.firstMatch.tap()
+    app.buttons["Done"].tap()
     app.tabBars.buttons["You"].tap()
     app.swipeUp()
     app.buttons["Log out"].tap()
     app.tabBars.buttons["You"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
+  }
+  @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    for _ in 0..<8 {
+      if element.exists && element.isHittable { return }
+      app.swipeUp()
+    }
+    XCTAssertTrue(element.exists && element.isHittable, "Expected a visible form control")
   }
   @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot())

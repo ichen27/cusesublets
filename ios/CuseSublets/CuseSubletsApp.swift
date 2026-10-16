@@ -97,7 +97,10 @@ struct LoginView: View {
           Text("Your account works on the website and iPhone.").foregroundStyle(.secondary)
         }
         Section {
-          Toggle("Create an account", isOn: $signup)
+          Button(signup ? "Already have an account? Log in" : "Create an account") {
+            signup.toggle()
+            error = ""
+          }.disabled(busy)
           if signup { TextField("Your name", text: $name).textContentType(.name) }
           TextField("Email", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(
             .never
@@ -130,7 +133,7 @@ struct LoginView: View {
         if !error.isEmpty { Text(error).foregroundStyle(.red) }
         Text("Password recovery emails are not available yet.").font(.footnote).foregroundStyle(
           .secondary)
-      }.navigationTitle("Welcome").toolbar {
+      }.scrollDismissesKeyboard(.interactively).navigationTitle("Welcome").toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
       }
     }
