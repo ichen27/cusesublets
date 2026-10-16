@@ -14,6 +14,6 @@ Baseline: `2e6d7b4`. Initial implementation: `bb319d3`. Follow-up: `c1adcea` plu
 - Initial profile updates could erase existing social links not exposed in the form. Corrected by preserving those values and disabling save until the profile has loaded.
 - Draft identity is now stable across native view reconstruction.
 
-Scoped static rechecks confirmed the original upload, saved-target, publication and profile findings resolved. Validation evidence belongs in `validation.md`; static review is not a device-test result.
+Scoped static rechecks confirmed the original upload, saved-target, publication and profile findings resolved. A final recheck of `b1869bc` also confirmed atomic page updates and the overlapping-load guard resolve the follow-up pagination finding. Validation evidence belongs in `validation.md`; static review is not a device-test result.
 
 The full migration remains broader than this first implementation. Photographic reconstruction, device capture quality, distribution and the parity items listed in `iphone-plan.md` remain explicit open work.
