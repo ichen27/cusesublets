@@ -1,0 +1,54 @@
+name: CuseSublets
+options:
+  bundleIdPrefix: com.ichen27
+  deploymentTarget:
+    iOS: '17.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1'
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: CuseSublets
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_NSCameraUsageDescription: Scan a room to create an approximate layout for your listing.
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+    INFOPLIST_KEY_APIBaseURL: https://app-cusesublets.chenagent.com
+    SWIFT_EMIT_LOC_STRINGS: YES
+targets:
+  CuseSublets:
+    type: application
+    platform: iOS
+    sources: [CuseSublets]
+    info:
+      path: CuseSublets/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [cusesublets]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ichen27.cusesublets
+  CuseSubletsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [CuseSubletsTests]
+    dependencies:
+      - target: CuseSublets
+  CuseSubletsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [CuseSubletsUITests]
+    dependencies:
+      - target: CuseSublets
+schemes:
+  CuseSublets:
+    build:
+      targets:
+        CuseSublets: all
+    test:
+      targets: [CuseSubletsTests, CuseSubletsUITests]

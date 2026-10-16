@@ -1,3 +1,5 @@
+import { roomScanRoute } from "./room-scans";
+import { mobileAuthCallback, mobileAuthExchange } from "./mobile-auth";
 import { socialRoute } from "./social";
 import { draftRoute } from "./drafts";
 import {
@@ -848,8 +850,11 @@ async function route(req: Request, e: Env) {
       { "Set-Cookie": passwordCookie(result.token, demo) },
     );
   }
+  if (p === "/api/auth/mobile" && m === "POST") return mobileAuthExchange(await body(req, 4096), e.DB, demo);
   const authenticated = preview ? null : await authenticate(req, e, demo);
   const u = authenticated ? userView(authenticated) : null;
+  const scansResponse = await roomScanRoute(req,e,u);
+  if(scansResponse)return scansResponse;
   const socialResponse=await socialRoute(req,e,u);
   if(socialResponse)return socialResponse;
   const draftResponse=await draftRoute(req,e,u);
@@ -870,6 +875,8 @@ async function route(req: Request, e: Env) {
       503,
       "Google sign-in setup required: configure Cloudflare Access for /api/login",
     );
+    const mobile = await mobileAuthCallback(url, u, e.DB);
+    if (mobile) return mobile;
     return new Response(null, {
       status: 302,
       headers: {

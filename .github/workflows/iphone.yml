@@ -1,0 +1,43 @@
+name: iPhone
+on:
+  push:
+    paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', '.github/workflows/iphone.yml']
+  pull_request:
+    paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', '.github/workflows/iphone.yml']
+permissions:
+  contents: read
+jobs:
+  iphone:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Prepare isolated API
+        run: |
+          npx wrangler d1 migrations apply DB --local --persist-to work/iphone-state
+          npx wrangler d1 execute DB --local --persist-to work/iphone-state --file seeds/demo.sql
+          npx wrangler dev --ip 127.0.0.1 --port 8936 --persist-to work/iphone-state --var APP_ENV:development > work/iphone-api.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8936/api/session; then exit 0; fi
+            sleep 1
+          done
+          cat work/iphone-api.log
+          exit 1
+      - run: API_BASE=http://127.0.0.1:8936 python3 tests/iphone-runtime.py
+      - name: Test on installed iPhone simulator
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for devices in d["devices"].values() for v in devices if v["name"].startswith("iPhone")))')
+          xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets -destination "platform=iOS Simulator,id=$DEVICE_ID" -derivedDataPath work/ios-build -resultBundlePath work/iphone-tests.xcresult CODE_SIGNING_ALLOWED=NO test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iphone-validation
+          path: |
+            work/iphone-tests.xcresult
+            work/iphone-api.log

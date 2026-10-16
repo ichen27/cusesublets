@@ -1,0 +1,540 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B69E76AE94A17151C123A2E /* AccountView.swift */; };
+		1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DD0C534B5E075195EA6D1E /* BrowseView.swift */; };
+		2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD685FF874F61D99FC41025 /* Editors.swift */; };
+		3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */; };
+		492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE94AA320384886E84A6B136 /* SocialView.swift */; };
+		4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE25303FE8E1D06352E818DF /* RoomScansView.swift */; };
+		7F48707AF957E2AC0A8ACA84 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144F33BD918D7C2FE5D6868 /* APIClient.swift */; };
+		B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34400A81F415FE72E0616C7B /* ModelsTests.swift */; };
+		E896FAAB55F922648B4D48E3 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B360091FC742F2D79BD19301 /* Models.swift */; };
+		EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A5003EB90A1CA8A36386B /* InboxView.swift */; };
+		EEF60B25F6372CBA6348DBE7 /* MarketplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B8FB170B787D498DB7187AD1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1D25253651934D8E096C7D3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8F4408BFDB92277BA5B03373;
+			remoteInfo = CuseSublets;
+		};
+		D54F410F7597AF64706E7F6E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1D25253651934D8E096C7D3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8F4408BFDB92277BA5B03373;
+			remoteInfo = CuseSublets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1B69E76AE94A17151C123A2E /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		1BCAC3541DB6579F298187E4 /* CuseSubletsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		34400A81F415FE72E0616C7B /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		3FD685FF874F61D99FC41025 /* Editors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editors.swift; sourceTree = "<group>"; };
+		6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceTests.swift; sourceTree = "<group>"; };
+		711B1D9F42613404EFADDB6D /* CuseSublets.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CuseSublets.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE25303FE8E1D06352E818DF /* RoomScansView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScansView.swift; sourceTree = "<group>"; };
+		B360091FC742F2D79BD19301 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		BE94AA320384886E84A6B136 /* SocialView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialView.swift; sourceTree = "<group>"; };
+		DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuseSubletsApp.swift; sourceTree = "<group>"; };
+		E144F33BD918D7C2FE5D6868 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		F2DD0C534B5E075195EA6D1E /* BrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseView.swift; sourceTree = "<group>"; };
+		F6817F9190BF966336DFCF3A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FA5A5003EB90A1CA8A36386B /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		087F2DFC47379A7830F39E44 = {
+			isa = PBXGroup;
+			children = (
+				1E44C7398557DDDD8124C30D /* CuseSublets */,
+				2DB8965D33070CD7A6B1DC1E /* CuseSubletsTests */,
+				6E1647D9BDBA8FA1748BFF69 /* CuseSubletsUITests */,
+				F864CD509C78149B46C7766F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1E44C7398557DDDD8124C30D /* CuseSublets */ = {
+			isa = PBXGroup;
+			children = (
+				1B69E76AE94A17151C123A2E /* AccountView.swift */,
+				E144F33BD918D7C2FE5D6868 /* APIClient.swift */,
+				F2DD0C534B5E075195EA6D1E /* BrowseView.swift */,
+				DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */,
+				3FD685FF874F61D99FC41025 /* Editors.swift */,
+				FA5A5003EB90A1CA8A36386B /* InboxView.swift */,
+				F6817F9190BF966336DFCF3A /* Info.plist */,
+				B360091FC742F2D79BD19301 /* Models.swift */,
+				AE25303FE8E1D06352E818DF /* RoomScansView.swift */,
+				BE94AA320384886E84A6B136 /* SocialView.swift */,
+			);
+			path = CuseSublets;
+			sourceTree = "<group>";
+		};
+		2DB8965D33070CD7A6B1DC1E /* CuseSubletsTests */ = {
+			isa = PBXGroup;
+			children = (
+				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
+			);
+			path = CuseSubletsTests;
+			sourceTree = "<group>";
+		};
+		6E1647D9BDBA8FA1748BFF69 /* CuseSubletsUITests */ = {
+			isa = PBXGroup;
+			children = (
+				6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */,
+			);
+			path = CuseSubletsUITests;
+			sourceTree = "<group>";
+		};
+		F864CD509C78149B46C7766F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				711B1D9F42613404EFADDB6D /* CuseSublets.app */,
+				1BCAC3541DB6579F298187E4 /* CuseSubletsTests.xctest */,
+				8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		23DF598E29F8637B38FCEE8A /* CuseSubletsTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 09447B34D0ADCB179FE6A995 /* Build configuration list for PBXNativeTarget "CuseSubletsTests" */;
+			buildPhases = (
+				45BFAF21FC3A283B8EEE6DFD /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0B6011BCB5FD30C1946E6B85 /* PBXTargetDependency */,
+			);
+			name = CuseSubletsTests;
+			packageProductDependencies = (
+			);
+			productName = CuseSubletsTests;
+			productReference = 1BCAC3541DB6579F298187E4 /* CuseSubletsTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7F323A179C5EA6F7FACE9758 /* CuseSubletsUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1CB5B0196240613F59A9A65F /* Build configuration list for PBXNativeTarget "CuseSubletsUITests" */;
+			buildPhases = (
+				F2EC2C1F905E8DE7EDAF42F2 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8BADB002392B3BB0253784DA /* PBXTargetDependency */,
+			);
+			name = CuseSubletsUITests;
+			packageProductDependencies = (
+			);
+			productName = CuseSubletsUITests;
+			productReference = 8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		8F4408BFDB92277BA5B03373 /* CuseSublets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 07F12A4EC33E8112B8B39CBF /* Build configuration list for PBXNativeTarget "CuseSublets" */;
+			buildPhases = (
+				E5C2232355B1C3D477B03331 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CuseSublets;
+			packageProductDependencies = (
+			);
+			productName = CuseSublets;
+			productReference = 711B1D9F42613404EFADDB6D /* CuseSublets.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A1D25253651934D8E096C7D3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					23DF598E29F8637B38FCEE8A = {
+						ProvisioningStyle = Automatic;
+					};
+					7F323A179C5EA6F7FACE9758 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 8F4408BFDB92277BA5B03373;
+					};
+					8F4408BFDB92277BA5B03373 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = C5ACA406EF92C9D4F839EF63 /* Build configuration list for PBXProject "CuseSublets" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 087F2DFC47379A7830F39E44;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8F4408BFDB92277BA5B03373 /* CuseSublets */,
+				23DF598E29F8637B38FCEE8A /* CuseSubletsTests */,
+				7F323A179C5EA6F7FACE9758 /* CuseSubletsUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		45BFAF21FC3A283B8EEE6DFD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5C2232355B1C3D477B03331 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7F48707AF957E2AC0A8ACA84 /* APIClient.swift in Sources */,
+				1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */,
+				1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */,
+				3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */,
+				2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */,
+				EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */,
+				E896FAAB55F922648B4D48E3 /* Models.swift in Sources */,
+				4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */,
+				492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F2EC2C1F905E8DE7EDAF42F2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EEF60B25F6372CBA6348DBE7 /* MarketplaceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0B6011BCB5FD30C1946E6B85 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8F4408BFDB92277BA5B03373 /* CuseSublets */;
+			targetProxy = D54F410F7597AF64706E7F6E /* PBXContainerItemProxy */;
+		};
+		8BADB002392B3BB0253784DA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8F4408BFDB92277BA5B03373 /* CuseSublets */;
+			targetProxy = B8FB170B787D498DB7187AD1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3457F3B3727424068A7754CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = CuseSublets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.cusesublets;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		360E7C60DA1BF3EB3865D074 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.CuseSubletsUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CuseSublets;
+			};
+			name = Debug;
+		};
+		72D810EF21108159C0BA8D6C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.CuseSubletsUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CuseSublets;
+			};
+			name = Release;
+		};
+		B39888A1D652FFBB7994125F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
+				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a room to create an approximate layout for your listing.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		BC0D9B6DF4E0BF5E1A70ADAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
+				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a room to create an approximate layout for your listing.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D4465F5613EED2239E3DB95B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.CuseSubletsTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CuseSublets.app/CuseSublets";
+			};
+			name = Release;
+		};
+		DFAE21C926B7AE65B223D1A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = CuseSublets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.cusesublets;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E57101564393473F48FCF701 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.CuseSubletsTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CuseSublets.app/CuseSublets";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		07F12A4EC33E8112B8B39CBF /* Build configuration list for PBXNativeTarget "CuseSublets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3457F3B3727424068A7754CB /* Debug */,
+				DFAE21C926B7AE65B223D1A9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		09447B34D0ADCB179FE6A995 /* Build configuration list for PBXNativeTarget "CuseSubletsTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E57101564393473F48FCF701 /* Debug */,
+				D4465F5613EED2239E3DB95B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1CB5B0196240613F59A9A65F /* Build configuration list for PBXNativeTarget "CuseSubletsUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				360E7C60DA1BF3EB3865D074 /* Debug */,
+				72D810EF21108159C0BA8D6C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C5ACA406EF92C9D4F839EF63 /* Build configuration list for PBXProject "CuseSublets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B39888A1D652FFBB7994125F /* Debug */,
+				BC0D9B6DF4E0BF5E1A70ADAA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A1D25253651934D8E096C7D3 /* Project object */;
+}

@@ -13,3 +13,8 @@ playwright-report/
 __pycache__/
 
 prototype-dist/
+
+# Xcode user state and local build caches; the project and sources are tracked.
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/DerivedData/

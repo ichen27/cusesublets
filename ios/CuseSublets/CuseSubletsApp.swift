@@ -1,0 +1,218 @@
+import AuthenticationServices
+import CryptoKit
+import SwiftUI
+
+@MainActor final class AppState: ObservableObject {
+  let api = APIClient()
+  @Published var user: Member?
+  @Published var loading = true
+  @Published var showLogin = false
+  @Published var error: String?
+  @Published var tab = 0
+  @Published var conversationID: String?
+  func refreshSession() async {
+    do {
+      let r: SessionResponse = try await api.get("/api/session")
+      user = r.user
+    } catch { self.error = error.localizedDescription }
+    loading = false
+  }
+  func logout() async {
+    do {
+      try await api.act("/api/logout")
+      try api.clearSession()
+      user = nil
+      conversationID = nil
+      tab = 0
+    } catch { self.error = error.localizedDescription }
+  }
+  func requireLogin() -> Bool {
+    if user == nil {
+      showLogin = true
+      return false
+    }
+    return true
+  }
+  func contact(listingID: String, searchID: String? = nil) async {
+    guard requireLogin() else { return }
+    do {
+      var body: [String: Any] = ["listingId": listingID]
+      if let searchID { body["requestId"] = searchID }
+      let r: ConversationResponse = try await api.post("/api/conversations", body)
+      conversationID = r.conversation.id
+      tab = 2
+    } catch { self.error = error.localizedDescription }
+  }
+}
+@main struct CuseSubletsApp: App {
+  @StateObject private var state = AppState()
+  var body: some Scene {
+    WindowGroup {
+      RootView().environmentObject(state).tint(.cuseOrange).task { await state.refreshSession() }
+    }
+  }
+}
+struct RootView: View {
+  @EnvironmentObject var state: AppState
+  var body: some View {
+    TabView(selection: $state.tab) {
+      NavigationStack { BrowseView() }.tabItem { Label("Browse", systemImage: "square.grid.2x2") }
+        .tag(0)
+      NavigationStack { MatchesView() }.tabItem {
+        Label("Matches", systemImage: "arrow.left.arrow.right")
+      }.tag(1)
+      NavigationStack { InboxView() }.tabItem {
+        Label("Inbox", systemImage: "bubble.left.and.bubble.right")
+      }.tag(2)
+      NavigationStack { AccountView() }.tabItem { Label("You", systemImage: "person.crop.circle") }
+        .tag(3)
+    }
+    .id(state.user?.id ?? "guest")
+    .sheet(isPresented: $state.showLogin) { LoginView() }
+    .alert(
+      "CuseSublets",
+      isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })
+    ) {
+      Button("OK") { state.error = nil }
+    } message: {
+      Text(state.error ?? "")
+    }
+  }
+}
+struct LoginView: View {
+  @EnvironmentObject var state: AppState
+  @Environment(\.dismiss) var dismiss
+  @State private var email = ""
+  @State private var password = ""
+  @State private var name = ""
+  @State private var error = ""
+  @State private var signup = false
+  @State private var busy = false
+  @State private var google = GoogleSignIn()
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section {
+          Text("Find a sublet. List your place.").font(.title2.bold())
+          Text("Your account works on the website and iPhone.").foregroundStyle(.secondary)
+        }
+        Section {
+          Toggle("Create an account", isOn: $signup)
+          if signup { TextField("Your name", text: $name).textContentType(.name) }
+          TextField("Email", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(
+            .never
+          ).autocorrectionDisabled().textContentType(.username)
+          SecureField("Password", text: $password).textContentType(
+            signup ? .newPassword : .password)
+          if signup {
+            Text("Use 15–128 characters. Signing up does not verify your identity.").font(.caption)
+          }
+          Button(signup ? "Create account" : "Log in") { Task { await login() } }.disabled(
+            busy || email.isEmpty || password.isEmpty)
+        }
+        Section {
+          Button("Continue with Google") {
+            Task {
+              busy = true
+              defer { busy = false }
+              do {
+                try await google.signIn(api: state.api)
+                await state.refreshSession()
+                if state.user != nil { dismiss() }
+              } catch { self.error = error.localizedDescription }
+            }
+          }.disabled(busy)
+          Text("Google access currently follows the website’s configured account policy.").font(
+            .caption
+          ).foregroundStyle(.secondary)
+        }
+        if busy { ProgressView() }
+        if !error.isEmpty { Text(error).foregroundStyle(.red) }
+        Text("Password recovery emails are not available yet.").font(.footnote).foregroundStyle(
+          .secondary)
+      }.navigationTitle("Welcome").toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+      }
+    }
+  }
+  func login() async {
+    busy = true
+    error = ""
+    defer { busy = false }
+    do {
+      let _: EmptyResponse = try await state.api.post(
+        signup ? "/api/auth/signup" : "/api/auth/login",
+        ["email": email, "password": password, "name": name])
+      password = ""
+      await state.refreshSession()
+      if state.user != nil { dismiss() }
+    } catch { self.error = error.localizedDescription }
+  }
+}
+@MainActor final class GoogleSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
+  private var session: ASWebAuthenticationSession?
+  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first
+      ?? UIWindow()
+  }
+  func signIn(api: APIClient) async throws {
+    let verifier = (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "")
+    let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+    let state = UUID().uuidString
+    let callback: URL = try await withCheckedThrowingContinuation { continuation in
+      let url = api.url("/api/login?mobile_challenge=\(challenge)&state=\(state)")
+      session = ASWebAuthenticationSession(url: url, callbackURLScheme: "cusesublets") {
+        url, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else if let url {
+          continuation.resume(returning: url)
+        } else {
+          continuation.resume(throwing: APIError(message: "Sign-in did not finish"))
+        }
+      }
+      session?.presentationContextProvider = self
+      if session?.start() != true {
+        continuation.resume(throwing: APIError(message: "Could not open Google sign-in"))
+      }
+    }
+    let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
+    guard callback.host == "auth", parts.first(where: { $0.name == "state" })?.value == state,
+      let code = parts.first(where: { $0.name == "code" })?.value
+    else { throw APIError(message: "Sign-in response did not match this request") }
+    try await api.act("/api/auth/mobile", ["code": code, "verifier": verifier])
+    session = nil
+  }
+}
+extension Color {
+  static let cuseOrange = Color(red: 0.82, green: 0.28, blue: 0.09)
+  static let cuseCream = Color(red: 0.98, green: 0.96, blue: 0.92)
+}
+struct StatusText: View {
+  let text: String
+  var body: some View {
+    Text(text).font(.caption.weight(.medium)).padding(.horizontal, 10).padding(.vertical, 5)
+      .background(Color.cuseCream, in: Capsule())
+  }
+}
+struct EmptyState: View {
+  let title: String
+  let text: String
+  var body: some View {
+    ContentUnavailableView(title, systemImage: "house", description: Text(text))
+  }
+}
+struct RemoteImage: View {
+  @EnvironmentObject var state: AppState
+  let path: String?
+  var body: some View {
+    AsyncImage(url: path.flatMap { URL(string: $0, relativeTo: state.api.baseURL) }) { image in
+      image.resizable().scaledToFill()
+    } placeholder: {
+      Color.cuseCream.overlay(
+        Image(systemName: "house").font(.largeTitle).foregroundStyle(.secondary))
+    }.clipped()
+  }
+}

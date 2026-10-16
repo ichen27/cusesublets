@@ -1,5 +1,7 @@
 # CuseSublets
 
+**Current direction:** iPhone first, with public web listing pages retained. The native app source and build instructions are in [ios/README.md](ios/README.md); [mobile scope and release boundaries](docs/mobile/iphone-plan.md) distinguish implemented flows from remaining release work. Existing web deployment remains available.
+
 A Syracuse-first sublease marketplace. Warm cream/orange React interface, interactive map and catalog, private messaging, offers, local reservations, and an admin review workspace. Cloudflare Workers hosts the API and built static assets; D1 persists records and R2 stores private review documents and guarded listing media.
 
 ## Run on the Mac mini
