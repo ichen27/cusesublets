@@ -14,13 +14,15 @@ class ProcessorCleanup(unittest.TestCase):
   data=b'synthetic';process=Mock();process.poll.return_value=None
   api=Mock();api.request.return_value=io.BytesIO(data)
   job={'id':'synthetic','claim':'claim','inputSize':len(data),'inputHash':hashlib.sha256(data).hexdigest()}
+  events=[]
   with tempfile.TemporaryDirectory() as root:
    @contextlib.contextmanager
    def directory(**kwargs):
-    yield root
-    self.assertTrue(stop.called,'Training must stop before private files are removed')
-   with patch.object(worker.tempfile,'TemporaryDirectory',directory),patch.object(worker.subprocess,'Popen',return_value=process),patch.object(worker,'stop_process') as stop,patch.object(worker.time,'monotonic',side_effect=[0,8000]):
+    try:yield root
+    finally:events.append('cleanup')
+   with patch.object(worker.tempfile,'TemporaryDirectory',directory),patch.object(worker.subprocess,'Popen',return_value=process),patch.object(worker,'stop_process',side_effect=lambda _:events.append('stop')) as stop,patch.object(worker.time,'monotonic',side_effect=[0,8000]):
     worker.process_job(api,job,Path(root))
+   self.assertLess(events.index('stop'),events.index('cleanup'),'Training must stop before private files are removed')
    api.json.assert_called_once_with('synthetic/fail',{'code':'timeout'},job=job)
 
 if __name__=='__main__':unittest.main()
