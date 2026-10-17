@@ -43,3 +43,7 @@ npm run test:reviewer
 The reviewer tests require Node 22 and no dependencies or credentials. They exercise hostile text, evidence validation, source bounds, stale commits, credential absence, queued jobs, response failures and native supporting context. The normal Checks workflow runs them before installing application dependencies.
 
 Installing `pull_request_target` on a feature branch alone cannot activate it: merge the reviewed CI setup into `main`, provision the restricted environment, then run a small open PR through the hosted workflow. Verify the published current-commit status, not just a green Actions job. Keep the mobile release PR separate. Code sync does not deploy the marketplace or apply migrations.
+
+## Repository enforcement
+
+The `main` branch requires a pull request, a passing current `check`, and resolved review conversations. Force pushes and branch deletion are blocked, including for administrators. AI review is advisory and is not a required status check. The `ai-review` environment permits only branch `main` and contains the three narrow endpoint credentials listed above. The installation was merged separately from the iPhone feature so it does not release mobile code or run database migrations.
