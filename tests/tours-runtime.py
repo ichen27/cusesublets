@@ -72,6 +72,8 @@ class Tours(unittest.TestCase):
   self.host.call(route+'/visibility',{'published':False})
   self.assertEqual(self.guest.raw(route+'/model')[0],404)
   self.host.call(route+'/delete',{})
+  self.assertEqual(self.host.call(route+'/delete',{})[0],200)
+  self.assertEqual(self.host.call(self.base,payload)[0],409)
   self.assertEqual(self.host.raw(route+'/model')[0],404)
   self.assertEqual(processor(id+'/complete',job=newer,data=model,extra=headers)[0],409)
  def test_simultaneous_upload_and_claim_are_single_winner(self):

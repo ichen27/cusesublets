@@ -195,7 +195,7 @@ export async function roomTourRoute(
       "Choose a capture under 64 MB",
     );
     await env.DB.prepare(
-      `INSERT INTO room_tours(id,listingId,ownerId,name,status,inputHash,inputSize,createdAt) SELECT ?,?,?,?,'uploading',?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (SELECT COUNT(*) FROM room_tours WHERE listingId=?)<6 ON CONFLICT(id) DO NOTHING`,
+      `INSERT INTO room_tours(id,listingId,ownerId,name,status,inputHash,inputSize,createdAt) SELECT ?,?,?,?,'uploading',?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (SELECT COUNT(*) FROM room_tours WHERE listingId=?)<6 AND NOT EXISTS(SELECT 1 FROM tour_deletions WHERE id=?) ON CONFLICT(id) DO NOTHING`,
     )
       .bind(
         b.id,
@@ -207,6 +207,7 @@ export async function roomTourRoute(
         new Date().toISOString(),
         user.id,
         listingId,
+        b.id,
       )
       .run();
     const r = await env.DB.prepare(
@@ -226,6 +227,16 @@ export async function roomTourRoute(
   )
     .bind(tourId, listingId, user.id)
     .first<Row>();
+  if (!row && action === "delete") {
+    const deleted = await env.DB.prepare(
+      "SELECT id FROM tour_deletions WHERE id=? AND ownerId=?",
+    )
+      .bind(tourId, user.id)
+      .first<{ id: string }>();
+    requireThat(deleted, 404, "Tour not found");
+    await sweepDeletedTour(env, deleted.id);
+    return json({ ok: true });
+  }
   requireThat(row, 404, "Tour not found");
   if (action === "upload") {
     requireThat(
@@ -261,20 +272,20 @@ export async function roomTourRoute(
   }
   const b = await body(req);
   if (action === "delete") {
-    const deleted = await env.DB.prepare(
-      `UPDATE room_tours SET deleting=1,published=0,claim=NULL,leaseUntil=NULL WHERE id=? AND ownerId=? AND ${active}`,
-    )
-      .bind(row.id, user.id)
-      .run();
-    requireThat(deleted.meta.changes === 1, 409, "Capture or account changed");
-    // Keep a nonpublic tombstone until every object is gone; deletion is retryable.
-    await finishTourDeletion(env.UPLOADS, `tours/${row.id}/`, async () => {
-      await env.DB.prepare(
-        "DELETE FROM room_tours WHERE id=? AND ownerId=? AND deleting=1",
-      )
-        .bind(row.id, user.id)
-        .run();
-    });
+    const deleted = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE room_tours SET deleting=1,published=0,claim=NULL,leaseUntil=NULL WHERE id=? AND ownerId=? AND ${active}`,
+      ).bind(row.id, user.id),
+      env.DB.prepare(
+        "INSERT INTO tour_deletions(id,ownerId) SELECT id,ownerId FROM room_tours WHERE id=? AND ownerId=? AND deleting=1 ON CONFLICT(id) DO NOTHING",
+      ).bind(row.id, user.id),
+    ]);
+    requireThat(
+      deleted[0].meta.changes === 1,
+      409,
+      "Capture or account changed",
+    );
+    await sweepDeletedTour(env, row.id);
     return json({ ok: true });
   }
   let result: D1Result;
@@ -354,6 +365,19 @@ export async function tourProcessorRoute(
     )
       .bind(now)
       .run();
+    const cleanup = await env.DB.prepare(
+      "SELECT id FROM tour_deletions ORDER BY lastChecked LIMIT 5",
+    ).all<{ id: string }>();
+    for (const record of cleanup.results) {
+      try {
+        await sweepDeletedTour(env, record.id);
+      } catch {
+        /* Durable record remains for the next serial sweep. */
+      }
+      await env.DB.prepare("UPDATE tour_deletions SET lastChecked=? WHERE id=?")
+        .bind(now, record.id)
+        .run();
+    }
     const claim = crypto.randomUUID();
     // Single-statement claim plus fencing token prevents duplicate workers from committing a result.
     const row = await env.DB.prepare(
@@ -463,4 +487,13 @@ export async function finishTourDeletion(
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   await finish();
+}
+
+async function sweepDeletedTour(env: TourEnv, id: string) {
+  await finishTourDeletion(env.UPLOADS, `tours/${id}/`, async () => {
+    await env.DB.prepare("DELETE FROM room_tours WHERE id=? AND deleting=1")
+      .bind(id)
+      .run();
+    // Do not delete tour_deletions: an in-flight writer can finish after this sweep.
+  });
 }

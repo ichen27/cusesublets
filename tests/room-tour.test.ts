@@ -46,3 +46,49 @@ it("retains the deletion record across object storage failure and retries cleanu
   await finishTourDeletion({ list, delete: remove }, "tours/example/", finish);
   expect(finish).toHaveBeenCalledOnce();
 });
+
+it("a retained deletion record sweeps a late upload after its immediate cleanup fails", async () => {
+  const objects = new Set<string>();
+  const object = (key: string): R2Object => ({
+    key,
+    version: "v1",
+    size: 1,
+    etag: "a",
+    httpEtag: '"a"',
+    uploaded: new Date(),
+    checksums: { toJSON: () => ({}) },
+    storageClass: "Standard",
+    writeHttpMetadata: () => {},
+  });
+  const list = vi
+    .fn<R2Bucket["list"]>()
+    .mockImplementation(async () => ({
+      objects: [...objects].map(object),
+      truncated: false,
+      delimitedPrefixes: [],
+    }));
+  const remove = vi
+    .fn<R2Bucket["delete"]>()
+    .mockImplementation(async (keys) => {
+      for (const key of typeof keys === "string" ? [keys] : keys)
+        objects.delete(key);
+    });
+  const retainedDeletion = "tours/example/";
+  await finishTourDeletion(
+    { list, delete: remove },
+    retainedDeletion,
+    async () => {},
+  );
+  // A writer that started before the first sweep finishes after it.
+  objects.add(retainedDeletion + "late-input");
+  remove.mockRejectedValueOnce(new Error("Transient cleanup failure"));
+  await expect(remove([...objects])).rejects.toThrow(
+    "Transient cleanup failure",
+  );
+  await finishTourDeletion(
+    { list, delete: remove },
+    retainedDeletion,
+    async () => {},
+  );
+  expect(objects.size).toBe(0);
+});
