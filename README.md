@@ -71,3 +71,7 @@ Verified email/password recovery, push notifications, a legal-signing provider a
 ## Contribution and licensing
 
 Use focused branches and pull requests; run applicable checks and preserve existing data. See [CONTRIBUTING.md](CONTRIBUTING.md). This existing repository is public. No open-source license has been selected for the original project code/artifacts; public visibility does not grant redistribution rights. Resolve licensing before distributing a release. Dependencies retain their own licenses; no third-party reconstruction engine is vendored.
+
+## Automated pull request review
+
+[Advisory AI review](docs/ai-review.md) requests Claude Opus 5.5 through the shared subscription gateway. It complements the build, type and regression checks with source-grounded findings on each PR. Run `npm run test:reviewer` to validate its trust and evidence checks locally. Review comments disclose incomplete, unavailable and stale results; they never approve or merge changes.

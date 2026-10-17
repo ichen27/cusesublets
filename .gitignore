@@ -18,3 +18,5 @@ prototype-dist/
 ios/**/xcuserdata/
 ios/**/*.xcuserstate
 ios/DerivedData/
+
+ai-review-output/

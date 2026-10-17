@@ -1,0 +1,112 @@
+name: Advisory AI review
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Open PR number targeting main (run workflow from main only)
+        required: true
+        type: string
+
+# This workflow NEVER checks out, installs, builds, imports or executes PR code.
+# Every script is read from the protected base. Contributor files enter only as API data.
+permissions: {}
+
+concurrency:
+  group: advisory-ai-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  pending:
+    if: github.event_name == 'pull_request_target' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      base: ${{ steps.pending.outputs.base }}
+      head: ${{ steps.pending.outputs.head }}
+      pr: ${{ steps.pending.outputs.pr }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - id: pending
+        run: node scripts/ai-review/run.mjs pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  review:
+    needs: pending
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Separate environment contains ONLY credentials for the shared review endpoint.
+    # Configure environment deployment-branch restrictions to main.
+    environment: ai-review
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - run: node scripts/ai-review/run.mjs review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_BASE: ${{ needs.pending.outputs.base }}
+          TARGET_HEAD: ${{ needs.pending.outputs.head }}
+          TARGET_PR: ${{ needs.pending.outputs.pr }}
+          GPT_PROVIDER: subscription
+          SUBSCRIPTION_REVIEW_KEY: ${{ secrets.SUBSCRIPTION_REVIEW_KEY }}
+          SUBSCRIPTION_ACCESS_CLIENT_ID: ${{ secrets.SUBSCRIPTION_ACCESS_CLIENT_ID }}
+          SUBSCRIPTION_ACCESS_CLIENT_SECRET: ${{ secrets.SUBSCRIPTION_ACCESS_CLIENT_SECRET }}
+          # Fixed route/model in trusted code; no paid API fallback or Jev call.
+          AI_JEV_ENABLED: "false"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: advisory-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ai-review-output/report.json
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    if: always() && needs.pending.result == 'success' && !cancelled()
+    needs: [pending, review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          name: advisory-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ai-review-output
+      - run: node scripts/ai-review/run.mjs publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_BASE: ${{ needs.pending.outputs.base }}
+          TARGET_HEAD: ${{ needs.pending.outputs.head }}
+          TARGET_PR: ${{ needs.pending.outputs.pr }}
