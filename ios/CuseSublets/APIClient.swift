@@ -5,6 +5,7 @@ import Security
 struct SessionCredential: Codable {
   let cookie: String
   let expires: Date
+  var appleUserID: String? = nil
 }
 struct KeychainSession {
   let account: String
@@ -42,7 +43,15 @@ struct KeychainSession {
   private let session: URLSession
   private let vault: KeychainSession
   private var credential: SessionCredential?
-  init(baseURL: URL? = nil, configuration: URLSessionConfiguration = .ephemeral) {
+  private var sessionRevision = 0
+  private let currentTime: () -> Date
+  var onSessionEnded: (() -> Void)?
+  var hasStoredSession: Bool { credential != nil }
+  var appleUserID: String? { credential?.appleUserID }
+  init(
+    baseURL: URL? = nil, configuration: URLSessionConfiguration = .ephemeral,
+    now: @escaping () -> Date = Date.init
+  ) {
     var configured = URL(
       string: Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String
         ?? "https://app-cusesublets.chenagent.com")!
@@ -53,6 +62,7 @@ struct KeychainSession {
         configured = url
       }
     #endif
+    self.currentTime = now
     self.baseURL = baseURL ?? configured
     vault = KeychainSession(account: self.baseURL.absoluteString)
     credential = vault.read()
@@ -62,6 +72,7 @@ struct KeychainSession {
     configuration.timeoutIntervalForRequest = 30
     session = URLSession(
       configuration: configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
+    if credential == nil { try? clearSession() }
   }
   func url(_ path: String) -> URL { URL(string: path, relativeTo: baseURL)!.absoluteURL }
   func get<T: Decodable>(_ path: String) async throws -> T { try await request(path) }
@@ -115,9 +126,15 @@ struct KeychainSession {
       path, method: "POST", data: body, contentType: "multipart/form-data; boundary=\(boundary)")
   }
   func download(_ path: String, name: String) async throws -> URL {
+    let revision = sessionRevision
     let (data, response) = try await send(path)
-    try check(data, response)
+    guard revision == sessionRevision else {
+      throw APIError(message: "Your session changed. Reopen this screen.")
+    }
+    try checkAuthenticated(data, response, path: path)
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "cuse-downloads", isDirectory: true
+    ).appendingPathComponent(
       UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     let target = folder.appendingPathComponent(URL(fileURLWithPath: name).lastPathComponent)
@@ -127,9 +144,13 @@ struct KeychainSession {
   private func request<T: Decodable>(
     _ path: String, method: String = "GET", data: Data? = nil, contentType: String? = nil
   ) async throws -> T {
+    let revision = sessionRevision
     let (bytes, response) = try await send(
       path, method: method, data: data, contentType: contentType)
-    try check(bytes, response)
+    guard revision == sessionRevision else {
+      throw APIError(message: "Your session changed. Reopen this screen.")
+    }
+    try checkAuthenticated(bytes, response, path: path)
     if let header = response.value(forHTTPHeaderField: "Set-Cookie") {
       let cookies = HTTPCookie.cookies(
         withResponseHeaderFields: ["Set-Cookie": header], for: baseURL)
@@ -141,18 +162,29 @@ struct KeychainSession {
           ? nil
           : SessionCredential(
             cookie: "\(cookie.name)=\(cookie.value)",
-            expires: cookie.expiresDate ?? Date().addingTimeInterval(28800))
+            expires: cookie.expiresDate ?? currentTime().addingTimeInterval(28800),
+            appleUserID: (try? JSONSerialization.jsonObject(with: bytes) as? [String: Any])?[
+              "appleUserID"] as? String)
         try vault.save(value)
         credential = value
+        sessionRevision += 1
       }
     }
     return try JSONDecoder().decode(T.self, from: bytes)
   }
+  func validateSession() throws {
+    if let credential, credential.expires <= currentTime() {
+      defer { onSessionEnded?() }
+      try clearSession()
+      throw APIError(message: "Your session expired. Please sign in again.", status: 401)
+    }
+  }
   private func send(
     _ path: String, method: String = "GET", data: Data? = nil, contentType: String? = nil
   ) async throws -> (Data, HTTPURLResponse) {
+    try validateSession()
     guard path.hasPrefix("/api/"), let target = URL(string: path, relativeTo: baseURL),
-      target.host == baseURL.host, target.scheme == baseURL.scheme
+      target.host == baseURL.host, target.scheme == baseURL.scheme, target.port == baseURL.port
     else { throw APIError(message: "Invalid API destination") }
     var request = URLRequest(url: target)
     request.httpMethod = method
@@ -164,7 +196,7 @@ struct KeychainSession {
         baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
         forHTTPHeaderField: "Origin")
     }
-    if let credential, credential.expires > Date() {
+    if let credential, credential.expires > currentTime() {
       request.setValue(credential.cookie, forHTTPHeaderField: "Cookie")
     }
     let (bytes, response) = try await session.data(for: request)
@@ -172,6 +204,13 @@ struct KeychainSession {
       throw APIError(message: "Unexpected server response")
     }
     return (bytes, http)
+  }
+  private func checkAuthenticated(_ data: Data, _ response: HTTPURLResponse, path: String) throws {
+    if response.statusCode == 401, credential != nil, !path.hasPrefix("/api/auth/") {
+      defer { onSessionEnded?() }
+      try clearSession()
+    }
+    try check(data, response)
   }
   private func check(_ data: Data, _ response: HTTPURLResponse) throws {
     guard (200..<300).contains(response.statusCode) else {
@@ -183,7 +222,7 @@ struct KeychainSession {
     }
   }
   func webSessionCookie() -> HTTPCookie? {
-    guard let credential, credential.expires > Date(), let host = baseURL.host,
+    guard let credential, credential.expires > currentTime(), let host = baseURL.host,
       let separator = credential.cookie.firstIndex(of: "=")
     else { return nil }
     return HTTPCookie(properties: [
@@ -207,18 +246,28 @@ struct KeychainSession {
     request.setValue(
       baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
       forHTTPHeaderField: "Origin")
-    if let credential, credential.expires > Date() {
+    if let credential, credential.expires > currentTime() {
       request.setValue(credential.cookie, forHTTPHeaderField: "Cookie")
     }
+    let revision = sessionRevision
     let (data, response) = try await session.upload(for: request, fromFile: file)
+    guard revision == sessionRevision else {
+      throw APIError(message: "Your session changed. Reopen this screen.")
+    }
     guard let http = response as? HTTPURLResponse else {
       throw APIError(message: "Unexpected upload response")
     }
-    try check(data, http)
+    try checkAuthenticated(data, http, path: path)
   }
   func clearSession() throws {
-    try vault.save(nil)
     credential = nil
+    sessionRevision += 1
+    try vault.save(nil)
+    let downloads = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "cuse-downloads", isDirectory: true)
+    if FileManager.default.fileExists(atPath: downloads.path) {
+      try FileManager.default.removeItem(at: downloads)
+    }
   }
 }
 

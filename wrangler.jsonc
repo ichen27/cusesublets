@@ -28,5 +28,6 @@
     "ADMIN_EMAILS": "",
     "APP_ORIGIN": "",
   },
+  "triggers": { "crons": ["*/15 * * * *"] },
   "observability": { "enabled": true, "traces": { "enabled": true } },
 }

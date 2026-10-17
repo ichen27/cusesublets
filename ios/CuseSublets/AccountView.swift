@@ -64,6 +64,10 @@ struct AccountView: View {
             if user.role == "admin" {
               Link("Staff review workspace (web)", destination: state.api.url("/#account"))
             }
+            NavigationLink("Delete account") { AccountDeletionView() }
+            if state.deletionReceipt != nil {
+              NavigationLink("Account deletion status") { DeletionStatusView() }
+            }
             Button("Log out", role: .destructive) { Task { await state.logout() } }
           }
           if !error.isEmpty { Text(error).foregroundStyle(.red) }
@@ -73,6 +77,9 @@ struct AccountView: View {
           EmptyState(
             title: "Make your next move",
             text: "Post a place, find a match, and keep your conversations together.")
+          if state.deletionReceipt != nil {
+            NavigationLink("Account deletion status") { DeletionStatusView() }
+          }
           Button("Log in or create an account") { state.showLogin = true }.buttonStyle(
             .borderedProminent)
         }

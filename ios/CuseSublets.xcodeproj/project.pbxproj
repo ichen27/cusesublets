@@ -19,12 +19,16 @@
 		58ED9E8F0868FE7DD6A725FA /* RoomToursView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF199AE777B4244D9088869 /* RoomToursView.swift */; };
 		76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E43454C554AEC16735B4F1 /* PhotoCapture.swift */; };
 		7F48707AF957E2AC0A8ACA84 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144F33BD918D7C2FE5D6868 /* APIClient.swift */; };
+		901A50D0ED3FE9D4C56E78A1 /* AppleLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF8FFF0EB781C16682C07A4 /* AppleLoginView.swift */; };
+		9DD2B8A9A28AEB8D9A083614 /* AccountDeletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028225F95C2A10B0FF48D1BF /* AccountDeletionView.swift */; };
 		B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34400A81F415FE72E0616C7B /* ModelsTests.swift */; };
 		E896FAAB55F922648B4D48E3 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B360091FC742F2D79BD19301 /* Models.swift */; };
 		EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A5003EB90A1CA8A36386B /* InboxView.swift */; };
 		ED032FCE1B368CA61D9D20B0 /* PhotoCaptureArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */; };
 		EEF60B25F6372CBA6348DBE7 /* MarketplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */; };
 		F4CF53EAE0EFE1631F81DBDC /* PhotoCapturePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C318E0D74042DDAD6B7538 /* PhotoCapturePolicy.swift */; };
+		FA54BB70268196FEFD9DF63D /* AccountDeletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75C79355C51121158AC6930 /* AccountDeletionTests.swift */; };
+		FBA6EDB41ADF6EDB4CB78806 /* SessionLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B463D33EF6D54BE3740FC3A /* SessionLifecycleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +49,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		028225F95C2A10B0FF48D1BF /* AccountDeletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionView.swift; sourceTree = "<group>"; };
+		0B463D33EF6D54BE3740FC3A /* SessionLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLifecycleTests.swift; sourceTree = "<group>"; };
 		116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryTests.swift; sourceTree = "<group>"; };
 		1B69E76AE94A17151C123A2E /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		1BCAC3541DB6579F298187E4 /* CuseSubletsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -57,8 +63,11 @@
 		711B1D9F42613404EFADDB6D /* CuseSublets.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CuseSublets.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureArchive.swift; sourceTree = "<group>"; };
 		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9486DB6DDDFCB3C5924CAD58 /* CuseSublets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CuseSublets.entitlements; sourceTree = "<group>"; };
 		AE25303FE8E1D06352E818DF /* RoomScansView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScansView.swift; sourceTree = "<group>"; };
 		B360091FC742F2D79BD19301 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		B75C79355C51121158AC6930 /* AccountDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionTests.swift; sourceTree = "<group>"; };
+		BDF8FFF0EB781C16682C07A4 /* AppleLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleLoginView.swift; sourceTree = "<group>"; };
 		BE94AA320384886E84A6B136 /* SocialView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialView.swift; sourceTree = "<group>"; };
 		D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureTests.swift; sourceTree = "<group>"; };
 		DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuseSubletsApp.swift; sourceTree = "<group>"; };
@@ -83,9 +92,12 @@
 		1E44C7398557DDDD8124C30D /* CuseSublets */ = {
 			isa = PBXGroup;
 			children = (
+				028225F95C2A10B0FF48D1BF /* AccountDeletionView.swift */,
 				1B69E76AE94A17151C123A2E /* AccountView.swift */,
 				E144F33BD918D7C2FE5D6868 /* APIClient.swift */,
+				BDF8FFF0EB781C16682C07A4 /* AppleLoginView.swift */,
 				F2DD0C534B5E075195EA6D1E /* BrowseView.swift */,
+				9486DB6DDDFCB3C5924CAD58 /* CuseSublets.entitlements */,
 				DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */,
 				2598614F789BB2443591BACE /* Discovery.swift */,
 				3FD685FF874F61D99FC41025 /* Editors.swift */,
@@ -105,9 +117,11 @@
 		2DB8965D33070CD7A6B1DC1E /* CuseSubletsTests */ = {
 			isa = PBXGroup;
 			children = (
+				B75C79355C51121158AC6930 /* AccountDeletionTests.swift */,
 				116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */,
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
 				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
+				0B463D33EF6D54BE3740FC3A /* SessionLifecycleTests.swift */,
 			);
 			path = CuseSubletsTests;
 			sourceTree = "<group>";
@@ -233,9 +247,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FA54BB70268196FEFD9DF63D /* AccountDeletionTests.swift in Sources */,
 				2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */,
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
 				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
+				FBA6EDB41ADF6EDB4CB78806 /* SessionLifecycleTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,7 +260,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				7F48707AF957E2AC0A8ACA84 /* APIClient.swift in Sources */,
+				9DD2B8A9A28AEB8D9A083614 /* AccountDeletionView.swift in Sources */,
 				1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */,
+				901A50D0ED3FE9D4C56E78A1 /* AppleLoginView.swift in Sources */,
 				1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */,
 				3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */,
 				40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */,
@@ -288,6 +306,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CuseSublets/CuseSublets.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = CuseSublets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -495,6 +514,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CuseSublets/CuseSublets.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = CuseSublets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

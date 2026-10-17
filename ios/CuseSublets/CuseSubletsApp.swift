@@ -3,28 +3,81 @@ import CryptoKit
 import SwiftUI
 
 @MainActor final class AppState: ObservableObject {
-  let api = APIClient()
+  let api: APIClient
+  private var refreshID = UUID()
+  private let appleCredentialState:
+    (String) async throws -> ASAuthorizationAppleIDProvider.CredentialState
+  init(
+    api: APIClient? = nil,
+    appleCredentialState:
+      @escaping (String) async throws -> ASAuthorizationAppleIDProvider.CredentialState = {
+        try await ASAuthorizationAppleIDProvider().credentialState(forUserID: $0)
+      }
+  ) {
+    self.appleCredentialState = appleCredentialState
+    self.api = api ?? APIClient()
+    self.deletionReceipt = DeletionReceiptStore(account: self.api.baseURL.absoluteString).read()
+    self.api.onSessionEnded = { [weak self] in
+      guard let self else { return }
+      self.clearAccount()
+      self.error = "Your session ended. Please sign in again."
+    }
+  }
+  private func clearAccount() {
+    refreshID = UUID()
+    user = nil
+    loading = false
+    conversationID = nil
+    tab = 0
+    showLogin = false
+  }
+  @Published var deletionReceipt: DeletionReceipt?
+  func clearDeletedAccount() {
+    clearAccount()
+    tab = 3
+  }
   @Published var user: Member?
   @Published var loading = true
   @Published var showLogin = false
   @Published var error: String?
   @Published var tab = 0
   @Published var conversationID: String?
-  func refreshSession() async {
+  func refreshSession(reportErrors: Bool = true) async {
+    let requestID = UUID()
+    refreshID = requestID
     do {
+      try api.validateSession()
+      if let appleUserID = api.appleUserID {
+        let status = try? await appleCredentialState(appleUserID)
+        guard refreshID == requestID else { return }
+        if status == .revoked || status == .notFound || status == .transferred {
+          await logout()
+          return
+        }
+      }
       let r: SessionResponse = try await api.get("/api/session")
-      user = r.user
-    } catch { self.error = error.localizedDescription }
+      guard refreshID == requestID else { return }
+      if r.user == nil && (api.hasStoredSession || user != nil) {
+        clearAccount()
+        try api.clearSession()
+      } else {
+        user = r.user
+      }
+    } catch {
+      guard refreshID == requestID else { return }
+      if reportErrors { self.error = error.localizedDescription }
+    }
     loading = false
   }
   func logout() async {
-    do {
-      try await api.act("/api/logout")
-      try api.clearSession()
-      user = nil
-      conversationID = nil
-      tab = 0
-    } catch { self.error = error.localizedDescription }
+    var warning: String?
+    do { try await api.act("/api/logout") } catch {
+      warning =
+        "Signed out on this iPhone. The server could not confirm session revocation; it will expire automatically."
+    }
+    do { try api.clearSession() } catch { warning = error.localizedDescription }
+    clearAccount()
+    error = warning
   }
   func requireLogin() -> Bool {
     if user == nil {
@@ -46,10 +99,17 @@ import SwiftUI
 }
 @main struct CuseSubletsApp: App {
   @StateObject private var state = AppState()
+  @Environment(\.scenePhase) private var scenePhase
   var body: some Scene {
     WindowGroup {
       RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
-        .tint(.cuseOrange).task { await state.refreshSession() }
+        .tint(.cuseOrange).task(id: scenePhase) {
+          guard scenePhase == .active else { return }
+          while !Task.isCancelled {
+            await state.refreshSession(reportErrors: false)
+            try? await Task.sleep(for: .seconds(60))
+          }
+        }
     }
   }
 }
@@ -69,6 +129,12 @@ struct RootView: View {
         .tag(3)
     }
     .id(state.user?.id ?? "guest")
+    .onReceive(
+      NotificationCenter.default.publisher(
+        for: ASAuthorizationAppleIDProvider.credentialRevokedNotification)
+    ) { _ in
+      if state.api.appleUserID != nil { Task { await state.logout() } }
+    }
     .sheet(isPresented: $state.showLogin) { LoginView() }
     .alert(
       "CuseSublets",
@@ -90,6 +156,14 @@ struct LoginView: View {
   @State private var signup = false
   @State private var busy = false
   @State private var google = GoogleSignIn()
+  @State private var authOptions: NativeAuthOptions?
+  private var showGoogle: Bool {
+    #if DEBUG
+      return true
+    #else
+      return authOptions?.googleEnabled == true
+    #endif
+  }
   private var passwordContentType: UITextContentType {
     #if DEBUG
       // Keep synthetic credential entry independent of the system password-generator sheet.
@@ -122,26 +196,36 @@ struct LoginView: View {
           Button(signup ? "Create account" : "Log in") { Task { await login() } }.disabled(
             busy || email.isEmpty || password.isEmpty)
         }
-        Section {
-          Button("Continue with Google") {
-            Task {
-              busy = true
-              defer { busy = false }
-              do {
-                try await google.signIn(api: state.api)
-                await state.refreshSession()
-                if state.user != nil { dismiss() }
-              } catch { self.error = error.localizedDescription }
-            }
-          }.disabled(busy)
-          Text("Google access currently follows the website’s configured account policy.").font(
-            .caption
-          ).foregroundStyle(.secondary)
+        if authOptions?.appleEnabled == true {
+          Section { AppleLoginView(busy: $busy, finished: { dismiss() }) }
+        }
+        if showGoogle {
+          Section {
+            Button("Continue with Google") {
+              Task {
+                busy = true
+                defer { busy = false }
+                do {
+                  try await google.signIn(api: state.api)
+                  await state.refreshSession()
+                  if state.user != nil { dismiss() }
+                } catch { self.error = error.localizedDescription }
+              }
+            }.disabled(busy)
+            Text("Google access currently follows the website’s configured account policy.").font(
+              .caption
+            ).foregroundStyle(.secondary)
+          }
         }
         if busy { ProgressView() }
         if !error.isEmpty { Text(error).foregroundStyle(.red) }
         Text("Password recovery emails are not available yet.").font(.footnote).foregroundStyle(
           .secondary)
+      }.task {
+        do { authOptions = try await state.api.get("/api/auth/native-options") } catch {
+          self.error =
+            "Other sign-in methods could not be loaded. You can still use email and password."
+        }
       }.scrollDismissesKeyboard(.interactively).navigationTitle("Welcome").toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
         ToolbarItemGroup(placement: .keyboard) {

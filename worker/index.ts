@@ -1,3 +1,5 @@
+import { beginAccountDeletion, accountDeletionStatus, sweepAccountDeletions } from "./account-deletion";
+import { appleNotification, appleChallenge, appleExchange, appleConfigured, type AppleEnv } from "./apple-auth";
 import { roomTourRoute, tourProcessorRoute } from "./room-tours";
 import { roomScanRoute } from "./room-scans";
 import { mobileAuthCallback, mobileAuthExchange } from "./mobile-auth";
@@ -37,7 +39,7 @@ import {
   mediaUrl,
   syracuseDate,
 } from "./policy";
-type Env = Pick<Cloudflare.Env, "DB" | "UPLOADS" | "ASSETS"> & {
+type Env = Pick<Cloudflare.Env, "DB" | "UPLOADS" | "ASSETS"> & AppleEnv & {
   APP_ENV: string;
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
@@ -303,7 +305,7 @@ async function authenticate(
     if (!token) return null;
     return one<User>(
       e,
-      "SELECT u.* FROM users u JOIN sessions s ON s.userId=u.id WHERE s.token=? AND s.expires>?",
+      "SELECT u.* FROM users u JOIN sessions s ON s.userId=u.id WHERE s.token=? AND s.expires>? AND u.deletedAt IS NULL",
       token,
       Date.now(),
     );
@@ -347,6 +349,7 @@ async function authenticate(
     .filter(Boolean)
     .includes(email);
   const uid = "access:" + subject;
+  if(await one(e,"SELECT id FROM users WHERE id=? AND deletedAt IS NOT NULL",uid)) return null;
   const collision = await one<User>(
     e,
     "SELECT * FROM users WHERE lower(email)=? AND id<>?",
@@ -724,13 +727,15 @@ async function uploadForm(req: Request) {
   }).formData();
 }
 export default {
-  async fetch(req: Request, e: Env): Promise<Response> {
+  async scheduled(_event: ScheduledController, e: Env): Promise<void> { await sweepAccountDeletions(e); },
+  async fetch(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUntil">): Promise<Response> {
     try {
-      return await route(req, e);
+      return await route(req, e, ctx);
     } catch (err) {
       if (err instanceof HttpError)
         return json({ error: err.message }, err.status);
       const msg = err instanceof Error ? err.message : "";
+      if(msg.includes("Account deleted")) return json({error:"Account deleted. Sign in with a different account."},401);
       if (
         msg.includes("Review prerequisites changed") ||
         msg.includes("UNIQUE constraint failed: profile_reviews") ||
@@ -758,7 +763,7 @@ export default {
     }
   },
 };
-async function route(req: Request, e: Env) {
+async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUntil">) {
   const url = new URL(req.url),
     p = url.pathname,
     m = req.method,
@@ -778,6 +783,7 @@ async function route(req: Request, e: Env) {
     );
   if (!["GET", "POST"].includes(m))
     throw new HttpError(405, "Method not allowed");
+  if(p === "/api/auth/apple/notifications" && m === "POST") return appleNotification(await body(req,18000),e);
   if (m === "POST") {
     const origin = req.headers.get("Origin");
     requireThat(
@@ -791,6 +797,9 @@ async function route(req: Request, e: Env) {
       "Cross-site request rejected",
     );
   }
+  if(p === "/api/auth/native-options" && m === "GET") return json({appleEnabled:appleConfigured(e),googleEnabled:appleConfigured(e)||demo});
+  if(p === "/api/auth/apple/challenge" && m === "POST") return appleChallenge(req,e);
+  if(p === "/api/auth/apple" && m === "POST") return appleExchange(await body(req,24000),e,demo);
   const processorResponse = await tourProcessorRoute(req,e);
   if(processorResponse)return processorResponse;
   if (p === "/api/dev/session" && m === "POST") {
@@ -855,8 +864,17 @@ async function route(req: Request, e: Env) {
     );
   }
   if (p === "/api/auth/mobile" && m === "POST") return mobileAuthExchange(await body(req, 4096), e.DB, demo);
+  if(p === "/api/account/deletion/status" && m === "POST") return accountDeletionStatus(e,(await body(req,1024)).receipt);
   const authenticated = preview ? null : await authenticate(req, e, demo);
   const u = authenticated ? userView(authenticated) : null;
+  if(p === "/api/account/delete" && m === "POST") {
+    requireThat(u,401,"Sign in to delete your account");
+    const b=await body(req,1024);
+    requireThat(b.confirmation === "DELETE",400,"Confirm account deletion");
+    await beginAccountDeletion(e,u,b.receipt);
+    ctx.waitUntil(sweepAccountDeletions(e).catch(()=>undefined));
+    return json({ok:true,status:"processing"},202,{"Set-Cookie":passwordCookie("",demo)});
+  }
   const toursResponse = await roomTourRoute(req,e,u);
   if(toursResponse)return toursResponse;
   const scansResponse = await roomScanRoute(req,e,u);
@@ -1661,7 +1679,7 @@ async function route(req: Request, e: Env) {
         size: file.size,
         createdAt: now(),
       };
-      const objectKey = "chat/" + c.id + "/" + attachment.id;
+      const objectKey = "chat/" + c.id + "/" + u.id + "/" + attachment.id;
       await e.UPLOADS.put(objectKey, file.stream(), {
         httpMetadata: { contentType: file.type },
       });

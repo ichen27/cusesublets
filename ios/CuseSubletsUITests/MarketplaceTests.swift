@@ -81,12 +81,11 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["Edit"].tap()
     reveal(comment, in: app)
     comment.tap()
-    comment.typeText(
-      String(repeating: XCUIKeyboardKey.delete.rawValue, count: initialComment.count)
-        + "Edited synthetic public comment")
+    // Focusing this multiline field places the caret at the start. Test an explicit insertion.
+    comment.typeText("Edited ")
     reveal(app.buttons["Save comment"], in: app)
     app.buttons["Save comment"].tap()
-    XCTAssertTrue(app.staticTexts["Edited synthetic public comment"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 10))
     attach(app, "Edited listing comment")
     app.navigationBars.buttons.firstMatch.tap()
     app.buttons["Capture or manage room layouts"].tap()
