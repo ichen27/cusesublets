@@ -4,6 +4,7 @@ CREATE TABLE room_tours (
   ownerId TEXT NOT NULL REFERENCES users(id),
   name TEXT NOT NULL,
   status TEXT NOT NULL CHECK(status IN ('uploading','queued','processing','ready','failed')),
+  deleting INTEGER NOT NULL DEFAULT 0 CHECK(deleting IN (0,1)),
   published INTEGER NOT NULL DEFAULT 0 CHECK(published IN (0,1)),
   inputHash TEXT NOT NULL,
   inputSize INTEGER NOT NULL,

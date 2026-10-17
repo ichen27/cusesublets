@@ -19,6 +19,7 @@ type Row = Omit<RoomTour, "published" | "result"> & {
   claim: string | null;
   leaseUntil: number | null;
   attempts: number;
+  deleting: number;
 };
 const json = (v: unknown, status = 200) =>
   Response.json(v, {
@@ -32,7 +33,7 @@ const view = (r: Row): RoomTour => ({
   id: r.id,
   listingId: r.listingId,
   name: r.name,
-  status: r.status,
+  status: r.deleting ? "deleting" : r.status,
   published: !!r.published,
   createdAt: r.createdAt,
   result: r.result ? JSON.parse(r.result) : null,
@@ -143,7 +144,7 @@ export async function roomTourRoute(
     );
     if (!tourId) {
       const rows = await env.DB.prepare(
-        `SELECT * FROM room_tours WHERE listingId=? ${owner ? "" : "AND published=1 AND status='ready'"} ORDER BY createdAt DESC`,
+        `SELECT * FROM room_tours WHERE listingId=? ${owner ? "" : "AND deleting=0 AND published=1 AND status='ready'"} ORDER BY createdAt DESC`,
       )
         .bind(listingId)
         .all<Row>();
@@ -153,14 +154,14 @@ export async function roomTourRoute(
       });
     }
     const row = await env.DB.prepare(
-      `SELECT * FROM room_tours WHERE id=? AND listingId=? ${owner ? "" : "AND published=1 AND status='ready'"}`,
+      `SELECT * FROM room_tours WHERE id=? AND listingId=? ${owner ? "" : "AND deleting=0 AND published=1 AND status='ready'"}`,
     )
       .bind(tourId, listingId)
       .first<Row>();
     requireThat(row, 404, "Tour not found");
     if (action === "model") {
       requireThat(
-        row.status === "ready" && row.modelKey,
+        !row.deleting && row.status === "ready" && row.modelKey,
         404,
         "Tour is not ready",
       );
@@ -227,6 +228,11 @@ export async function roomTourRoute(
     .first<Row>();
   requireThat(row, 404, "Tour not found");
   if (action === "upload") {
+    requireThat(
+      !row.deleting,
+      409,
+      "Tour deletion is pending; retry Delete tour",
+    );
     if (row.inputKey) return json({ tour: view(row) });
     requireThat(
       row.status === "uploading",
@@ -236,7 +242,7 @@ export async function roomTourRoute(
     const key = `tours/${row.id}/input-${crypto.randomUUID()}.roomcapture`;
     await streamUpload(req, env, key, row.inputSize, row.inputHash);
     const saved = await env.DB.prepare(
-      `UPDATE room_tours SET inputKey=?,status='queued' WHERE id=? AND status='uploading' AND inputKey IS NULL AND ${active}`,
+      `UPDATE room_tours SET inputKey=?,status='queued' WHERE id=? AND deleting=0 AND status='uploading' AND inputKey IS NULL AND ${active}`,
     )
       .bind(key, row.id)
       .run();
@@ -246,27 +252,29 @@ export async function roomTourRoute(
     )
       .bind(row.id, user.id)
       .first<Row>();
-    requireThat(current && current.inputKey, 409, "Capture or account changed");
+    requireThat(
+      current && !current.deleting && current.inputKey,
+      409,
+      "Capture or account changed",
+    );
     return json({ tour: view(current) });
   }
   const b = await body(req);
   if (action === "delete") {
     const deleted = await env.DB.prepare(
-      `DELETE FROM room_tours WHERE id=? AND ownerId=? AND ${active}`,
+      `UPDATE room_tours SET deleting=1,published=0,claim=NULL,leaseUntil=NULL WHERE id=? AND ownerId=? AND ${active}`,
     )
       .bind(row.id, user.id)
       .run();
     requireThat(deleted.meta.changes === 1, 409, "Capture or account changed");
-    // In-flight writers also remove their objects when their final conditional update fails.
-    let cursor: string | undefined;
-    do {
-      const page = await env.UPLOADS.list({
-        prefix: `tours/${row.id}/`,
-        cursor,
-      });
-      await env.UPLOADS.delete(page.objects.map((o) => o.key));
-      cursor = page.truncated ? page.cursor : undefined;
-    } while (cursor);
+    // Keep a nonpublic tombstone until every object is gone; deletion is retryable.
+    await finishTourDeletion(env.UPLOADS, `tours/${row.id}/`, async () => {
+      await env.DB.prepare(
+        "DELETE FROM room_tours WHERE id=? AND ownerId=? AND deleting=1",
+      )
+        .bind(row.id, user.id)
+        .run();
+    });
     return json({ ok: true });
   }
   let result: D1Result;
@@ -277,7 +285,7 @@ export async function roomTourRoute(
       "Choose tour visibility",
     );
     result = await env.DB.prepare(
-      `UPDATE room_tours SET published=? WHERE id=? AND status='ready' AND ${active}`,
+      `UPDATE room_tours SET published=? WHERE id=? AND deleting=0 AND status='ready' AND ${active}`,
     )
       .bind(b.published ? 1 : 0, row.id)
       .run();
@@ -288,7 +296,7 @@ export async function roomTourRoute(
       "Photographic processing is not configured yet",
     );
     result = await env.DB.prepare(
-      `UPDATE room_tours SET status='queued',error=NULL,claim=NULL,leaseUntil=NULL,attempts=0 WHERE id=? AND status='failed' AND inputKey IS NOT NULL AND ${active}`,
+      `UPDATE room_tours SET status='queued',error=NULL,claim=NULL,leaseUntil=NULL,attempts=0 WHERE id=? AND deleting=0 AND status='failed' AND inputKey IS NOT NULL AND ${active}`,
     )
       .bind(row.id)
       .run();
@@ -333,7 +341,7 @@ export async function tourProcessorRoute(
   env: TourEnv,
 ): Promise<Response | null> {
   const match = new URL(req.url).pathname.match(
-    /^\/api\/tour-processor\/(claim|([a-f0-9-]+)\/(input|heartbeat|complete|fail))$/,
+    /^\/api\/tour-processor\/(claim|([a-f0-9-]+)\/(input|heartbeat|complete|fail))$/i,
   );
   if (!match) return null;
   await processorAuthorized(req, env.TOUR_PROCESSOR_TOKEN);
@@ -349,7 +357,7 @@ export async function tourProcessorRoute(
     const claim = crypto.randomUUID();
     // Single-statement claim plus fencing token prevents duplicate workers from committing a result.
     const row = await env.DB.prepare(
-      `UPDATE room_tours SET status='processing',claim=?,leaseUntil=?,attempts=attempts+1,error=NULL WHERE id=(SELECT id FROM room_tours WHERE (status='queued' OR (status='processing' AND leaseUntil<?)) AND ${active} ORDER BY createdAt LIMIT 1) RETURNING *`,
+      `UPDATE room_tours SET status='processing',claim=?,leaseUntil=?,attempts=attempts+1,error=NULL WHERE id=(SELECT id FROM room_tours WHERE deleting=0 AND (status='queued' OR (status='processing' AND leaseUntil<?)) AND ${active} ORDER BY createdAt LIMIT 1) RETURNING *`,
     )
       .bind(claim, now + 180000, now)
       .first<Row>();
@@ -367,7 +375,7 @@ export async function tourProcessorRoute(
   const claim = req.headers.get("X-Tour-Claim");
   requireThat(uuid(claim), 400, "Invalid processing claim");
   const row = await env.DB.prepare(
-    `SELECT * FROM room_tours WHERE id=? AND claim=? AND status='processing' AND leaseUntil>? AND ${active}`,
+    `SELECT * FROM room_tours WHERE id=? AND claim=? AND deleting=0 AND status='processing' AND leaseUntil>? AND ${active}`,
   )
     .bind(id, claim, now)
     .first<Row>();
@@ -377,7 +385,7 @@ export async function tourProcessorRoute(
     return asset(env, row.inputKey, "room.roomcapture");
   }
   requireThat(req.method === "POST", 405, "Method not allowed");
-  const guard = `id=? AND claim=? AND status='processing' AND leaseUntil>? AND ${active}`;
+  const guard = `id=? AND claim=? AND deleting=0 AND status='processing' AND leaseUntil>? AND ${active}`;
   if (action === "complete") {
     let metadata;
     try {
@@ -440,4 +448,19 @@ export async function tourProcessorRoute(
     "Processing lease expired or capture unavailable",
   );
   return json({ ok: true });
+}
+
+export async function finishTourDeletion(
+  bucket: Pick<R2Bucket, "list" | "delete">,
+  prefix: string,
+  finish: () => Promise<void>,
+) {
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list({ prefix, cursor });
+    if (page.objects.length)
+      await bucket.delete(page.objects.map((o) => o.key));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  await finish();
 }

@@ -127,33 +127,37 @@ def process_job(api, job, root):
     process = None
     try:
         with tempfile.TemporaryDirectory(prefix='tour-', dir=root) as directory:
-            work = Path(directory)
-            capture = work / 'input.roomcapture'
-            total = 0
-            with api.request(job['id'] + '/input', job=job) as response, capture.open('wb') as out:
-                while block := response.read(1024 * 1024):
-                    total += len(block)
-                    if total > LIMIT or total > job['inputSize'] or lease_lost.is_set():
-                        raise ValueError('capture_invalid')
-                    out.write(block)
-            if total != job['inputSize'] or file_hash(capture) != job['inputHash']:
-                raise ValueError('capture_invalid')
-            with (work / 'process.log').open('wb') as log:
-                process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--reconstruct',
-                                            str(capture), str(work / 'training')], stdout=log,
-                                           stderr=subprocess.STDOUT, start_new_session=True)
-                deadline = time.monotonic() + 7500
-                while process.poll() is None:
-                    if lease_lost.wait(1):
-                        raise ValueError('lease_lost')
-                    if time.monotonic() > deadline:
-                        raise ValueError('timeout')
-                if process.returncode:
-                    raise ValueError('processing_failed')
-            result = work / 'training/result'
-            metadata = json.loads((result / 'display.json').read_text())
-            api.json(job['id'] + '/complete', job=job, file=result / 'export_3000.ply', metadata=metadata)
-            print('Tour reconstruction completed', flush=True)
+            try:
+                work = Path(directory)
+                capture = work / 'input.roomcapture'
+                total = 0
+                with api.request(job['id'] + '/input', job=job) as response, capture.open('wb') as out:
+                    while block := response.read(1024 * 1024):
+                        total += len(block)
+                        if total > LIMIT or total > job['inputSize'] or lease_lost.is_set():
+                            raise ValueError('capture_invalid')
+                        out.write(block)
+                if total != job['inputSize'] or file_hash(capture) != job['inputHash']:
+                    raise ValueError('capture_invalid')
+                with (work / 'process.log').open('wb') as log:
+                    process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--reconstruct',
+                                                str(capture), str(work / 'training')], stdout=log,
+                                               stderr=subprocess.STDOUT, start_new_session=True)
+                    deadline = time.monotonic() + 7500
+                    while process.poll() is None:
+                        if lease_lost.wait(1):
+                            raise ValueError('lease_lost')
+                        if time.monotonic() > deadline:
+                            raise ValueError('timeout')
+                    if process.returncode:
+                        raise ValueError('processing_failed')
+                result = work / 'training/result'
+                metadata = json.loads((result / 'display.json').read_text())
+                api.json(job['id'] + '/complete', job=job, file=result / 'export_3000.ply', metadata=metadata)
+                print('Tour reconstruction completed', flush=True)
+            finally:
+                if process is not None:
+                    stop_process(process)
     except (Exception, KeyboardInterrupt) as error:
         if process is not None:
             stop_process(process)
@@ -179,7 +183,9 @@ def main():
     parser.add_argument('--reconstruct', nargs=2, type=Path)
     args = parser.parse_args()
     os.umask(0o077)
-    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    def terminate(*_):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, terminate)
     if args.reconstruct:
         reconstruct(*args.reconstruct)
         return

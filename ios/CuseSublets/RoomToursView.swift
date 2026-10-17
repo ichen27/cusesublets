@@ -181,6 +181,8 @@ struct RoomToursView: View {
     case "uploading": return "Waiting for capture upload"
     case "queued": return "Queued for reconstruction"
     case "processing": return "Reconstructing the room. You can leave this screen."
+    case "deleting":
+      return "Deletion is pending. Tap Delete tour again to finish removing its files."
     case "failed": return tour.error ?? "Reconstruction failed. Try again."
     default: return tour.status
     }

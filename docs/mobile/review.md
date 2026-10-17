@@ -21,3 +21,7 @@ The full migration remains broader than this first implementation. Photographic 
 ## Marketplace parity follow-up
 
 The standards review found calendar controls using the device time zone while storage uses Syracuse dates; the root environment now supplies America/New_York. The spec review found completed-lease reviews of renters unreachable from host conversations; conversation peers now link to member profiles. The comment keyboard has an explicit dismissal control. Both reviewers rechecked these fixes without further actionable findings. CI then identified map-intercepted scrolling in the expanded interaction test; that recording led to a noninteractive listing-detail map preview. Current CI evidence is tracked in validation.md.
+
+## Photographic tour review
+
+Two-axis review of `eb8b6de...d95f016` found the native uppercase UUID / lowercase processor-route mismatch; processor routing now accepts native UUID case and the full API lifecycle test uses uppercase IDs. Storage cleanup now retains a private deletion tombstone until object deletion succeeds, with a transient-storage-failure test. The browser clears retained tour state on context changes (the listing parent also keys it by account). The native viewer directs export to the working native share control instead of offering a blocked download link. Processor termination now happens inside the private-directory scope before cleanup, with a timeout-ordering test. A browser check also corrected PlayCanvas's default canvas fill behavior so it stays within its parent at desktop and phone widths.

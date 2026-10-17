@@ -3,7 +3,13 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import type { RoomTour } from "../shared/room-tour";
 const SplatViewer = lazy(() => import("./SplatViewer"));
-export function TourPlayer({ tour }: { tour: RoomTour }) {
+export function TourPlayer({
+  tour,
+  native = false,
+}: {
+  tour: RoomTour;
+  native?: boolean;
+}) {
   return (
     <section className="room-tour">
       <h3>{tour.name}</h3>
@@ -14,12 +20,19 @@ export function TourPlayer({ tour }: { tour: RoomTour }) {
       <Suspense fallback={<p role="status">Loading viewer…</p>}>
         <SplatViewer tour={tour} />
       </Suspense>
-      <a
-        href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/model`}
-        download="room.ply"
-      >
-        Export Gaussian PLY
-      </a>
+      {native ? (
+        <p>
+          Use Export Gaussian PLY on the previous screen to save or share this
+          model.
+        </p>
+      ) : (
+        <a
+          href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/model`}
+          download="room.ply"
+        >
+          Export Gaussian PLY
+        </a>
+      )}
       <p>
         <small>
           PLY contains Gaussian attributes for compatible viewers and Blender
@@ -42,6 +55,9 @@ export default function RoomTours({
     [playing, setPlaying] = useState<string>();
   useEffect(() => {
     let active = true;
+    setTours([]);
+    setPlaying(undefined);
+    setError("");
     api<{ tours: RoomTour[] }>(`/listings/${listingId}/tours`)
       .then((r) => {
         if (active) setTours(r.tours);
@@ -141,7 +157,7 @@ export function NativeTourPage() {
       {error ? (
         <p role="alert">{error}</p>
       ) : tour ? (
-        <TourPlayer tour={tour} />
+        <TourPlayer tour={tour} native />
       ) : (
         <p role="status">Loading private tour…</p>
       )}

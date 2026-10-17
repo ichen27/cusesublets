@@ -25,3 +25,24 @@ describe("tour metadata", () => {
     ).toEqual(result);
   });
 });
+
+import { finishTourDeletion } from "../worker/room-tours";
+import { vi } from "vitest";
+it("retains the deletion record across object storage failure and retries cleanup", async () => {
+  const list = vi
+    .fn<R2Bucket["list"]>()
+    .mockRejectedValueOnce(new Error("Storage unavailable"))
+    .mockResolvedValue({
+      objects: [],
+      truncated: false,
+      delimitedPrefixes: [],
+    });
+  const remove = vi.fn<R2Bucket["delete"]>();
+  const finish = vi.fn(async () => {});
+  await expect(
+    finishTourDeletion({ list, delete: remove }, "tours/example/", finish),
+  ).rejects.toThrow("Storage unavailable");
+  expect(finish).not.toHaveBeenCalled();
+  await finishTourDeletion({ list, delete: remove }, "tours/example/", finish);
+  expect(finish).toHaveBeenCalledOnce();
+});

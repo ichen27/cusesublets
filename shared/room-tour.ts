@@ -1,6 +1,6 @@
 export const TOUR_LIMIT = 64 * 1024 * 1024;
 export type TourStatus =
-  "uploading" | "queued" | "processing" | "ready" | "failed";
+  "uploading" | "queued" | "processing" | "ready" | "failed" | "deleting";
 export interface TourResult {
   method: string;
   views: number;

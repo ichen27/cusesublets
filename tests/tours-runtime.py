@@ -35,7 +35,7 @@ class Tours(unittest.TestCase):
  def tearDown(self):
   for id in self.ids:self.host.call(self.base+'/'+id+'/delete',{})
  def reserve(self):
-  data=b'Synthetic archive used to test transport only';id=str(uuid.uuid4());self.ids.append(id)
+  data=b'Synthetic archive used to test transport only';id=str(uuid.uuid4()).upper();self.ids.append(id)
   payload={'id':id,'name':'Synthetic tour','size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
   status,result=self.host.call(self.base,payload);self.assertEqual(status,201,result);return id,data,payload
  def test_private_upload_retry_publication_and_deletion_fence(self):
