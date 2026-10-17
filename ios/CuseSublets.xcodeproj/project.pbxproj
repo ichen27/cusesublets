@@ -9,8 +9,10 @@
 /* Begin PBXBuildFile section */
 		1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B69E76AE94A17151C123A2E /* AccountView.swift */; };
 		1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DD0C534B5E075195EA6D1E /* BrowseView.swift */; };
+		2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */; };
 		2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD685FF874F61D99FC41025 /* Editors.swift */; };
 		3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */; };
+		40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2598614F789BB2443591BACE /* Discovery.swift */; };
 		492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE94AA320384886E84A6B136 /* SocialView.swift */; };
 		4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE25303FE8E1D06352E818DF /* RoomScansView.swift */; };
 		7F48707AF957E2AC0A8ACA84 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144F33BD918D7C2FE5D6868 /* APIClient.swift */; };
@@ -38,8 +40,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryTests.swift; sourceTree = "<group>"; };
 		1B69E76AE94A17151C123A2E /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		1BCAC3541DB6579F298187E4 /* CuseSubletsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2598614F789BB2443591BACE /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
 		34400A81F415FE72E0616C7B /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		3FD685FF874F61D99FC41025 /* Editors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editors.swift; sourceTree = "<group>"; };
 		6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceTests.swift; sourceTree = "<group>"; };
@@ -73,6 +77,7 @@
 				E144F33BD918D7C2FE5D6868 /* APIClient.swift */,
 				F2DD0C534B5E075195EA6D1E /* BrowseView.swift */,
 				DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */,
+				2598614F789BB2443591BACE /* Discovery.swift */,
 				3FD685FF874F61D99FC41025 /* Editors.swift */,
 				FA5A5003EB90A1CA8A36386B /* InboxView.swift */,
 				F6817F9190BF966336DFCF3A /* Info.plist */,
@@ -86,6 +91,7 @@
 		2DB8965D33070CD7A6B1DC1E /* CuseSubletsTests */ = {
 			isa = PBXGroup;
 			children = (
+				116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */,
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
 			);
 			path = CuseSubletsTests;
@@ -212,6 +218,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */,
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -224,6 +231,7 @@
 				1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */,
 				1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */,
 				3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */,
+				40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */,
 				2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */,
 				EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */,
 				E896FAAB55F922648B4D48E3 /* Models.swift in Sources */,

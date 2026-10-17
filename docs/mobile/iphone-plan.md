@@ -45,3 +45,16 @@ Existing product limitations also remain: verified email/password recovery, lega
 4. Mobile auth tests prove verifier binding, single use, expiry and logout; never test by publishing user property or uploading real identity documents.
 5. Capture is explicitly unavailable on unsupported devices; never fabricate a successful scan in a simulator.
 6. Capture results survive an upload failure locally and require explicit publication after upload.
+
+## Completion sequence — resumed October 16
+
+The owner asked to continue through all remaining parts one step at a time. Finish and validate each software slice, push it to PR 1, then advance. Physical validation and distribution are explicit gates, not things a simulator can substitute for.
+
+- [x] Initial native interaction flow and reproducible simulator evidence.
+- [ ] Step 1: Marketplace parity — discovery filters, map viewport and people areas, relevant/latest ordering, comment editing, profile gallery removal, completed-lease reviews, and remaining native navigation gaps. Validate domain boundaries and UI interactions.
+- [ ] Step 2: Photographic capture and reconstruction — inspect/reuse the existing experiment, implement private upload/job/failure/retry/review/publication, and connect actual viewer/export artifacts. Validate privacy and real processing; report quality limits.
+- [ ] Step 3: Authentication and lifecycle — expiry/suspension coverage, account deletion and distribution authentication requirements, background/relaunch recovery, and hosted auth verification.
+- [ ] Step 4: Accessibility and delivery — labels/Dynamic Type/error recovery, app assets and portable release configuration, current CI and independent review.
+- [ ] Step 5: Supported-device capture accuracy/recovery and signing/TestFlight. Requires the owner's iPhone details, physical-device evidence and Apple account/provisioning access.
+
+Existing unavailable payments, legal signing and email-provider workflows remain separately identified product dependencies; do not simulate them as live capabilities. Android remains deferred by the iPhone-first decision.

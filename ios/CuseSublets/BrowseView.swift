@@ -3,31 +3,48 @@ import SwiftUI
 
 struct BrowseView: View {
   @EnvironmentObject var state: AppState
+  @Environment(\.scenePhase) private var scenePhase
   @State private var listings: [Listing] = []
   @State private var searches: [HousingSearch] = []
-  @State private var query = ""
+  @State private var mine: [Listing] = []
+  @State private var mySearch: HousingSearch?
+  @State private var filters = DiscoveryFilters()
   @State private var kind = "All"
+  @State private var order = "Latest"
   @State private var error = ""
-  @State private var maximum = 3000.0
   @State private var showMap = false
-  @State private var loading = true
-  var filtered: [Listing] {
-    listings.filter {
-      $0.price <= maximum
-        && (query.isEmpty
-          || ($0.title + " " + $0.neighborhood).localizedCaseInsensitiveContains(query))
+  @State private var showFilters = false
+  @State private var bounds: DiscoveryBounds?
+  @State private var loading = false
+  @State private var limit = 12
+  @State private var loadID = UUID()
+  var places: [Listing] { listings.filter { filters.includes($0) } }
+  var people: [HousingSearch] { searches.filter { filters.includes($0) } }
+  var posts: [DiscoveryPost] {
+    var result: [DiscoveryPost] = []
+    if kind != "People" {
+      result += places.filter { bounds?.contains(.init(lat: $0.lat, lng: $0.lng)) ?? true }
+        .map(DiscoveryPost.listing)
     }
-  }
-  var people: [HousingSearch] {
-    searches.filter {
-      query.isEmpty
-        || ($0.ownerName + " " + $0.introduction + " "
-          + $0.areas.map(\.label).joined(separator: " ")).localizedCaseInsensitiveContains(query)
+    if kind != "Places" {
+      var owners = Set<String>()
+      result += people.filter { s in
+        (bounds.map { b in s.areas.contains { b.intersects($0) } } ?? true)
+          && owners.insert(s.ownerId).inserted
+      }.map(DiscoveryPost.search)
+    }
+    return result.sorted { a, b in
+      if order == "For you" {
+        let af = a.fits(search: mySearch, listings: mine)
+        let bf = b.fits(search: mySearch, listings: mine)
+        if af != bf { return af }
+      }
+      return a.createdAt == b.createdAt ? a.id < b.id : a.createdAt > b.createdAt
     }
   }
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
+      LazyVStack(alignment: .leading, spacing: 20) {
         VStack(alignment: .leading, spacing: 8) {
           Text("Find a sublet.\nList your place.").font(.largeTitle.bold())
           Text("Homes and people around Syracuse.").foregroundStyle(.secondary)
@@ -35,79 +52,195 @@ struct BrowseView: View {
         Picker("Browse", selection: $kind) {
           ForEach(["All", "Places", "People"], id: \.self) { Text($0) }
         }.pickerStyle(.segmented)
-        if kind != "People" {
-          HStack {
-            Text("Up to \(dollars(maximum))/mo")
-            Spacer()
-            Button(showMap ? "Hide map" : "Show map", systemImage: "map") { showMap.toggle() }
-          }.font(.subheadline)
-          Slider(value: $maximum, in: 100...5000, step: 50).accessibilityLabel(
-            "Maximum monthly rent")
-          if showMap {
-            Map {
-              ForEach(filtered) { l in
+        Picker("Post order", selection: $order) {
+          Text("Latest").tag("Latest")
+          Text("For you").tag("For you")
+        }.pickerStyle(.segmented)
+        HStack {
+          Button("Filters", systemImage: "line.3.horizontal.decrease") { showFilters = true }
+          Spacer()
+          Button(showMap ? "Hide map" : "Show map", systemImage: "map") {
+            showMap.toggle()
+            if !showMap { bounds = nil }
+          }
+        }
+        if order == "For you" && mySearch?.status != "active" && mine.isEmpty {
+          Text("Showing latest posts. Add a place or housing search in You to personalize matches.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        if !filters.validDates {
+          Text("Move out must be after move in.").foregroundStyle(.red)
+        }
+        if showMap {
+          Map(
+            initialPosition: .region(
+              MKCoordinateRegion(
+                center: .init(latitude: 43.04, longitude: -76.13),
+                span: .init(latitudeDelta: 0.08, longitudeDelta: 0.1)))
+          ) {
+            if kind != "People" {
+              ForEach(places) { l in
                 Annotation(l.title, coordinate: l.coordinate) {
                   NavigationLink {
                     ListingView(listing: l)
                   } label: {
-                    Text(dollars(l.price)).font(.caption.bold()).padding(6).background(
-                      .white, in: Capsule())
-                  }
+                    Text(dollars(l.price)).font(.caption.bold()).padding(6)
+                      .background(.background, in: Capsule())
+                  }.accessibilityLabel("\(l.title), \(dollars(l.price)) per month")
                 }
               }
-            }.frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 18))
-          }
+            }
+            if kind != "Places" {
+              ForEach(people) { person in
+                ForEach(person.areas) { area in
+                  MapPolygon(
+                    coordinates: area.points.map {
+                      CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
+                    }
+                  ).foregroundStyle(Color.cuseOrange.opacity(0.15))
+                    .stroke(Color.cuseOrange.opacity(0.5), lineWidth: 1)
+                }
+              }
+            }
+          }.onMapCameraChange(frequency: .onEnd) { context in
+            if showMap { bounds = DiscoveryBounds(context.region) }
+          }.frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 18))
+          Text("Move the map to filter places and people's desired areas.").font(.caption)
         }
         if !error.isEmpty {
           Text(error).foregroundStyle(.red)
           Button("Retry") { Task { await load() } }
         }
         if loading { ProgressView().frame(maxWidth: .infinity) }
-        if kind != "People" {
-          ForEach(filtered) { l in
+        Text("\(posts.count) posts" + (bounds == nil ? "" : " in this map area")).font(.caption)
+        ForEach(Array(posts.prefix(limit))) { post in
+          switch post {
+          case .listing(let listing):
             NavigationLink {
-              ListingView(listing: l)
+              ListingView(listing: listing)
             } label: {
-              ListingCard(listing: l)
+              ListingCard(listing: listing)
+            }.buttonStyle(.plain)
+          case .search(let search):
+            NavigationLink {
+              SearchDetailView(search: search)
+            } label: {
+              SearchCard(search: search)
             }.buttonStyle(.plain)
           }
         }
-        if kind != "Places" {
-          ForEach(people) { s in
-            NavigationLink {
-              SearchDetailView(search: s)
-            } label: {
-              SearchCard(search: s)
-            }.buttonStyle(.plain)
-          }
-        }
-        if !loading && error.isEmpty && (kind == "People" || filtered.isEmpty)
-          && (kind == "Places" || people.isEmpty)
-        {
-          EmptyState(title: "No posts match", text: "Try a different neighborhood or budget.")
+        if posts.count > limit { Button("More posts") { limit += 12 } }
+        if !loading && error.isEmpty && posts.isEmpty {
+          EmptyState(
+            title: "No posts match", text: "Adjust your filters or explore a wider map area.")
         }
       }.padding()
     }.background(Color.cuseCream.opacity(0.45))
       .navigationTitle("CuseSublets").navigationBarTitleDisplayMode(.inline)
-      .searchable(text: $query, prompt: "Neighborhood, home or person")
+      .searchable(text: $filters.query, prompt: "Neighborhood, home or person")
       .toolbar {
         Button {
           state.tab = 3
         } label: {
           Image(systemName: "plus.circle.fill")
-        }.accessibilityLabel("Post a place or housing search")
+        }
+        .accessibilityLabel("Post a place or housing search")
       }
-      .task { await load() }.refreshable { await load() }
+      .sheet(isPresented: $showFilters) {
+        DiscoveryFilterView(filters: $filters, kind: kind) { bounds = nil }
+      }
+      .task(id: state.user?.id) {
+        order = state.user == nil ? "Latest" : "For you"
+        mine = []
+        mySearch = nil
+        await load()
+      }
+      .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
+      .refreshable { await load() }
   }
   func load() async {
+    let request = UUID()
+    loadID = request
     loading = true
-    defer { loading = false }
+    defer { if loadID == request { loading = false } }
+    let owner = state.user?.id
     do {
       async let l: ListingsResponse = state.api.get("/api/listings")
       async let s: SearchesResponse = state.api.get("/api/searches")
-      (listings, searches) = try await (l.listings, s.searches)
+      let publicData = try await (l, s)
+      try Task.checkCancellation()
+      guard loadID == request && owner == state.user?.id else { return }
+      listings = publicData.0.listings
+      searches = publicData.1.searches
+      if owner != nil {
+        async let owned: ListingsResponse = state.api.get("/api/mine")
+        async let ownSearch: MySearchResponse = state.api.get("/api/my-search")
+        let privateData = try await (owned, ownSearch)
+        guard loadID == request && owner == state.user?.id else { return }
+        mine = privateData.0.listings.filter {
+          $0.status == "approved" && $0.endDate > isoDay(Date())
+        }
+        mySearch = privateData.1.search
+      }
       error = ""
-    } catch { self.error = error.localizedDescription }
+    } catch is CancellationError {} catch {
+      if loadID == request && owner == state.user?.id { self.error = error.localizedDescription }
+    }
+  }
+}
+struct DiscoveryFilterView: View {
+  @Environment(\.dismiss) private var dismiss
+  @Binding var filters: DiscoveryFilters
+  let kind: String
+  let resetMap: () -> Void
+  var body: some View {
+    NavigationStack {
+      Form {
+        Picker("Monthly budget", selection: $filters.maxPrice) {
+          Text("Any budget").tag(nil as Double?)
+          ForEach([700.0, 900, 1200, 1600, 2200, 3000, 5000], id: \.self) {
+            Text("Up to \(dollars($0))").tag(Optional($0))
+          }
+        }
+        Picker("Room type", selection: $filters.roomType) {
+          Text("Any space").tag("")
+          Text("Private room").tag("Private room")
+          Text("Entire place").tag("Entire place")
+        }
+        Section("Dates") {
+          dateControl("Move in", value: $filters.startDate)
+          dateControl("Move out", value: $filters.endDate)
+          if !filters.validDates { Text("Move out must be after move in.").foregroundStyle(.red) }
+        }
+        Toggle("Furnished", isOn: $filters.furnished)
+        if kind != "People" {
+          Toggle("Lease & permission checked", isOn: $filters.checked)
+          Toggle("Has a photographic tour", isOn: $filters.tour)
+        }
+        Button("Reset filters") {
+          filters = DiscoveryFilters()
+          resetMap()
+        }
+      }.navigationTitle("Filters").toolbar {
+        ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+      }
+    }
+  }
+  @ViewBuilder func dateControl(_ label: String, value: Binding<String>) -> some View {
+    Toggle(
+      label,
+      isOn: Binding(
+        get: { !value.wrappedValue.isEmpty },
+        set: {
+          value.wrappedValue = $0 ? isoDay(Date()) : ""
+        }))
+    if !value.wrappedValue.isEmpty {
+      DatePicker(
+        label + " date",
+        selection: Binding(
+          get: { parseDay(value.wrappedValue) }, set: { value.wrappedValue = isoDay($0) }),
+        displayedComponents: .date)
+    }
   }
 }
 struct ListingCard: View {
@@ -277,7 +410,7 @@ struct SearchDetailView: View {
       if state.user != nil {
         do {
           let r: ListingsResponse = try await state.api.get("/api/mine")
-          mine = r.listings.filter { $0.status == "approved" }
+          mine = r.listings.filter { housingFits($0, search) }
         } catch { state.error = error.localizedDescription }
       }
     }
@@ -287,10 +420,16 @@ struct MemberView: View {
   @EnvironmentObject var state: AppState
   let id: String
   @State private var detail: PublicProfileResponse?
+  @State private var error = ""
+  @State private var bookingID = ""
+  @State private var rating = 5
+  @State private var review = ""
+  @State private var busy = false
+  @State private var notice = ""
   var body: some View {
     ScrollView {
-      if let d = detail {
-        VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 16) {
+        if let d = detail {
           RemoteImage(path: d.profile.avatar).frame(width: 90, height: 90).clipShape(Circle())
           Text(d.profile.name).font(.largeTitle.bold())
           StatusText(
@@ -306,6 +445,14 @@ struct MemberView: View {
               Link(key.capitalized, destination: url)
             }
           }
+          if let search = d.search {
+            NavigationLink {
+              SearchDetailView(search: search)
+            } label: {
+              SearchCard(search: search)
+            }
+            .buttonStyle(.plain)
+          }
           ForEach(d.listings) { l in
             NavigationLink {
               ListingView(listing: l)
@@ -313,20 +460,70 @@ struct MemberView: View {
               ListingCard(listing: l)
             }.buttonStyle(.plain)
           }
+          Text("Completed-lease reviews").font(.title2.bold())
+          if d.reviews.isEmpty {
+            Text("No completed-lease reviews yet.").foregroundStyle(.secondary)
+          }
           ForEach(d.reviews) { r in
             VStack(alignment: .leading) {
               Text("\(r.rating)/5 · \(r.authorName)").bold()
               Text(r.body)
             }
           }
-        }.padding()
-      } else {
-        ProgressView()
+          if !d.reviewableBookings.isEmpty {
+            Text("Share your experience").font(.headline)
+            Picker("Completed lease", selection: $bookingID) {
+              ForEach(d.reviewableBookings) {
+                Text($0.listingTitle + " · " + $0.endDate).tag($0.id)
+              }
+            }
+            Picker("Rating", selection: $rating) {
+              ForEach(1...5, id: \.self) { Text("\($0) out of 5").tag($0) }
+            }
+            TextField("Your review (10–2000 characters)", text: $review, axis: .vertical)
+              .textFieldStyle(.roundedBorder)
+            Button("Publish review") {
+              Task {
+                busy = true
+                defer { busy = false }
+                do {
+                  try await state.api.act(
+                    "/api/users/\(id)/reviews",
+                    ["bookingId": bookingID, "rating": rating, "body": review])
+                  review = ""
+                  notice = "Review published"
+                  await load()
+                } catch { self.error = error.localizedDescription }
+              }
+            }.disabled(
+              busy || bookingID.isEmpty
+                || review.trimmingCharacters(in: .whitespacesAndNewlines).count < 10
+                || review.count > 2000)
+          }
+        } else if error.isEmpty {
+          ProgressView()
+        }
+        if !notice.isEmpty { Text(notice) }
+        if !error.isEmpty {
+          Text(error).foregroundStyle(.red)
+          Button("Retry") { Task { await load() } }
+        }
+      }.padding()
+    }.navigationTitle("Member").task(id: state.user?.id) {
+      detail = nil
+      review = ""
+      notice = ""
+      await load()
+    }.refreshable { await load() }
+  }
+  func load() async {
+    do {
+      let response: PublicProfileResponse = try await state.api.get("/api/users/\(id)")
+      detail = response
+      if !response.reviewableBookings.contains(where: { $0.id == bookingID }) {
+        bookingID = response.reviewableBookings.first?.id ?? ""
       }
-    }.navigationTitle("Member").task {
-      do { detail = try await state.api.get("/api/users/\(id)") } catch {
-        state.error = error.localizedDescription
-      }
-    }
+      error = ""
+    } catch { self.error = error.localizedDescription }
   }
 }

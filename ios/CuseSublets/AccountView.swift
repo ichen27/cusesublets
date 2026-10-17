@@ -113,6 +113,9 @@ struct ProfileEditor: View {
   @State private var loaded = false
   @State private var picking = false
   @State private var uploadKind = "identity"
+  @State private var avatar: String?
+  @State private var photos: [String] = []
+  @State private var removing: String?
   var body: some View {
     Form {
       Section("Profile") {
@@ -144,6 +147,14 @@ struct ProfileEditor: View {
         }.disabled(busy || !loaded)
       }
       Section("Photos and private identity check") {
+        if let avatar {
+          RemoteImage(path: avatar).frame(height: 150).clipped()
+          Button("Remove profile photo", role: .destructive) { removing = avatar }.disabled(busy)
+        }
+        ForEach(photos, id: \.self) { photo in
+          RemoteImage(path: photo).frame(height: 180).clipped()
+          Button("Remove gallery photo", role: .destructive) { removing = photo }.disabled(busy)
+        }
         Button("Upload profile photo") {
           uploadKind = "avatar"
           picking = true
@@ -160,7 +171,7 @@ struct ProfileEditor: View {
           "Identity documents are private to you and staff. Uploading a document does not grant verification."
         ).font(.caption)
         if !note.isEmpty { Text(note) }
-      }
+      }.disabled(busy || !loaded)
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
     }.navigationTitle("Profile & checks").task {
       do {
@@ -172,23 +183,55 @@ struct ProfileEditor: View {
         instagram = r.profile.socials["instagram"] ?? ""
         website = r.profile.socials["website"] ?? ""
         note = r.identityNote ?? ""
+        avatar = r.profile.avatar
+        photos = r.profile.photos
         loaded = true
       } catch { self.error = error.localizedDescription }
+    }
+    .confirmationDialog(
+      "Remove this public photo?",
+      isPresented: Binding(
+        get: { removing != nil }, set: { if !$0 { removing = nil } })
+    ) {
+      Button("Remove photo", role: .destructive) {
+        guard let photo = removing else { return }
+        removing = nil
+        Task {
+          busy = true
+          defer { busy = false }
+          do {
+            try await state.api.act("/api/profile/media/remove", ["url": photo])
+            try await reloadPhotos()
+            await state.refreshSession()
+            error = ""
+          } catch { self.error = error.localizedDescription }
+        }
+      }
+      Button("Cancel", role: .cancel) { removing = nil }
     }
     .fileImporter(
       isPresented: $picking,
       allowedContentTypes: uploadKind == "identity" ? [.pdf, .jpeg, .png] : [.jpeg, .png]
     ) { result in
       Task {
+        busy = true
+        defer { busy = false }
         do {
           try await state.api.upload(
             uploadKind == "identity" ? "/api/profile/identity" : "/api/profile/media",
             file: result.get(), fields: uploadKind == "identity" ? [:] : ["kind": uploadKind])
+          try await reloadPhotos()
           note = "Upload saved"
+          error = ""
           await state.refreshSession()
         } catch { self.error = error.localizedDescription }
       }
     }
+  }
+  func reloadPhotos() async throws {
+    let account: AccountResponse = try await state.api.get("/api/profile")
+    avatar = account.profile.avatar
+    photos = account.profile.photos
   }
 }
 struct PasswordView: View {

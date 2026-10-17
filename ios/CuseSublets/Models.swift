@@ -39,6 +39,7 @@ struct Listing: Codable, Identifiable {
   var hostName: String
   var hostIdentity: String
   var sample: Bool
+  var createdAt: String?
   var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lng) }
 }
 struct ListingsResponse: Decodable { let listings: [Listing] }
@@ -68,6 +69,7 @@ struct HousingSearch: Codable, Identifiable {
   var preferredAmenities: [String]
   var areas: [SearchArea]
   var introduction: String
+  var createdAt: String?
 }
 struct SearchesResponse: Decodable { let searches: [HousingSearch] }
 struct MySearchResponse: Decodable { let search: HousingSearch? }
@@ -160,10 +162,16 @@ struct MemberReview: Decodable, Identifiable {
   let rating: Int
   let body: String
 }
+struct ReviewableBooking: Decodable, Identifiable {
+  let id: String
+  let listingTitle: String
+  let endDate: String
+}
 struct PublicProfileResponse: Decodable {
   let profile: PublicMember
   let listings: [Listing]
   let reviews: [MemberReview]
+  let reviewableBookings: [ReviewableBooking]
   let search: HousingSearch?
 }
 struct SocialComment: Decodable, Identifiable {
