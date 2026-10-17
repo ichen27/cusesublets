@@ -26,6 +26,14 @@ import { Busy, Empty, ErrorBox } from "./ui";
 interface Data {
   listings: Listing[];
   requests: SeekerRequest[];
+  memberReports: {
+    id: string;
+    reporterId: string;
+    targetId: string;
+    reason: string;
+    status: string;
+    createdAt: string;
+  }[];
   requestReports: {
     id: string;
     requestId: string;
@@ -192,6 +200,8 @@ export default function Admin({
               <span>
                 {(data.reports?.filter((r) => r.status === "open").length ||
                   0) +
+                  (data.memberReports?.filter((r) => r.status === "open")
+                    .length || 0) +
                   (data.requestReports?.filter((r) => r.status === "open")
                     .length || 0)}
               </span>
@@ -476,12 +486,60 @@ export default function Admin({
                     </div>
                   </div>
                 ))
-              ) : !data.requestReports?.length ? (
+              ) : !data.requestReports?.length &&
+                !data.memberReports?.length ? (
                 <Empty title="A place for community concerns.">
                   Reports from listings and seeker posts appear here for staff
                   review.
                 </Empty>
               ) : null}
+              {data.memberReports?.map((report) => (
+                <div className="audit-item" key={report.id}>
+                  <AlertCircle size={18} />
+                  <div>
+                    <span className={"status " + report.status}>
+                      {report.status}
+                    </span>
+                    <h3>
+                      Member:{" "}
+                      {data.users.find(
+                        (member) => member.id === report.targetId,
+                      )?.name || report.targetId}
+                    </h3>
+                    <p>{report.reason}</p>
+                    <small>
+                      Reported {new Date(report.createdAt).toLocaleString()}
+                    </small>
+                    {report.status === "open" && (
+                      <div className="button-row">
+                        <button
+                          className="outline small"
+                          onClick={() => setTab("users")}
+                        >
+                          Review members
+                        </button>
+                        <button
+                          className="outline small"
+                          disabled={busy}
+                          onClick={() => {
+                            const reason = prompt(
+                              "Explain how this report was investigated and resolved.",
+                            );
+                            if (reason)
+                              action(
+                                `/admin/member-reports/${report.id}/resolve`,
+                                { reason },
+                                "Member report resolved.",
+                              );
+                          }}
+                        >
+                          Resolve report
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
               {data.requestReports?.map((report) => {
                 const request = data.requests.find(
                   (item) => item.id === report.requestId,

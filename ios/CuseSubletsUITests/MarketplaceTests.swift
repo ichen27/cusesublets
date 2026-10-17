@@ -102,6 +102,24 @@ final class MarketplaceTests: XCTestCase {
     app.tabBars.buttons["You"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
   }
+  @MainActor func testPrivacyNoticeAtLargestDynamicType() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
+    app.launchArguments += [
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+    ]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    app.tabBars.buttons["You"].tap()
+    reveal(app.buttons["Data & privacy"], in: app)
+    app.buttons["Data & privacy"].tap()
+    XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      app.staticTexts["Development preview. Public release and real transactions are not enabled."]
+        .exists)
+    attach(app, "Privacy notice at largest Dynamic Type")
+  }
   @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
     if app.keyboards.firstMatch.exists {
       let done = app.buttons["dismiss-keyboard"]

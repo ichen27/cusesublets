@@ -1,0 +1,36 @@
+{
+  "title": "Your data and privacy",
+  "updated": "October 16, 2026",
+  "status": "Development preview. Public release and real transactions are not enabled.",
+  "sections": [
+    {
+      "title": "What you choose to share",
+      "text": "Account details include your name, email and optional profile information. Published profiles, housing posts, comments, reviews and any room layouts or tours you explicitly publish can be seen by other people. Do not publish private documents, precise access instructions or personal information about others."
+    },
+    {
+      "title": "Private information",
+      "text": "Drafts, saves, private messages and uploaded evidence are used to operate the marketplace. Messages and shared conversation documents are visible to the conversation participants. Staff can review reported content, identity evidence, lease and permission documents. A verification label is not a guarantee of safety or permission to sublet."
+    },
+    {
+      "title": "Camera and room captures",
+      "text": "Camera permission is requested when you start a scan. Layout capture uses room geometry on supported devices. Photographic capture records camera images, positions and feature points to reconstruct a room. Captures remain on your phone until you upload them. Uploaded originals stay private; publishing a tour shares its reconstructed model. Inspect images and models for personal details before uploading or publishing. You can remove camera permission in iPhone Settings."
+    },
+    {
+      "title": "Service providers",
+      "text": "The service uses Cloudflare for its backend, accounts database and file storage. Apple or Google receives information when you choose its sign-in method. Native maps use Apple Maps; browser maps, externally hosted images, videos and linked tours may contact their respective providers. The app does not sell personal information or include advertising SDKs or cross-app advertising tracking."
+    },
+    {
+      "title": "Control and deletion",
+      "text": "You can edit your profile, remove uploads, hide listings and tours, block members, and request account deletion inside You. Deletion immediately removes account access and public content. Active-storage file cleanup and Apple authorization revocation normally finish within 30 minutes and retry during outages. Check the saved deletion receipt after sign-out to see completion. Your authored content is erased; minimal shared transaction references and the other participant's own messages remain under Deleted member. Copies already exported or saved by others cannot be recalled. Deleting the account does not cancel an external lease or settle obligations."
+    },
+    {
+      "title": "Preview limitations",
+      "text": "This preview is for synthetic test data. Backup retention and the operational privacy/contact policy must be finalized before real personal documents or customer data are accepted. Historical operator backups are not erased by the active-storage deletion job."
+    },
+    {
+      "title": "Questions and reporting",
+      "text": "Use the in-app Report actions for private abuse reports. The project issue tracker accepts technical feedback; do not post account details, messages, identity documents or room captures there."
+    }
+  ],
+  "supportURL": "https://github.com/ichen27/cusesublets/issues"
+}

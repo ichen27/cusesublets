@@ -18,8 +18,12 @@ struct BrowseView: View {
   @State private var loading = false
   @State private var limit = 12
   @State private var loadID = UUID()
-  var places: [Listing] { listings.filter { filters.includes($0) } }
-  var people: [HousingSearch] { searches.filter { filters.includes($0) } }
+  var places: [Listing] {
+    listings.filter { filters.includes($0) && !state.hiddenMemberIDs.contains($0.ownerId) }
+  }
+  var people: [HousingSearch] {
+    searches.filter { filters.includes($0) && !state.hiddenMemberIDs.contains($0.ownerId) }
+  }
   var posts: [DiscoveryPost] {
     var result: [DiscoveryPost] = []
     if kind != "People" {
@@ -283,73 +287,81 @@ struct ListingView: View {
   @State private var report = false
   @State private var reason = ""
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
-        TabView { ForEach(listing.images, id: \.self) { RemoteImage(path: $0) } }.tabViewStyle(
-          .page
-        ).frame(height: 280).clipped()
-        VStack(alignment: .leading, spacing: 18) {
-          Text(listing.title).font(.largeTitle.bold())
-          Text("\(dollars(listing.price)) / month · \(listing.roomType)").font(.title3)
-          if listing.sample { StatusText(text: "Sample listing — not a real offer") }
-          Text("\(listing.startDate) – \(listing.endDate)").foregroundStyle(.secondary)
-          Text(listing.description)
-          Text(listing.amenities.joined(separator: " · ")).font(.subheadline)
-          ChecksView(
-            identity: listing.hostIdentity, lease: listing.leaseStatus,
-            permission: listing.permissionStatus)
-          NavigationLink {
-            MemberView(id: listing.ownerId)
-          } label: {
-            Label("About \(listing.hostName)", systemImage: "person.crop.circle")
-          }
-          Map(interactionModes: []) { Marker(listing.neighborhood, coordinate: listing.coordinate) }
+    if state.hiddenMemberIDs.contains(listing.ownerId) {
+      EmptyState(
+        title: "Member blocked", text: "This member’s posts are hidden while you are signed in.")
+    } else {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          TabView { ForEach(listing.images, id: \.self) { RemoteImage(path: $0) } }.tabViewStyle(
+            .page
+          ).frame(height: 280).clipped()
+          VStack(alignment: .leading, spacing: 18) {
+            Text(listing.title).font(.largeTitle.bold())
+            Text("\(dollars(listing.price)) / month · \(listing.roomType)").font(.title3)
+            if listing.sample { StatusText(text: "Sample listing — not a real offer") }
+            Text("\(listing.startDate) – \(listing.endDate)").foregroundStyle(.secondary)
+            Text(listing.description)
+            Text(listing.amenities.joined(separator: " · ")).font(.subheadline)
+            ChecksView(
+              identity: listing.hostIdentity, lease: listing.leaseStatus,
+              permission: listing.permissionStatus)
+            NavigationLink {
+              MemberView(id: listing.ownerId)
+            } label: {
+              Label("About \(listing.hostName)", systemImage: "person.crop.circle")
+            }
+            Map(interactionModes: []) {
+              Marker(listing.neighborhood, coordinate: listing.coordinate)
+            }
             .frame(height: 200)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-          Text("Approximate location · \(listing.address)").font(.caption).foregroundStyle(
-            .secondary)
-          if let tour = listing.matterportUrl, let url = URL(string: tour), url.scheme == "https" {
-            Link("Explore photographic tour", destination: url)
-          }
-          if let video = listing.videoUrl, !video.isEmpty,
-            let url = URL(string: video, relativeTo: state.api.baseURL)
-          {
-            Link("Watch listing video", destination: url)
-          }
-          NavigationLink {
-            RoomScansView(listing: listing)
-          } label: {
-            Label("Room layouts & capture", systemImage: "viewfinder")
-          }
-          NavigationLink("Photographic tours") { RoomToursView(listing: listing) }
-          SocialView(type: "listing", targetID: listing.id)
-          if state.user?.id != listing.ownerId {
-            Button("Contact host") { Task { await state.contact(listingID: listing.id) } }
-              .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
-            Button("Report listing", role: .destructive) {
-              if state.requireLogin() { report = true }
+            Text("Approximate location · \(listing.address)").font(.caption).foregroundStyle(
+              .secondary)
+            if let tour = listing.matterportUrl, let url = URL(string: tour), url.scheme == "https"
+            {
+              Link("Explore photographic tour", destination: url)
             }
-          } else {
-            NavigationLink("Manage listing") { ListingManageView(listing: listing) }
-          }
-        }.padding()
-      }
-    }.navigationTitle("Place").navigationBarTitleDisplayMode(.inline)
-      .toolbar { ShareLink(item: state.api.url("/#listing/\(listing.id)")) }
-      .alert("Report listing", isPresented: $report) {
-        TextField("Reason (at least 10 characters)", text: $reason)
-        Button("Send report", role: .destructive) {
-          Task {
-            do {
-              try await state.api.act("/api/listings/\(listing.id)/report", ["reason": reason])
-              reason = ""
-            } catch { state.error = error.localizedDescription }
-          }
+            if let video = listing.videoUrl, !video.isEmpty,
+              let url = URL(string: video, relativeTo: state.api.baseURL)
+            {
+              Link("Watch listing video", destination: url)
+            }
+            NavigationLink {
+              RoomScansView(listing: listing)
+            } label: {
+              Label("Room layouts & capture", systemImage: "viewfinder")
+            }
+            NavigationLink("Photographic tours") { RoomToursView(listing: listing) }
+            SocialView(type: "listing", targetID: listing.id)
+            if state.user?.id != listing.ownerId {
+              Button("Contact host") { Task { await state.contact(listingID: listing.id) } }
+                .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
+              Button("Report listing", role: .destructive) {
+                if state.requireLogin() { report = true }
+              }
+            } else {
+              NavigationLink("Manage listing") { ListingManageView(listing: listing) }
+            }
+          }.padding()
         }
-        Button("Cancel", role: .cancel) {}
-      } message: {
-        Text("Tell the review team what needs attention.")
-      }
+      }.navigationTitle("Place").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ShareLink(item: state.api.url("/#listing/\(listing.id)")) }
+        .alert("Report listing", isPresented: $report) {
+          TextField("Reason (at least 10 characters)", text: $reason)
+          Button("Send report", role: .destructive) {
+            Task {
+              do {
+                try await state.api.act("/api/listings/\(listing.id)/report", ["reason": reason])
+                reason = ""
+              } catch { state.error = error.localizedDescription }
+            }
+          }
+          Button("Cancel", role: .cancel) {}
+        } message: {
+          Text("Tell the review team what needs attention.")
+        }
+    }
   }
 }
 struct ChecksView: View {
@@ -381,6 +393,15 @@ struct SearchDetailView: View {
   @State private var report = false
   @State private var reason = ""
   var body: some View {
+    if state.hiddenMemberIDs.contains(search.ownerId) {
+      EmptyState(
+        title: "Search unavailable",
+        text: "This member’s content is hidden while you are signed in.")
+    } else {
+      content
+    }
+  }
+  var content: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
         SearchCard(search: search)
@@ -451,7 +472,10 @@ struct MemberView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        if let d = detail {
+        MemberSafetyActions(memberID: id)
+        if state.hiddenMemberIDs.contains(id) {
+          Text("This member’s content is hidden while you are signed in.")
+        } else if let d = detail {
           RemoteImage(path: d.profile.avatar).frame(width: 90, height: 90).clipShape(Circle())
           Text(d.profile.name).font(.largeTitle.bold())
           StatusText(

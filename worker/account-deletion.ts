@@ -126,6 +126,27 @@ export async function beginAccountDeletion(
       user.id,
       user.id,
     ),
+    q(
+      "INSERT OR IGNORE INTO account_deletion_targets SELECT ?,id FROM member_reports WHERE reporterId=? OR targetId=?",
+      user.id,
+      user.id,
+      user.id,
+    ),
+    q(
+      "UPDATE audit SET reason='[Removed after account deletion]' WHERE targetId IN(SELECT id FROM member_reports WHERE reporterId=? OR targetId=?)",
+      user.id,
+      user.id,
+    ),
+    q(
+      "UPDATE member_reports SET reason='[Deleted]' WHERE reporterId=? OR targetId=?",
+      user.id,
+      user.id,
+    ),
+    q(
+      "DELETE FROM user_blocks WHERE userId=? OR blockedId=?",
+      user.id,
+      user.id,
+    ),
     q("DELETE FROM sessions WHERE userId=?", user.id),
     q("DELETE FROM password_sessions WHERE userId=?", user.id),
     q("DELETE FROM password_credentials WHERE userId=?", user.id),

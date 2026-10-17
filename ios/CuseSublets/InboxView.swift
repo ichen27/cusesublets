@@ -75,6 +75,7 @@ struct ConversationView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
         if let d = detail {
+          MemberSafetyActions(memberID: d.peer.id)
           NavigationLink {
             MemberView(id: d.peer.id)
           } label: {

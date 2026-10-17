@@ -19,23 +19,21 @@ Room scanning connects to the existing apartment reconstruction and Blender expe
 
 This branch is an initial mobile implementation, not an App Store release. It includes native discovery, public profiles, matches, conversations/messages/documents/offers, account editing/check uploads, private bookmarks, comments/replies/reports, listing and search drafts, listing management and room capture/publication. Staff administration remains in the existing web workspace.
 
+The implemented software now includes discovery filters and map areas, edited comments, profile gallery removal and completed-lease reviews; ARKit photographic capture, durable reconstruction jobs, playback and PLY export; Apple authentication, expiry/revocation handling and account deletion; member blocking/private reporting, privacy packaging and app assets.
+
 The following remain release work, not implied by a successful build:
 
-- Real-device camera/LiDAR, interruption/backgrounding, low-memory and room-quality tests.
+- Real-device camera/LiDAR, interruption/backgrounding, low-memory, accessible navigation and room-quality tests.
 - Physical-device signing, bundle ownership, provisioning and TestFlight/App Store distribution.
-- End-to-end hosted Google authentication and any additional Apple sign-in/account-deletion requirements for the chosen distribution.
-- Accessibility and full web/mobile parity review, including all discovery filters, comment editing, profile gallery management, completed-lease reviews and staff tools.
-- Reliable photographic capture/reconstruction jobs and Gaussian-splat playback: the prior experiment showed artifacts and lacks independent quality validation. No fake or automatic completion state is presented.
+- End-to-end hosted Apple/Google authentication, provider revocation and deployed account-deletion scheduling/backup handling.
+- Operational support, moderation, privacy/retention and licensing decisions. The bundled notice is explicitly a synthetic-data development-preview notice.
+- Independent real-room photographic quality and Blender importer checks; synthetic processing proves integration only.
 
 Existing product limitations also remain: verified email/password recovery, legal signing and real payments are not configured on the website either. Native delivery does not create those capabilities. Push notifications are a separate mobile enhancement; none should be presented as already available.
 
-## Next implementation slices
+## Remaining release sequence
 
-1. Finish the isolated native interaction flow, retain its screenshots, and resolve any failures before calling the app validated.
-2. Close web/mobile parity gaps: complete discovery filters, editable comments, profile gallery management and completed-lease reviews. Keep staff administration accessible through the existing web workspace.
-3. Test capture on a supported physical iPhone: repeat the same room, compare a few independently measured dimensions, interrupt capture and upload, and verify a private scan can be recovered after relaunch without publishing it.
-4. Integrate photographic reconstruction as its own job lifecycle: capture/upload, processing, failure/retry, private review and explicit publication. Use the existing apartment reconstruction experiment as a starting point; evaluate artifacts and novel viewpoints before calling the result a tour. Keep original captures and virtual staging clearly distinguished.
-5. Configure the owner's signing team and bundle identity, test hosted authentication and distribution requirements, and prepare a TestFlight build. TestFlight requires account/provisioning setup; the checked-in simulator project is not an installable phone package.
+Use [the release checklist](release-checklist.md) for the prepared signing procedure, physical-device matrix and deployment prerequisites. Complete software validation/review on the current revision, then perform the physical and hosted checks with the owner's device/account setup. Do not deploy migrations or enable the processor by merely merging into a watched checkout.
 
 ## Acceptance checks
 
@@ -51,9 +49,9 @@ Existing product limitations also remain: verified email/password recovery, lega
 The owner asked to continue through all remaining parts one step at a time. Finish and validate each software slice, push it to PR 1, then advance. Physical validation and distribution are explicit gates, not things a simulator can substitute for.
 
 - [x] Initial native interaction flow and reproducible simulator evidence.
-- [ ] Step 1: Marketplace parity — discovery filters, map viewport and people areas, relevant/latest ordering, comment editing, profile gallery removal, completed-lease reviews, and remaining native navigation gaps. Validate domain boundaries and UI interactions.
-- [ ] Step 2: Photographic capture and reconstruction — inspect/reuse the existing experiment, implement private upload/job/failure/retry/review/publication, and connect actual viewer/export artifacts. Validate privacy and real processing; report quality limits.
-- [ ] Step 3: Authentication and lifecycle — expiry/suspension coverage, account deletion and distribution authentication requirements, background/relaunch recovery, and hosted auth verification.
+- [x] Step 1: Marketplace parity — discovery filters, map viewport and people areas, relevant/latest ordering, comment editing, profile gallery removal, completed-lease reviews, and remaining native navigation gaps. Validate domain boundaries and UI interactions.
+- [x] Step 2: Photographic capture and reconstruction — inspect/reuse the existing experiment, implement private upload/job/failure/retry/review/publication, and connect actual viewer/export artifacts. Validate privacy and real processing; report quality limits.
+- [ ] Step 3: Authentication and lifecycle — expiry/suspension coverage, account deletion and distribution authentication requirements, background/relaunch recovery, and hosted auth verification. Software is implemented and simulator-tested; hosted provider verification is pending.
 - [ ] Step 4: Accessibility and delivery — labels/Dynamic Type/error recovery, app assets and portable release configuration, current CI and independent review.
 - [ ] Step 5: Supported-device capture accuracy/recovery and signing/TestFlight. Requires the owner's iPhone details, physical-device evidence and Apple account/provisioning access.
 

@@ -96,14 +96,15 @@ async function comments(
   after: string | null,
   limit: number,
   preview = false,
+  viewer: string | null = null,
 ) {
   const page = cursor(after, 2);
   const rows = (
     await env.DB.prepare(
       selectComment +
-        ` WHERE c.targetType=? AND c.targetId=? ${page ? "AND (c.createdAt,c.id)>(?,?)" : ""} ORDER BY c.createdAt ${preview ? "DESC" : "ASC"},c.id ${preview ? "DESC" : "ASC"} LIMIT ?`,
+        ` WHERE c.targetType=? AND c.targetId=? AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.userId=? AND b.blockedId=c.authorId) OR (b.blockedId=? AND b.userId=c.authorId)) ${page ? "AND (c.createdAt,c.id)>(?,?)" : ""} ORDER BY c.createdAt ${preview ? "DESC" : "ASC"},c.id ${preview ? "DESC" : "ASC"} LIMIT ?`,
     )
-      .bind(type, id, ...(page ?? []), limit + 1)
+      .bind(type, id, viewer, viewer, ...(page ?? []), limit + 1)
       .all<CommentRow>()
   ).results;
   const more = rows.length > limit;
@@ -140,7 +141,7 @@ async function summary(
     ...row!,
     liked: !!row?.liked,
     saved: !!row?.saved,
-    ...(await comments(env, type, id, null, 2, true)),
+    ...(await comments(env, type, id, null, 2, true, user?.id ?? null)),
   };
 }
 export async function socialRoute(
@@ -313,7 +314,7 @@ export async function socialRoute(
       if (!operation) return json(await summary(env, type, id, user));
       if (operation === "comments")
         return json(
-          await comments(env, type, id, url.searchParams.get("cursor"), 20),
+          await comments(env, type, id, url.searchParams.get("cursor"), 20, false, user?.id ?? null),
         );
       throw new HttpError(405, "Method not allowed");
     }

@@ -17,6 +17,7 @@ struct AccountView: View {
             Text(user.name).font(.title.bold())
             Text(user.email).foregroundStyle(.secondary)
             NavigationLink("Edit profile & checks") { ProfileEditor() }
+            NavigationLink("Blocked members") { BlockedMembersView() }
             NavigationLink("Saved posts") { SavedView() }
             NavigationLink("Change password") { PasswordView() }
           }
@@ -60,6 +61,7 @@ struct AccountView: View {
             }
           }
           Section {
+            NavigationLink("Data & privacy") { PrivacyView() }
             Link("Open public website", destination: state.api.baseURL)
             if user.role == "admin" {
               Link("Staff review workspace (web)", destination: state.api.url("/#account"))
@@ -74,6 +76,7 @@ struct AccountView: View {
         }
       } else {
         VStack(spacing: 20) {
+          NavigationLink("Data & privacy") { PrivacyView() }
           EmptyState(
             title: "Make your next move",
             text: "Post a place, find a match, and keep your conversations together.")
@@ -279,14 +282,14 @@ struct SavedView: View {
   var body: some View {
     ScrollView {
       VStack(spacing: 16) {
-        ForEach(listings) { l in
+        ForEach(listings.filter { !state.hiddenMemberIDs.contains($0.ownerId) }) { l in
           NavigationLink {
             ListingView(listing: l)
           } label: {
             ListingCard(listing: l)
           }.buttonStyle(.plain)
         }
-        ForEach(searches) { s in
+        ForEach(searches.filter { !state.hiddenMemberIDs.contains($0.ownerId) }) { s in
           NavigationLink {
             SearchDetailView(search: s)
           } label: {

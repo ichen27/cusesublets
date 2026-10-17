@@ -56,7 +56,8 @@ struct RoomScansView: View {
         }
         if let draft = local {
           Text("Private scan — saved on this iPhone").font(.headline)
-          RoomModelView(layout: draft.layout).frame(height: 320)
+          RoomModelView(layout: draft.layout).frame(height: 320).accessibilityHidden(true)
+          RoomLayoutMeasurements(layout: draft.layout)
           TextField("Room name", text: $name).textFieldStyle(.roundedBorder)
           HStack {
             Button("Upload privately") { Task { await upload(draft) } }.buttonStyle(
@@ -77,7 +78,8 @@ struct RoomScansView: View {
               Spacer()
               StatusText(text: scan.published ? "Published" : "Private")
             }
-            RoomModelView(layout: scan.layout).frame(height: 300)
+            RoomModelView(layout: scan.layout).frame(height: 300).accessibilityHidden(true)
+            RoomLayoutMeasurements(layout: scan.layout)
             Text("Drag to orbit · pinch to zoom").font(.caption).foregroundStyle(.secondary)
             if owner {
               HStack {
@@ -125,6 +127,10 @@ struct RoomScansView: View {
               layout: layout)
             try FileManager.default.createDirectory(
               at: draftURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var privateFolder = draftURL.deletingLastPathComponent()
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try privateFolder.setResourceValues(values)
             try JSONEncoder().encode(draft).write(
               to: draftURL, options: [.atomic, .completeFileProtection])
             local = draft
@@ -306,6 +312,23 @@ struct CaptureSurface: UIViewRepresentable {
         return
       }
       completion(.success(RoomLayout(elements: elements)))
+    }
+  }
+}
+
+struct RoomLayoutMeasurements: View {
+  let layout: RoomLayout
+  var body: some View {
+    DisclosureGroup("Approximate layout measurements") {
+      Text("Capture estimates in meters. Check important dimensions independently.").font(.caption)
+      ForEach(Array(layout.elements.enumerated()), id: \.offset) { index, element in
+        Text(
+          "\(element.kind.capitalized) \(index + 1): "
+            + element.dimensions.map { $0.formatted(.number.precision(.fractionLength(2))) }.joined(
+              separator: " × ") + " m"
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
     }
   }
 }

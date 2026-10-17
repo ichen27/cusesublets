@@ -26,6 +26,8 @@ import SwiftUI
   private func clearAccount() {
     refreshID = UUID()
     user = nil
+    blockedMembers = []
+    hiddenMemberIDs = []
     loading = false
     conversationID = nil
     tab = 0
@@ -36,6 +38,8 @@ import SwiftUI
     clearAccount()
     tab = 3
   }
+  @Published var blockedMembers: [BlockedMember] = []
+  @Published var hiddenMemberIDs: Set<String> = []
   @Published var user: Member?
   @Published var loading = true
   @Published var showLogin = false
@@ -62,6 +66,7 @@ import SwiftUI
         try api.clearSession()
       } else {
         user = r.user
+        if user != nil { await refreshBlocks() }
       }
     } catch {
       guard refreshID == requestID else { return }

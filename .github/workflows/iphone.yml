@@ -2,9 +2,9 @@ name: iPhone
 on:
   push:
     branches: [main]
-    paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', 'tests/tours-runtime.py', 'tests/account-deletion-runtime.py', '.github/workflows/iphone.yml']
+    paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', 'tests/tours-runtime.py', 'tests/account-deletion-runtime.py', 'tests/member-blocks-runtime.py', '.github/workflows/iphone.yml']
   pull_request:
-    paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', 'tests/tours-runtime.py', 'tests/account-deletion-runtime.py', '.github/workflows/iphone.yml']
+    paths: ['ios/**', 'worker/**', 'shared/**', 'migrations/**', 'tests/iphone-runtime.py', 'tests/tours-runtime.py', 'tests/account-deletion-runtime.py', 'tests/member-blocks-runtime.py', '.github/workflows/iphone.yml']
 permissions:
   contents: read
 concurrency:
@@ -36,6 +36,7 @@ jobs:
       - run: API_BASE=http://127.0.0.1:8936 python3 tests/iphone-runtime.py
       - run: API_BASE=http://127.0.0.1:8936 TOUR_PROCESSOR_TOKEN=isolated-synthetic-tour-test-token-64-characters-only python3 tests/tours-runtime.py
       - run: API_BASE=http://127.0.0.1:8936 python3 tests/account-deletion-runtime.py
+      - run: API_BASE=http://127.0.0.1:8936 python3 tests/member-blocks-runtime.py
       - name: Test on installed iPhone simulator
         run: |
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for devices in d["devices"].values() for v in devices if v["name"].startswith("iPhone")))')

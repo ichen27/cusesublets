@@ -29,6 +29,9 @@ struct SocialView: View {
           } label: {
             Label("\(s.likeCount)", systemImage: s.liked ? "heart.fill" : "heart")
           }
+          .accessibilityLabel(s.liked ? "Unlike post" : "Like post").accessibilityValue(
+            "\(s.likeCount) likes"
+          ).frame(minHeight: 44)
           Text("\(s.commentCount) comments").font(.subheadline)
           Spacer()
           Button {
@@ -38,10 +41,11 @@ struct SocialView: View {
             }
           } label: {
             Image(systemName: s.saved ? "bookmark.fill" : "bookmark")
-          }.accessibilityLabel(s.saved ? "Unsave privately" : "Save privately")
+          }.accessibilityLabel(s.saved ? "Unsave privately" : "Save privately").frame(
+            minWidth: 44, minHeight: 44)
         }.disabled(busy)
       }
-      ForEach(comments) { c in
+      ForEach(comments.filter { !state.hiddenMemberIDs.contains($0.authorId ?? "") }) { c in
         VStack(alignment: .leading, spacing: 4) {
           if let author = c.authorId {
             NavigationLink(c.authorName) { MemberView(id: author) }.font(.caption.bold())
@@ -75,7 +79,7 @@ struct SocialView: View {
               } else {
                 Button("Report") { if state.requireLogin() { reportID = c.id } }
               }
-            }.font(.caption).disabled(busy)
+            }.font(.body).disabled(busy)
           }
         }.padding(.leading, c.parentId == nil ? 0 : 18)
       }
@@ -216,7 +220,11 @@ struct MatchesView: View {
             }
             if loading { ProgressView() }
             if !error.isEmpty { Text(error).foregroundStyle(.red) }
-            ForEach(matches) { m in
+            ForEach(
+              matches.filter {
+                !state.hiddenMemberIDs.contains($0.listing?.ownerId ?? $0.search?.ownerId ?? "")
+              }
+            ) { m in
               VStack(alignment: .leading, spacing: 10) {
                 if let l = m.listing {
                   NavigationLink {

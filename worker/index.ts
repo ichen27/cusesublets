@@ -1,3 +1,4 @@
+import { blockedMemberIDs, memberBlockRoute } from "./member-blocks";
 import { beginAccountDeletion, accountDeletionStatus, sweepAccountDeletions } from "./account-deletion";
 import { appleNotification, appleChallenge, appleExchange, appleConfigured, type AppleEnv } from "./apple-auth";
 import { roomTourRoute, tourProcessorRoute } from "./room-tours";
@@ -465,6 +466,7 @@ async function openConversation(e: Env, l: InternalListing, u: User) {
   return getConversation(e, c!.id, u);
 }
 async function activeParticipants(e: Env, c: Conversation) {
+  requireThat(!(await blockedMemberIDs(e.DB,c.buyerId)).has(c.sellerId),403,"Member contact is blocked");
   requireThat(
     !(await one(
       e,
@@ -735,6 +737,9 @@ export default {
       if (err instanceof HttpError)
         return json({ error: err.message }, err.status);
       const msg = err instanceof Error ? err.message : "";
+      if(msg.includes("Member report rate limit")) return json({error:"Too many reports. Try again later."},429);
+      if(msg.includes("UNIQUE constraint failed: member_reports")) return json({ok:true});
+      if(msg.includes("Member contact is blocked")) return json({error:"Contact between these accounts is blocked. Existing reservations remain accessible."},403);
       if(msg.includes("Account deleted")) return json({error:"Account deleted. Sign in with a different account."},401);
       if (
         msg.includes("Review prerequisites changed") ||
@@ -875,6 +880,22 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
     ctx.waitUntil(sweepAccountDeletions(e).catch(()=>undefined));
     return json({ok:true,status:"processing"},202,{"Set-Cookie":passwordCookie("",demo)});
   }
+  const memberReport=p.match(/^\/api\/members\/([^/]+)\/report$/);
+  if(memberReport && m === "POST") {
+    requireThat(u && !u.suspended,401,"Sign in to report a member");
+    const target=userPathId(memberReport[1]), b=await body(req,4096);
+    requireThat(target!==u.id,400,"You cannot report yourself");
+    requireThat(await one(e,"SELECT id FROM users WHERE id=?",target),404,"Member not found");
+    const reason=text(b.reason,"Report reason",2000,5);
+    const prior=await one(e,"SELECT id FROM member_reports WHERE reporterId=? AND targetId=? AND status='open'",u.id,target);
+    if(prior)return json({ok:true});
+    requireThat(!(await one(e,"SELECT id FROM member_reports WHERE reporterId=? AND createdAt>? GROUP BY reporterId HAVING count(*)>=10",u.id,new Date(Date.now()-3600000).toISOString())),429,"Too many reports. Try again later.");
+    await e.DB.batch([stmt(e,"INSERT INTO member_reports VALUES(?,?,?,?,'open',?)",id(),u.id,target,reason,now()),audit(e,u,"member.report",target,reason)]);
+    return json({ok:true},201);
+  }
+  const blockResponse=await memberBlockRoute(req,e.DB,u);
+  if(blockResponse)return blockResponse;
+  const hiddenMembers=await blockedMemberIDs(e.DB,u?.id??null);
   const toursResponse = await roomTourRoute(req,e,u);
   if(toursResponse)return toursResponse;
   const scansResponse = await roomScanRoute(req,e,u);
@@ -917,13 +938,14 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       listings: (
         await listings(
           e,
-          "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid DESC LIMIT 200",
+          "WHERE l.status='approved' AND u.suspended=0 AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.userId=? AND b.blockedId=l.ownerId) OR (b.blockedId=? AND b.userId=l.ownerId)) ORDER BY l.rowid DESC LIMIT 200", u?.id ?? null, u?.id ?? null,
         )
-      ).map((l) => listingView(l)),
+      ).filter(l=>!hiddenMembers.has(l.ownerId)).map((l) => listingView(l)),
     });
   const listingMatch = p.match(/^\/api\/listings\/([^/]+)$/);
   if (listingMatch && m === "GET") {
     const l = await getListing(e, listingMatch[1]);
+    requireThat(!hiddenMembers.has(l.ownerId),404,"Listing not found");
     requireThat(
       (l.status === "approved" && !l.hostSuspended) ||
         l.ownerId === u?.id ||
@@ -934,18 +956,20 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
     return json({ listing: listingView(l, u) });
   }
   if (p === "/api/searches" && m === "GET")
-    return json({ searches: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(searchView) });
+    return json({ searches: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.userId=? AND b.blockedId=r.ownerId) OR (b.blockedId=? AND b.userId=r.ownerId)) ORDER BY r.createdAt DESC LIMIT 200", syracuseDate(), u?.id ?? null, u?.id ?? null)).filter(r=>!hiddenMembers.has(r.ownerId)).map(searchView) });
   const publicSearchMatch = p.match(/^\/api\/searches\/([^/]+)$/);
   if (publicSearchMatch && m === "GET") {
     const r = await getRequest(e, publicSearchMatch[1]);
+    requireThat(!hiddenMembers.has(r.ownerId),404,"Search not found");
     requireThat(r.profileSearch === 1 && r.status === "active" && !r.ownerSuspended && r.endDate > syracuseDate(), 404, "Search not found");
     return json({ search: searchView(r) });
   }
   if (p === "/api/requests" && m === "GET")
-    return json({ requests: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 200", syracuseDate())).map(requestView) });
+    return json({ requests: (await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.userId=? AND b.blockedId=r.ownerId) OR (b.blockedId=? AND b.userId=r.ownerId)) ORDER BY r.createdAt DESC LIMIT 200", syracuseDate(), u?.id ?? null, u?.id ?? null)).filter(r=>!hiddenMembers.has(r.ownerId)).map(requestView) });
   const publicRequestMatch = p.match(/^\/api\/requests\/([^/]+)$/);
   if (publicRequestMatch && publicRequestMatch[1] !== "mine" && m === "GET") {
     const r = await getRequest(e, publicRequestMatch[1]);
+    requireThat(!hiddenMembers.has(r.ownerId),404,"Request not found");
     requireThat((r.profileSearch === 1 && r.status === "active" && !r.ownerSuspended && r.endDate > syracuseDate()) || r.ownerId === u?.id || u?.role === "admin", 404, "Request not found");
     return json({ request: requestView(r) });
   }
@@ -1000,7 +1024,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       "SELECT * FROM users WHERE id=? AND suspended=0",
       userPathId(publicUser[1]),
     );
-    requireThat(target, 404, "Profile not found");
+    requireThat(target && !hiddenMembers.has(target.id), 404, "Profile not found");
     const profile = await profileData(e, target);
     return json({
       profile: {
@@ -1020,8 +1044,8 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
           target.id, syracuseDate(),
         )
       ).map((l) => listingView(l)),
-      search: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? LIMIT 1", target.id, syracuseDate())).map(searchView)[0] || null,
-      requests: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).map(requestView),
+      search: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? LIMIT 1", target.id, syracuseDate())).filter(r=>!hiddenMembers.has(r.ownerId)).map(searchView)[0] || null,
+      requests: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).filter(r=>!hiddenMembers.has(r.ownerId)).map(requestView),
       reviews: await all(
         e,
         "SELECT r.id,r.authorId,a.name authorName,r.rating,r.body,r.createdAt,json_extract(l.data,'$.title') listingTitle FROM profile_reviews r JOIN users a ON a.id=r.authorId JOIN bookings b ON b.id=r.bookingId JOIN listings l ON l.id=b.listingId WHERE r.targetId=? ORDER BY r.rowid DESC LIMIT 200",
@@ -1385,8 +1409,8 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       requireThat(r.ownerId === u.id && r.profileSearch === 1, 403, "Choose your search");
       requireThat(r.status === "active" && r.endDate > syracuseDate(), 409, "Turn on a current search to view matches");
       const search = searchView(r);
-      const available = await listings(e, "WHERE l.status='approved' AND u.suspended=0 ORDER BY l.rowid DESC LIMIT 500");
-      const matches = available.flatMap((l) => {
+      const available = await listings(e, "WHERE l.status='approved' AND u.suspended=0 AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.userId=? AND b.blockedId=l.ownerId) OR (b.blockedId=? AND b.userId=l.ownerId)) ORDER BY l.rowid DESC LIMIT 500", u.id, u.id);
+      const matches = available.filter(l=>!hiddenMembers.has(l.ownerId)).flatMap((l) => {
         const fit = matchListingToSearch(l, search);
         return fit ? [{ listing: listingView(l), ...fit }] : [];
       }).sort((a,b) => b.score - a.score || a.listing.id.localeCompare(b.listing.id));
@@ -1396,8 +1420,8 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       const l = await getListing(e, sourceId);
       requireThat(l.ownerId === u.id, 403, "Choose one of your listings");
       requireThat(l.status === "approved", 409, "Publish this listing to view matches");
-      const available = await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC LIMIT 500", syracuseDate());
-      const matches = available.flatMap((r) => {
+      const available = await requests(e, "WHERE r.profileSearch=1 AND r.status='active' AND u.suspended=0 AND json_extract(r.data,'$.endDate')>? AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.userId=? AND b.blockedId=r.ownerId) OR (b.blockedId=? AND b.userId=r.ownerId)) ORDER BY r.createdAt DESC LIMIT 500", syracuseDate(), u.id, u.id);
+      const matches = available.filter(r=>!hiddenMembers.has(r.ownerId)).flatMap((r) => {
         const search = searchView(r);
         const fit = matchListingToSearch(l, search);
         return fit ? [{ search, request: requestView(r), ...fit }] : [];
@@ -1485,6 +1509,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
 
   if (listingMatch && m === "POST") {
     const l = await getListing(e, listingMatch[1]);
+    requireThat(!hiddenMembers.has(l.ownerId),404,"Listing not found");
     requireThat(l.ownerId === u.id, 403, "Only the listing owner can edit it");
     const b = await body(req);
     const interval = dates(b.startDate ?? l.startDate, b.endDate ?? l.endDate);
@@ -2119,6 +2144,12 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       },
     });
   }
+  const resolveMemberReport=p.match(/^\/api\/admin\/member-reports\/([^/]+)\/resolve$/);
+  if(resolveMemberReport && m === "POST") {
+    const reason=text((await body(req)).reason,"Resolution reason",1000,5);
+    await e.DB.batch([stmt(e,"UPDATE member_reports SET status='resolved' WHERE id=?",resolveMemberReport[1]),audit(e,u,"member-report.resolve",resolveMemberReport[1],reason)]);
+    return json({ok:true});
+  }
   if (p === "/api/admin" && m === "GET")
     return json({
       listings: await listings(e, "ORDER BY l.rowid DESC LIMIT 200"),
@@ -2130,6 +2161,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
         "SELECT * FROM reports ORDER BY rowid DESC LIMIT 200",
       ),
       requests: (await requests(e, "ORDER BY r.createdAt DESC LIMIT 200")).map(requestView),
+      memberReports: await all(e, "SELECT * FROM member_reports ORDER BY rowid DESC LIMIT 200"),
       requestReports: await all(e, "SELECT * FROM request_reports ORDER BY rowid DESC LIMIT 200"),
       documents: await all(
         e,

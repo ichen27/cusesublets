@@ -1,6 +1,6 @@
 # iPhone validation — October 16, 2026
 
-The initial native marketplace interaction flow passes at `b570d45`. This establishes a working simulator flow against isolated data, not physical scan quality or App Store readiness. Later documentation, screenshots and CI-trigger cleanup do not change app or test source.
+Latest completed simulator evidence: **`2a7bf1e` passed** [run38989941387](https://github.com/ichen27/cusesublets/actions/runs/38989941387), including the expanded marketplace flow and account lifecycle tests. Release-preparation changes after that revision require their own CI. Historical results below remain revision-specific; none establishes physical scan quality or App Store readiness.
 
 ## Verified
 
@@ -66,3 +66,11 @@ Added native/Worker Sign in with Apple, encrypted revocation credentials, verifi
 Local evidence: 59 web/domain/SQLite tests, TypeScript, web build, isolated account-erasure API lifecycle, existing scan/mobile-auth/tour runtime checks, and ad-hoc signed simulator build-for-testing pass. New native tests compile; their simulator execution remains pending. Two scoped independent reviews found and resolved cold-launch cache retention, Apple-provider-error expiry bypass, deleted-listing native decoding, logout recovery cleanup and concurrent Apple revocation/session creation.
 
 Run [38988287800](https://github.com/ichen27/cusesublets/actions/runs/38988287800) passed all 13 pre-auth native unit tests. The expanded UI flow reached comment editing, then failed because the test typed at the beginning of the multiline field: its hierarchy showed `Edited synthetic public commentSynthetic public comment`. This proves the edit persisted but the test's backspace replacement assumption was wrong. The test now explicitly inserts an edit prefix. A fresh full run is required; this failed run is not a full interaction pass.
+
+## Release preparation — October 16, late evening
+
+Run [38989941387](https://github.com/ichen27/cusesublets/actions/runs/38989941387) on `2a7bf1e` passed the native unit/interaction suite and isolated scan, tour and account-deletion APIs. It resolves the earlier comment-edit test failure. Both web Checks runs on that revision passed.
+
+Subsequent delivery work adds member blocking/private reports and staff resolution, cached-post hiding, precise-location privacy declarations, shared preview data notice, app icon source, textual room measurements and portable release instructions. Fresh local migrations plus scan/auth (2), tour (2), account deletion (1), and blocking/reporting (1) API tests pass. TypeScript and the signed simulator build-for-testing pass. The new SQLite booking/block race regression passes. Compatible dependency updates bring `npm audit` to zero known findings at validation time. Current full CI, including a new maximum-Dynamic-Type privacy screen interaction, is required before this slice is marked validated.
+
+The native icon's editable SVG/renderer is in `ios/Brand/`; its actual 1024px PNG is in `ios/CuseSublets/Assets.xcassets/AppIcon.appiconset/`. The same preview data notice is bundled in the app and served at `/privacy`. Manual VoiceOver and actual phone validation remain pending. No real iPhone is attached; no distribution archive, provider configuration or operational migration was created.

@@ -105,8 +105,11 @@ final class SessionLifecycleTests: XCTestCase {
         providerCalls += 1
         throw URLError(.notConnectedToInternet)
       })
-    SessionProtocol.handler = { _ in
-      (
+    SessionProtocol.handler = { request in
+      if request.url?.path == "/api/blocked-members" {
+        return (200, Data("{\"members\":[],\"hiddenMemberIDs\":[]}".utf8))
+      }
+      return (
         200,
         Data(
           "{\"user\":{\"id\":\"one\",\"name\":\"Synthetic\",\"email\":\"one@example.test\",\"role\":\"member\",\"identity\":\"pending\"},\"demo\":false}"
