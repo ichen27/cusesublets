@@ -82,3 +82,7 @@ My activity replaces My listings. Members can edit and pause their subleases whi
 Top matches supports both roles: choose your search to find places, or choose a published listing to find people. Every match covers the full stay, price range, room type, desired area and required conditions; preferences and rent order the eligible results. Identity and demographic traits do not affect ranking.
 
 Migration 0009 preserves legacy requests and conversation/report history, chooses one canonical search per owner, and switches old active requests off until area setup is completed. See docs/deployment.md before updating any running datastore.
+
+## Automated pull request review
+
+[Advisory AI review](docs/ai-review.md) requests Claude Opus 5.5 through the shared subscription gateway. It complements the build, type and regression checks with source-grounded findings on each PR. Run `npm run test:reviewer` to validate its trust and evidence checks locally. Review comments disclose incomplete, unavailable and stale results; they never approve or merge changes.

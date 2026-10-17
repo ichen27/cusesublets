@@ -14,7 +14,8 @@
     "seed:local": "wrangler d1 execute DB --local --file seeds/demo.sql",
     "deploy:check": "npm run build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler deploy",
-    "preview:demo": "wrangler dev --ip 127.0.0.1 --port 8917 --var APP_ENV:development"
+    "preview:demo": "wrangler dev --ip 127.0.0.1 --port 8917 --var APP_ENV:development",
+    "test:reviewer": "node --test scripts/ai-review.test.mjs"
   },
   "dependencies": {
     "jose": "^6.2.12",
