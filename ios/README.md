@@ -60,3 +60,7 @@ The UI test creates synthetic accounts, saves/resumes a private draft, and publi
 - `../docs/mobile/`: product scope and validation evidence.
 
 Build logs, runtime databases, account cookies and private room captures stay outside Git. Simulator binaries are architecture/runtime-specific and cannot be installed on a physical phone. Distribution packages require signing and should be attached to a versioned release after device validation. Existing repository licensing applies; no new third-party code is vendored.
+
+## Photographic reconstruction
+
+`PhotoCapture.swift` captures calibrated camera views using ARKit on supported iPhones, including devices without LiDAR. This is separate from RoomPlan layouts. `RoomToursView.swift` manages private source recovery/upload, processing, review, publication and Gaussian PLY export. The viewer uses the same PlayCanvas code as public web pages, with an ephemeral same-origin cookie store. See [photographic tours](../docs/mobile/photographic-tours.md) for the separate processor setup and current validation limits. Migration 0013 is required; capture reports unavailable until a processor secret is configured.

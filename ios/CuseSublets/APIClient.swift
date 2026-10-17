@@ -182,6 +182,40 @@ struct KeychainSession {
         status: response.statusCode)
     }
   }
+  func webSessionCookie() -> HTTPCookie? {
+    guard let credential, credential.expires > Date(), let host = baseURL.host,
+      let separator = credential.cookie.firstIndex(of: "=")
+    else { return nil }
+    return HTTPCookie(properties: [
+      .domain: host, .path: "/",
+      .name: String(credential.cookie[..<separator]),
+      .value: String(credential.cookie[credential.cookie.index(after: separator)...]),
+      .expires: credential.expires, .secure: baseURL.scheme == "https" ? "TRUE" : "FALSE",
+    ])
+  }
+  func uploadCapture(_ path: String, file: URL) async throws {
+    guard path.hasPrefix("/api/listings/"), let target = URL(string: path, relativeTo: baseURL),
+      target.host == baseURL.host, target.scheme == baseURL.scheme, target.port == baseURL.port,
+      let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0,
+      size <= 64 * 1024 * 1024
+    else { throw APIError(message: "Capture is missing or larger than 64 MB.") }
+    var request = URLRequest(url: target)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 180
+    request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+    request.setValue(String(size), forHTTPHeaderField: "Content-Length")
+    request.setValue(
+      baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+      forHTTPHeaderField: "Origin")
+    if let credential, credential.expires > Date() {
+      request.setValue(credential.cookie, forHTTPHeaderField: "Cookie")
+    }
+    let (data, response) = try await session.upload(for: request, fromFile: file)
+    guard let http = response as? HTTPURLResponse else {
+      throw APIError(message: "Unexpected upload response")
+    }
+    try check(data, http)
+  }
   func clearSession() throws {
     try vault.save(nil)
     credential = nil

@@ -17,3 +17,7 @@ Baseline: `2e6d7b4`. Initial implementation: `bb319d3`. Follow-up: `c1adcea` plu
 Scoped static rechecks confirmed the original upload, saved-target, publication and profile findings resolved. A final recheck of `b1869bc` also confirmed atomic page updates and the overlapping-load guard resolve the follow-up pagination finding. Validation evidence belongs in `validation.md`; static review is not a device-test result.
 
 The full migration remains broader than this first implementation. Photographic reconstruction, device capture quality, distribution and the parity items listed in `iphone-plan.md` remain explicit open work.
+
+## Marketplace parity follow-up
+
+The standards review found calendar controls using the device time zone while storage uses Syracuse dates; the root environment now supplies America/New_York. The spec review found completed-lease reviews of renters unreachable from host conversations; conversation peers now link to member profiles. The comment keyboard has an explicit dismissal control. Both reviewers rechecked these fixes without further actionable findings. CI then identified map-intercepted scrolling in the expanded interaction test; that recording led to a noninteractive listing-detail map preview. Current CI evidence is tracked in validation.md.

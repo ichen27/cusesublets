@@ -306,6 +306,7 @@ struct ListingManageView: View {
           kind = "media"
           picking = true
         }
+        NavigationLink("Capture or manage photographic tours") { RoomToursView(listing: l) }
         NavigationLink("Capture or manage room layouts") { RoomScansView(listing: l) }
       }
       Section("Independent checks") {

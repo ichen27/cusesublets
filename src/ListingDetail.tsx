@@ -1,3 +1,4 @@
+import RoomTours from "./RoomTours";
 import RoomScans from "./RoomScans";
 import SocialActions from "./SocialActions";
 import { useState } from "react";
@@ -184,7 +185,16 @@ export default function ListingDetail({
             </div>
             <h3>A little about the place</h3>
             <p className="description">{l.description}</p>
-            <RoomScans key={l.id + (user?.id ?? "")} listingId={l.id} owner={user?.id === l.ownerId} />
+            <RoomTours
+              key={"tours" + l.id + (user?.id ?? "")}
+              listingId={l.id}
+              owner={user?.id === l.ownerId}
+            />
+            <RoomScans
+              key={l.id + (user?.id ?? "")}
+              listingId={l.id}
+              owner={user?.id === l.ownerId}
+            />
             <h3>The good stuff</h3>
             <div className="amenities">
               {l.amenities.map((a) => (

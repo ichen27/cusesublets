@@ -303,7 +303,8 @@ struct ListingView: View {
           } label: {
             Label("About \(listing.hostName)", systemImage: "person.crop.circle")
           }
-          Map { Marker(listing.neighborhood, coordinate: listing.coordinate) }.frame(height: 200)
+          Map(interactionModes: []) { Marker(listing.neighborhood, coordinate: listing.coordinate) }
+            .frame(height: 200)
             .clipShape(RoundedRectangle(cornerRadius: 16))
           Text("Approximate location · \(listing.address)").font(.caption).foregroundStyle(
             .secondary)
@@ -320,6 +321,7 @@ struct ListingView: View {
           } label: {
             Label("Room layouts & capture", systemImage: "viewfinder")
           }
+          NavigationLink("Photographic tours") { RoomToursView(listing: listing) }
           SocialView(type: "listing", targetID: listing.id)
           if state.user?.id != listing.ownerId {
             Button("Contact host") { Task { await state.contact(listingID: listing.id) } }

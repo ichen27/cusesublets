@@ -113,8 +113,8 @@ final class MarketplaceTests: XCTestCase {
     for _ in 0..<8 {
       if element.exists && element.isHittable { return }
       // Scroll along the form margin so embedded maps do not consume the gesture.
-      let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.75))
-      let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.3))
+      let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.75))
+      let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.3))
       start.press(forDuration: 0.05, thenDragTo: end)
     }
     XCTAssertTrue(element.exists && element.isHittable, "Expected a visible form control")

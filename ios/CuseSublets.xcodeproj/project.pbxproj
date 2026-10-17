@@ -15,11 +15,16 @@
 		40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2598614F789BB2443591BACE /* Discovery.swift */; };
 		492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE94AA320384886E84A6B136 /* SocialView.swift */; };
 		4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE25303FE8E1D06352E818DF /* RoomScansView.swift */; };
+		57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */; };
+		58ED9E8F0868FE7DD6A725FA /* RoomToursView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF199AE777B4244D9088869 /* RoomToursView.swift */; };
+		76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E43454C554AEC16735B4F1 /* PhotoCapture.swift */; };
 		7F48707AF957E2AC0A8ACA84 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144F33BD918D7C2FE5D6868 /* APIClient.swift */; };
 		B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34400A81F415FE72E0616C7B /* ModelsTests.swift */; };
 		E896FAAB55F922648B4D48E3 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B360091FC742F2D79BD19301 /* Models.swift */; };
 		EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A5003EB90A1CA8A36386B /* InboxView.swift */; };
+		ED032FCE1B368CA61D9D20B0 /* PhotoCaptureArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */; };
 		EEF60B25F6372CBA6348DBE7 /* MarketplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */; };
+		F4CF53EAE0EFE1631F81DBDC /* PhotoCapturePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C318E0D74042DDAD6B7538 /* PhotoCapturePolicy.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,14 +51,19 @@
 		2598614F789BB2443591BACE /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
 		34400A81F415FE72E0616C7B /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		3FD685FF874F61D99FC41025 /* Editors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editors.swift; sourceTree = "<group>"; };
+		4AF199AE777B4244D9088869 /* RoomToursView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomToursView.swift; sourceTree = "<group>"; };
+		61E43454C554AEC16735B4F1 /* PhotoCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCapture.swift; sourceTree = "<group>"; };
 		6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceTests.swift; sourceTree = "<group>"; };
 		711B1D9F42613404EFADDB6D /* CuseSublets.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CuseSublets.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureArchive.swift; sourceTree = "<group>"; };
 		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AE25303FE8E1D06352E818DF /* RoomScansView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScansView.swift; sourceTree = "<group>"; };
 		B360091FC742F2D79BD19301 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		BE94AA320384886E84A6B136 /* SocialView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialView.swift; sourceTree = "<group>"; };
+		D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureTests.swift; sourceTree = "<group>"; };
 		DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuseSubletsApp.swift; sourceTree = "<group>"; };
 		E144F33BD918D7C2FE5D6868 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		E9C318E0D74042DDAD6B7538 /* PhotoCapturePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCapturePolicy.swift; sourceTree = "<group>"; };
 		F2DD0C534B5E075195EA6D1E /* BrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseView.swift; sourceTree = "<group>"; };
 		F6817F9190BF966336DFCF3A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FA5A5003EB90A1CA8A36386B /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
@@ -82,7 +92,11 @@
 				FA5A5003EB90A1CA8A36386B /* InboxView.swift */,
 				F6817F9190BF966336DFCF3A /* Info.plist */,
 				B360091FC742F2D79BD19301 /* Models.swift */,
+				61E43454C554AEC16735B4F1 /* PhotoCapture.swift */,
+				7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */,
+				E9C318E0D74042DDAD6B7538 /* PhotoCapturePolicy.swift */,
 				AE25303FE8E1D06352E818DF /* RoomScansView.swift */,
+				4AF199AE777B4244D9088869 /* RoomToursView.swift */,
 				BE94AA320384886E84A6B136 /* SocialView.swift */,
 			);
 			path = CuseSublets;
@@ -93,6 +107,7 @@
 			children = (
 				116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */,
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
+				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
 			);
 			path = CuseSubletsTests;
 			sourceTree = "<group>";
@@ -220,6 +235,7 @@
 			files = (
 				2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */,
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
+				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -235,7 +251,11 @@
 				2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */,
 				EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */,
 				E896FAAB55F922648B4D48E3 /* Models.swift in Sources */,
+				76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */,
+				ED032FCE1B368CA61D9D20B0 /* PhotoCaptureArchive.swift in Sources */,
+				F4CF53EAE0EFE1631F81DBDC /* PhotoCapturePolicy.swift in Sources */,
 				4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */,
+				58ED9E8F0868FE7DD6A725FA /* RoomToursView.swift in Sources */,
 				492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -368,7 +388,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
 				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a room to create an approximate layout for your listing.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capture room images and approximate layouts to create tours for your listing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
@@ -437,7 +457,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
 				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scan a room to create an approximate layout for your listing.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capture room images and approximate layouts to create tours for your listing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;

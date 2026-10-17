@@ -1,3 +1,4 @@
+import { roomTourRoute, tourProcessorRoute } from "./room-tours";
 import { roomScanRoute } from "./room-scans";
 import { mobileAuthCallback, mobileAuthExchange } from "./mobile-auth";
 import { socialRoute } from "./social";
@@ -42,6 +43,7 @@ type Env = Pick<Cloudflare.Env, "DB" | "UPLOADS" | "ASSETS"> & {
   ACCESS_AUD?: string;
   ADMIN_EMAILS?: string;
   APP_ORIGIN?: string;
+  TOUR_PROCESSOR_TOKEN?: string;
 };
 type Row = Record<string, unknown>;
 const json = (
@@ -789,6 +791,8 @@ async function route(req: Request, e: Env) {
       "Cross-site request rejected",
     );
   }
+  const processorResponse = await tourProcessorRoute(req,e);
+  if(processorResponse)return processorResponse;
   if (p === "/api/dev/session" && m === "POST") {
     requireThat(demo, 404, "Not found");
     const b = await body(req);
@@ -853,6 +857,8 @@ async function route(req: Request, e: Env) {
   if (p === "/api/auth/mobile" && m === "POST") return mobileAuthExchange(await body(req, 4096), e.DB, demo);
   const authenticated = preview ? null : await authenticate(req, e, demo);
   const u = authenticated ? userView(authenticated) : null;
+  const toursResponse = await roomTourRoute(req,e,u);
+  if(toursResponse)return toursResponse;
   const scansResponse = await roomScanRoute(req,e,u);
   if(scansResponse)return scansResponse;
   const socialResponse=await socialRoute(req,e,u);
