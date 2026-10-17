@@ -41,6 +41,12 @@ These PNGs were inspected visually. Native screenshots come from the passing run
 | [Public web layout](screenshots/web-room-layout.png) | Published synthetic geometry rendered in the browser |
 | [Edited native comment](screenshots/iphone-comment-edit.png) | Actual passing expanded interaction at `2a7bf1e`, run38989941387 |
 | [Preview privacy page](screenshots/preview-privacy.png) | Actual isolated browser rendering at `c10f520`; synthetic-data notice |
+| [Synthetic capture archive](fixtures/synthetic.roomcapture) | Version1 USTAR/JSON/JPEG input;30 artificial views; regenerate with `processing/make_synthetic_capture.py` |
+| [Trained Gaussian PLY](fixtures/synthetic-tour.ply) | Actual566-Gaussian Brush output; open with the app viewer or a compatible Gaussian importer |
+| [Training result metadata](fixtures/synthetic-tour-result.json) | Version/engine and finite-output measurements for the synthetic run |
+| [Synthetic viewer screenshot](screenshots/synthetic-tour-viewer.png) | Actual browser rendering; constant-color fixture, not room-quality evidence |
+| [Editable app icon](../../ios/Brand/AppIcon.svg) | Vector source; `ios/Brand/render_icon.py` reproduces the PNG with Pillow |
+| [Packaged app icon](../../ios/CuseSublets/Assets.xcassets/AppIcon.appiconset/AppIcon.png) | Opaque1024px production asset for the development build |
 | [Editable room fixture](fixtures/sample-room.json) | Four walls, a door and one furniture box in metres |
 
 To reproduce the web layout, use an isolated development datastore, authenticate as the synthetic listing's owner, add a UUID `id` to the fixture body, POST it to `/api/listings/{id}/scans`, explicitly publish that scan, then open `/#listing/{id}` anonymously. Do not send this fixture to operational data. The editable viewer is `src/RoomScans.tsx`.

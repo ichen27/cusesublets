@@ -41,7 +41,7 @@ The exported PLY contains Gaussian attributes. A Gaussian-compatible Blender imp
 
 ## Reproducible synthetic validation
 
-`fixtures/synthetic.roomcapture` contains 30 constant-color 96×64 images and artificial poses/points. `fixtures/synthetic-tour.ply` is actual Brush output from that input, with `fixtures/synthetic-tour-result.json` recording display metadata. These are transport and engine compatibility artifacts, **not evidence of real-room visual quality or dimensional accuracy**. Regenerate the archive with:
+[Synthetic capture archive](fixtures/synthetic.roomcapture) contains 30 constant-color 96×64 images and artificial poses/points. [Trained Gaussian PLY](fixtures/synthetic-tour.ply) is actual Brush output from that input, with [result metadata](fixtures/synthetic-tour-result.json) recording display metadata. These are transport and engine compatibility artifacts, **not evidence of real-room visual quality or dimensional accuracy**. Regenerate the archive with:
 
 ```sh
 python processing/make_synthetic_capture.py docs/mobile/fixtures/synthetic.roomcapture
