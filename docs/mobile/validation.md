@@ -39,6 +39,8 @@ These PNGs were inspected visually. Native screenshots come from the passing run
 | [Published sample listing](screenshots/iphone-published-listing.png) | Draft resumed and published through the app |
 | [Room capture capability](screenshots/iphone-room-capture.png) | Honest unsupported-device state in the simulator |
 | [Public web layout](screenshots/web-room-layout.png) | Published synthetic geometry rendered in the browser |
+| [Edited native comment](screenshots/iphone-comment-edit.png) | Actual passing expanded interaction at `2a7bf1e`, run38989941387 |
+| [Preview privacy page](screenshots/preview-privacy.png) | Actual isolated browser rendering at `c10f520`; synthetic-data notice |
 | [Editable room fixture](fixtures/sample-room.json) | Four walls, a door and one furniture box in metres |
 
 To reproduce the web layout, use an isolated development datastore, authenticate as the synthetic listing's owner, add a UUID `id` to the fixture body, POST it to `/api/listings/{id}/scans`, explicitly publish that scan, then open `/#listing/{id}` anonymously. Do not send this fixture to operational data. The editable viewer is `src/RoomScans.tsx`.
@@ -77,3 +79,9 @@ The native icon's editable SVG/renderer is in `ios/Brand/`; its actual 1024px PN
 
 
 The final cleanup follow-up limits each account-deletion invocation to eight resource pages with durable checkpoints and a lease. A full sweep beginning after the upload-settling window must complete before the receipt reports success. Regression tests cover progress after failure, late uploads and overlapping schedulers. Local validation now totals **62 web/SQLite tests**, passing TypeScript, web production build/dry-run packaging and all six isolated mobile API tests. Scoped review found no remaining defect in this follow-up. The privacy page was opened in a real browser without console warnings/errors. Final native CI remains the required check on the PR's current revision.
+
+
+Clean-checkout verification at `c10f520`: cloned the GitHub branch into a new SSD tools directory, ran `npm ci`, TypeScript, all62 tests, web build, every migration and demo seed. Started the README's exact isolated port8936 quickstart, then passed its documented scan/auth, deletion and blocking tests. The built native app's privacy manifest parses and its bundled notice exactly matches the checked-in JSON. No cloud credentials were required. The simulator build also passes after the cleanup copy change.
+
+
+Appearance review found fixed light card surfaces would conflict with dark-mode system text. Cards and link accents now resolve for light/dark traits; filled buttons retain a darker orange for white-label contrast. A native regression checks normal-text contrast for both appearances. This improves the implementation but does not replace a manual VoiceOver/full-app accessibility audit. The intermediate `e13385f` native run38991035278 was cancelled when superseded, not counted as a pass.

@@ -1,8 +1,35 @@
+import SwiftUI
+import UIKit
 import XCTest
 
 @testable import CuseSublets
 
 final class ModelsTests: XCTestCase {
+  func testThemeContrastInLightAndDarkAppearances() {
+    func luminance(_ color: UIColor, _ traits: UITraitCollection) -> Double {
+      var r: CGFloat = 0
+      var g: CGFloat = 0
+      var b: CGFloat = 0
+      var a: CGFloat = 0
+      color.resolvedColor(with: traits).getRed(&r, green: &g, blue: &b, alpha: &a)
+      let linear = [r, g, b].map { v in
+        v <= 0.04045 ? Double(v) / 12.92 : pow((Double(v) + 0.055) / 1.055, 2.4)
+      }
+      return zip(linear, [0.2126, 0.7152, 0.0722]).reduce(0) { $0 + $1.0 * $1.1 }
+    }
+    func contrast(_ a: UIColor, _ b: UIColor, _ traits: UITraitCollection) -> Double {
+      let x = luminance(a, traits)
+      let y = luminance(b, traits)
+      return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+    }
+    for style in [UIUserInterfaceStyle.light, .dark] {
+      let traits = UITraitCollection(userInterfaceStyle: style)
+      XCTAssertGreaterThanOrEqual(contrast(.label, UIColor(Color.cuseCream), traits), 4.5)
+      XCTAssertGreaterThanOrEqual(
+        contrast(UIColor(Color.cuseOrange), UIColor(Color.cuseCream), traits), 4.5)
+      XCTAssertGreaterThanOrEqual(contrast(.white, UIColor(Color.cuseButtonFill), traits), 4.5)
+    }
+  }
   func testSessionKeychainRoundTrip() throws {
     let vault = KeychainSession(account: "isolated-unit-test-" + UUID().uuidString)
     defer { try? vault.save(nil) }

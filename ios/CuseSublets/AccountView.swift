@@ -84,7 +84,8 @@ struct AccountView: View {
             NavigationLink("Account deletion status") { DeletionStatusView() }
           }
           Button("Log in or create an account") { state.showLogin = true }.buttonStyle(
-            .borderedProminent)
+            .borderedProminent
+          ).tint(.cuseButtonFill)
         }
       }
     }.navigationTitle("You")

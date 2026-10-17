@@ -44,7 +44,7 @@ struct RoomScansView: View {
                   error = "Camera access is off. Enable it for CuseSublets in Settings."
                 }
               }
-            }.buttonStyle(.borderedProminent).disabled(busy || local != nil)
+            }.buttonStyle(.borderedProminent).tint(.cuseButtonFill).disabled(busy || local != nil)
           } else {
             Label("Room scanning needs a LiDAR-equipped iPhone.", systemImage: "info.circle")
             Text("You can still upload photos, videos and an existing tour from Manage place.")
@@ -62,7 +62,8 @@ struct RoomScansView: View {
           HStack {
             Button("Upload privately") { Task { await upload(draft) } }.buttonStyle(
               .borderedProminent
-            ).disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            ).tint(.cuseButtonFill).disabled(
+              busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Discard", role: .destructive) {
               do {
                 try FileManager.default.removeItem(at: draftURL)
@@ -245,7 +246,8 @@ struct RoomCaptureScreen: View {
         if finish {
           ProgressView("Processing room…")
         } else {
-          Button("Finish scan") { finish = true }.buttonStyle(.borderedProminent)
+          Button("Finish scan") { finish = true }.buttonStyle(.borderedProminent).tint(
+            .cuseButtonFill)
         }
       }.padding().background(.regularMaterial)
     }.interactiveDismissDisabled()

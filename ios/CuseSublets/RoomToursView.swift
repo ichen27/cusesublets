@@ -58,7 +58,7 @@ struct RoomToursView: View {
               capture = PhotoCaptureDraft(
                 id: UUID().uuidString, ownerId: listing.ownerId, listingId: listing.id, name: "Room"
               )
-            }.buttonStyle(.borderedProminent).disabled(local != nil || busy)
+            }.buttonStyle(.borderedProminent).tint(.cuseButtonFill).disabled(local != nil || busy)
           } else {
             Text(
               enabled
@@ -79,7 +79,8 @@ struct RoomToursView: View {
           HStack {
             Button("Upload and reconstruct") { Task { await upload(local) } }.buttonStyle(
               .borderedProminent
-            ).disabled(busy || !enabled || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            ).tint(.cuseButtonFill).disabled(
+              busy || !enabled || name.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Discard take", role: .destructive) { discard = true }.disabled(busy)
           }
         }

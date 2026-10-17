@@ -295,8 +295,20 @@ struct LoginView: View {
   }
 }
 extension Color {
-  static let cuseOrange = Color(red: 0.82, green: 0.28, blue: 0.09)
-  static let cuseCream = Color(red: 0.98, green: 0.96, blue: 0.92)
+  static let cuseOrange = Color(
+    UIColor { traits in
+      traits.userInterfaceStyle == .dark
+        ? UIColor(red: 0.98, green: 0.52, blue: 0.30, alpha: 1)
+        : UIColor(red: 0.78, green: 0.24, blue: 0.07, alpha: 1)
+    })
+  static let cuseCream = Color(
+    UIColor { traits in
+      traits.userInterfaceStyle == .dark
+        ? UIColor(red: 0.12, green: 0.11, blue: 0.10, alpha: 1)
+        : UIColor(red: 0.98, green: 0.96, blue: 0.92, alpha: 1)
+    })
+  // Filled buttons retain sufficient contrast with their white labels in either appearance.
+  static let cuseButtonFill = Color(red: 0.78, green: 0.24, blue: 0.07)
 }
 struct StatusText: View {
   let text: String

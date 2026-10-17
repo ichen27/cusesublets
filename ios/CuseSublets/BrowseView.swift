@@ -336,7 +336,8 @@ struct ListingView: View {
             SocialView(type: "listing", targetID: listing.id)
             if state.user?.id != listing.ownerId {
               Button("Contact host") { Task { await state.contact(listingID: listing.id) } }
-                .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent).tint(.cuseButtonFill).controlSize(.large).frame(
+                  maxWidth: .infinity)
               Button("Report listing", role: .destructive) {
                 if state.requireLogin() { report = true }
               }

@@ -204,7 +204,8 @@ struct MatchesView: View {
           EmptyState(
             title: "Find your fit",
             text: "Sign in and add a place or housing search to see matches.")
-          Button("Log in") { state.showLogin = true }.buttonStyle(.borderedProminent)
+          Button("Log in") { state.showLogin = true }.buttonStyle(.borderedProminent).tint(
+            .cuseButtonFill)
         }
       } else {
         ScrollView {

@@ -229,7 +229,8 @@ struct PhotoCaptureScreen: View {
       Text("\(recorder.count) views · minimum 30 · aim for 60 or more").font(.caption)
       HStack {
         if recorder.running {
-          Button("Finish capture") { recorder.stop() }.buttonStyle(.borderedProminent)
+          Button("Finish capture") { recorder.stop() }.buttonStyle(.borderedProminent).tint(
+            .cuseButtonFill)
         }
         Button(recorder.saved ? "Review saved take" : "Close") {
           if recorder.running { recorder.stop() } else { dismiss() }

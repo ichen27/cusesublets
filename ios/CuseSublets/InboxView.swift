@@ -14,7 +14,8 @@ struct InboxView: View {
           EmptyState(
             title: "Your conversations",
             text: "Discuss a place, share documents and negotiate dates in one thread.")
-          Button("Log in") { state.showLogin = true }.buttonStyle(.borderedProminent)
+          Button("Log in") { state.showLogin = true }.buttonStyle(.borderedProminent).tint(
+            .cuseButtonFill)
         }
       } else {
         List {
