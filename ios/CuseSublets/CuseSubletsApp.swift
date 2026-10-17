@@ -48,7 +48,8 @@ import SwiftUI
   @StateObject private var state = AppState()
   var body: some Scene {
     WindowGroup {
-      RootView().environmentObject(state).tint(.cuseOrange).task { await state.refreshSession() }
+      RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
+        .tint(.cuseOrange).task { await state.refreshSession() }
     }
   }
 }

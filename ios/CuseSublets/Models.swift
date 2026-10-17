@@ -126,8 +126,13 @@ struct ChatEvent: Decodable, Identifiable {
   let body: String
   let createdAt: String
 }
+struct ConversationPeer: Decodable {
+  let id: String
+  let name: String
+}
 struct ConversationDetail: Decodable {
   let conversation: Conversation
+  let peer: ConversationPeer
   let listing: Listing
   let messages: [ChatMessage]
   let offers: [Offer]
@@ -231,17 +236,18 @@ struct APIError: LocalizedError {
 func dollars(_ value: Double) -> String {
   value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
 }
+let marketplaceTimeZone = TimeZone(identifier: "America/New_York")!
 func isoDay(_ date: Date) -> String {
   let f = DateFormatter()
   f.locale = Locale(identifier: "en_US_POSIX")
-  f.timeZone = TimeZone(identifier: "America/New_York")
+  f.timeZone = marketplaceTimeZone
   f.dateFormat = "yyyy-MM-dd"
   return f.string(from: date)
 }
 func parseDay(_ value: String) -> Date {
   let f = DateFormatter()
   f.locale = Locale(identifier: "en_US_POSIX")
-  f.timeZone = TimeZone(identifier: "America/New_York")
+  f.timeZone = marketplaceTimeZone
   f.dateFormat = "yyyy-MM-dd"
   return f.date(from: value) ?? Date()
 }

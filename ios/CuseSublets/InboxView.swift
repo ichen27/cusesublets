@@ -76,6 +76,11 @@ struct ConversationView: View {
       VStack(alignment: .leading, spacing: 16) {
         if let d = detail {
           NavigationLink {
+            MemberView(id: d.peer.id)
+          } label: {
+            Label(d.peer.name, systemImage: "person.crop.circle").font(.headline)
+          }
+          NavigationLink {
             ListingView(listing: d.listing)
           } label: {
             Label(d.listing.title, systemImage: "house").font(.headline)

@@ -43,7 +43,11 @@ struct SocialView: View {
       }
       ForEach(comments) { c in
         VStack(alignment: .leading, spacing: 4) {
-          Text(c.authorName).font(.caption.bold())
+          if let author = c.authorId {
+            NavigationLink(c.authorName) { MemberView(id: author) }.font(.caption.bold())
+          } else {
+            Text(c.authorName).font(.caption.bold())
+          }
           Text(c.body).font(.subheadline)
           if !c.unavailable {
             HStack {
@@ -117,6 +121,16 @@ struct SocialView: View {
       reply = nil
       editing = nil
       await load()
+    }
+    .toolbar {
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("Done") {
+          UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil)
+        }.accessibilityIdentifier("dismiss-keyboard")
+      }
     }
     .onChange(of: draft) { _, _ in if !busy { clientID = UUID().uuidString } }
     .onChange(of: reply) { _, _ in if !busy { clientID = UUID().uuidString } }

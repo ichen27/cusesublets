@@ -376,6 +376,8 @@ struct SearchDetailView: View {
   @EnvironmentObject var state: AppState
   let search: HousingSearch
   @State private var mine: [Listing] = []
+  @State private var report = false
+  @State private var reason = ""
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
@@ -394,7 +396,9 @@ struct SearchDetailView: View {
         NavigationLink("About \(search.ownerName)") { MemberView(id: search.ownerId) }
         SocialView(type: "search", targetID: search.id)
         if state.user?.id != search.ownerId {
-          if mine.isEmpty {
+          if state.user == nil {
+            Button("Log in to contact") { state.showLogin = true }
+          } else if mine.isEmpty {
             Text("To contact this person, publish a matching listing and use Matches.")
               .foregroundStyle(.secondary)
           } else {
@@ -404,16 +408,32 @@ struct SearchDetailView: View {
               }
             }
           }
+          Button("Report housing search", role: .destructive) {
+            if state.requireLogin() { report = true }
+          }
         }
       }.padding()
-    }.navigationTitle("Housing search").task {
-      if state.user != nil {
-        do {
-          let r: ListingsResponse = try await state.api.get("/api/mine")
-          mine = r.listings.filter { housingFits($0, search) }
-        } catch { state.error = error.localizedDescription }
+    }.navigationTitle("Housing search")
+      .alert("Report housing search", isPresented: $report) {
+        TextField("Reason (at least 10 characters)", text: $reason)
+        Button("Send report", role: .destructive) {
+          Task {
+            do {
+              try await state.api.act("/api/requests/\(search.id)/report", ["reason": reason])
+              reason = ""
+            } catch { state.error = error.localizedDescription }
+          }
+        }
+        Button("Cancel", role: .cancel) {}
       }
-    }
+      .task(id: state.user?.id) {
+        if state.user != nil {
+          do {
+            let r: ListingsResponse = try await state.api.get("/api/mine")
+            mine = r.listings.filter { housingFits($0, search) }
+          } catch { state.error = error.localizedDescription }
+        }
+      }
   }
 }
 struct MemberView: View {
