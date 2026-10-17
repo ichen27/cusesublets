@@ -10,6 +10,9 @@ type Job = {
   requestedAt: number;
   completedAt: number | null;
   resources: string;
+  resourceIndex?: number;
+  passStartedAt?: number;
+  leaseUntil?: number;
 };
 const receiptHash = (receipt: unknown) => {
   requireThat(
@@ -232,55 +235,79 @@ export async function processAccountDeletion(
   job: Job,
   now = Date.now(),
 ) {
-  // Metadata is already erased. Keep cleanup resources durably, including prefixes that catch late uploads.
-  for (const resource of JSON.parse(job.resources) as Resource[]) {
-    if (!resource.prefix) {
-      await e.UPLOADS.delete(resource.key);
-      continue;
-    }
-    let cursor: string | undefined;
-    do {
-      const page = await e.UPLOADS.list({
-        prefix: resource.key,
-        cursor,
-        limit: 1000,
-      });
+  // Bound each invocation and checkpoint after each successful page. Retrying deletes is safe.
+  const resources = JSON.parse(job.resources) as Resource[];
+  let index = job.resourceIndex ?? 0;
+  const passStartedAt = job.passStartedAt || now;
+  const lease = job.leaseUntil ?? 0;
+  for (let step = 0; step < 8 && index < resources.length; step++) {
+    const resource = resources[index];
+    let finished = true;
+    if (resource.prefix) {
+      // Always take the first remaining page: persisted R2 cursors could skip late writes.
+      const page = await e.UPLOADS.list({ prefix: resource.key, limit: 1000 });
       if (page.objects.length)
         await e.UPLOADS.delete(page.objects.map((o) => o.key));
-      cursor = page.truncated ? page.cursor : undefined;
-    } while (cursor);
+      finished = !page.truncated;
+    } else {
+      await e.UPLOADS.delete(resource.key);
+    }
+    const next = finished ? index + 1 : index;
+    const saved = await e.DB.prepare(
+      "UPDATE account_deletions SET resourceIndex=?,passStartedAt=? WHERE userId=? AND leaseUntil=? AND resourceIndex=?",
+    )
+      .bind(next, passStartedAt, job.userId, lease, index)
+      .run();
+    if (!saved.meta.changes) return; // Another invocation owns this job now.
+    index = next;
+  }
+  if (index < resources.length) {
+    await e.DB.prepare(
+      "UPDATE account_deletions SET nextCheck=?,leaseUntil=0,attempts=attempts+1 WHERE userId=? AND leaseUntil=?",
+    )
+      .bind(now, job.userId, lease)
+      .run();
+    return;
   }
   await revokeAppleAccount(e, job.userId);
-  // A second sweep after the upload settling window precedes the completion receipt.
+  // Every prefix must be revisited in a pass that starts after in-flight uploads have settled.
   const completed =
-    now - job.requestedAt >= 15 * 60 * 1000 ? (job.completedAt ?? now) : null;
+    passStartedAt >= job.requestedAt + 15 * 60 * 1000
+      ? (job.completedAt ?? now)
+      : null;
   await e.DB.prepare(
-    "UPDATE account_deletions SET completedAt=?,nextCheck=?,attempts=attempts+1 WHERE userId=?",
+    "UPDATE account_deletions SET completedAt=?,nextCheck=?,resourceIndex=0,passStartedAt=0,leaseUntil=0,attempts=attempts+1 WHERE userId=? AND leaseUntil=?",
   )
-    .bind(completed, now + (completed ? 86400000 : 900000), job.userId)
+    .bind(completed, now + (completed ? 86400000 : 900000), job.userId, lease)
     .run();
 }
 export async function sweepAccountDeletions(e: Env) {
-  const jobs = await e.DB.prepare(
-    "SELECT * FROM account_deletions WHERE nextCheck<=? ORDER BY nextCheck LIMIT 10",
+  const now = Date.now();
+  // One bounded job keeps R2/DB/provider calls within a single Worker's subrequest budget.
+  const selected = await e.DB.prepare(
+    "SELECT userId FROM account_deletions WHERE nextCheck<=? AND leaseUntil<=? ORDER BY nextCheck LIMIT 1",
   )
-    .bind(Date.now())
-    .all<Job>();
-  let failed = false;
-  for (const job of jobs.results) {
-    try {
-      await processAccountDeletion(e, job);
-    } catch {
-      failed = true;
-      await e.DB.prepare(
-        "UPDATE account_deletions SET nextCheck=?,attempts=attempts+1 WHERE userId=?",
-      )
-        .bind(Date.now() + 900000, job.userId)
-        .run();
-      console.error(JSON.stringify({ event: "account_deletion_retry" }));
-    }
+    .bind(now, now)
+    .first<{ userId: string }>();
+  if (!selected) return;
+  const lease = now + 5 * 60 * 1000;
+  const job = await e.DB.prepare(
+    "UPDATE account_deletions SET leaseUntil=? WHERE userId=? AND leaseUntil<=? AND nextCheck<=? RETURNING *",
+  )
+    .bind(lease, selected.userId, now, now)
+    .first<Job>();
+  if (!job) return;
+  try {
+    await processAccountDeletion(e, job, now);
+  } catch {
+    await e.DB.prepare(
+      "UPDATE account_deletions SET nextCheck=?,leaseUntil=0,attempts=attempts+1 WHERE userId=? AND leaseUntil=?",
+    )
+      .bind(Date.now() + 900000, job.userId, lease)
+      .run();
+    console.error(JSON.stringify({ event: "account_deletion_retry" }));
+    throw new Error("Account cleanup requires retry");
   }
-  if (failed) throw new Error("Account cleanup requires retry");
 }
 export async function accountDeletionStatus(e: Env, receipt: unknown) {
   const job = await e.DB.prepare(

@@ -11,12 +11,15 @@ it("fences a reservation accepted after a concurrent block without removing earl
     // The request read its active participants before another request committed the block.
     expect(sql.prepare("SELECT count(*) n FROM user_blocks").get()?.n).toBe(0);
     sql.exec("INSERT INTO user_blocks VALUES('seller','buyer','2026-10-16')");
-    const book = () => sql.exec(`INSERT INTO bookings(id,offerId,listingId,buyerId,sellerId,amount,startDate,endDate,createdAt)
+    const book = () =>
+      sql.exec(`INSERT INTO bookings(id,offerId,listingId,buyerId,sellerId,amount,startDate,endDate,createdAt)
       VALUES('booking','offer','place','buyer','seller',800,'2027-01-01','2027-02-01','2026-10-16')`);
     expect(book).toThrow("Member contact is blocked");
     expect(sql.prepare("SELECT count(*) n FROM offers").get()?.n).toBe(1);
     sql.exec("DELETE FROM user_blocks");
     book();
     expect(sql.prepare("SELECT count(*) n FROM bookings").get()?.n).toBe(1);
-  } finally { sql.close(); }
+  } finally {
+    sql.close();
+  }
 });

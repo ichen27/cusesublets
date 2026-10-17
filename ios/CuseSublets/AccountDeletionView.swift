@@ -54,7 +54,7 @@ struct AccountDeletionView: View {
           "Other participants keep their own messages and a minimal booking history labelled Deleted member. Deleting an account does not cancel a lease or settle a payment or dispute."
         )
         Text(
-          "Public content and access are removed immediately. File cleanup and Apple authorization revocation normally finish within 30 minutes. If a service is unavailable, cleanup retries automatically; you can check its status here without signing in."
+          "Public content and access are removed immediately. File cleanup and Apple authorization revocation normally finish within 30 minutes for small accounts; larger accounts and queued requests take longer. If a service is unavailable, cleanup retries automatically; you can check its status here without signing in."
         )
         Text(
           "Your saved captures for this account on this iPhone will also be removed. Copies already exported or saved by other people cannot be recalled."
@@ -109,7 +109,7 @@ struct DeletionStatusView: View {
         Text(
           status.status == "complete"
             ? "Account data and server uploads have been removed. Minimal shared transaction references remain under Deleted member."
-            : "Your account is closed and public content is removed. File cleanup and Apple revocation are being retried automatically. This normally finishes within 30 minutes; service outages can take longer."
+            : "Your account is closed and public content is removed. File cleanup and Apple revocation are being retried automatically. Small accounts normally finish within 30 minutes; larger accounts, queued requests and service outages can take longer."
         )
         if let completed = status.completedAt {
           Text(Date(timeIntervalSince1970: completed / 1000), style: .date)

@@ -21,7 +21,7 @@
     },
     {
       "title": "Control and deletion",
-      "text": "You can edit your profile, remove uploads, hide listings and tours, block members, and request account deletion inside You. Deletion immediately removes account access and public content. Active-storage file cleanup and Apple authorization revocation normally finish within 30 minutes and retry during outages. Check the saved deletion receipt after sign-out to see completion. Your authored content is erased; minimal shared transaction references and the other participant's own messages remain under Deleted member. Copies already exported or saved by others cannot be recalled. Deleting the account does not cancel an external lease or settle obligations."
+      "text": "You can edit your profile, remove uploads, hide listings and tours, block members, and request account deletion inside You. Deletion immediately removes account access and public content. Active-storage file cleanup and Apple authorization revocation normally finish within 30 minutes for small accounts; larger accounts and queued requests take longer and retry during outages. Check the saved deletion receipt after sign-out to see completion. Your authored content is erased; minimal shared transaction references and the other participant's own messages remain under Deleted member. Copies already exported or saved by others cannot be recalled. Deleting the account does not cancel an external lease or settle obligations."
     },
     {
       "title": "Preview limitations",
