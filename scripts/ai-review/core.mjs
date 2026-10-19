@@ -729,6 +729,12 @@ async function subscriptionReview(
         throw new Error("Incomplete or unsupported completion");
       stage = "output_schema";
       const parsed = parseReviewReply(choice.message.content, context);
+      // A fully validated completed replacement is authoritative, including
+      // withdrawals. Until then, preserve every independently valid finding.
+      if (parsed.status === "completed" && !parsed.rejected.length) {
+        retained.clear();
+        overflow = false;
+      }
       for (const finding of parsed.findings) {
         const key = JSON.stringify([
           finding.path,

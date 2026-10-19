@@ -506,14 +506,14 @@ test("full context keeps all changed source together and includes related source
   assert.deepEqual(shown.files[0].changedRight, [[1, 1]]);
   assert.equal(shown.files[0].patch, undefined);
   assert.equal(plan.batches[0].files[0].patch.startsWith("@@"), true);
-  const reordered = await collectFullPlan(
+  const propertyOrderPlan = await collectFullPlan(
     f.api,
     { repository: target.repository, head, base, pr: 1 },
     "standards",
   );
   assert.equal(
     envelope(plan, []).fingerprint,
-    envelope(reordered, []).fingerprint,
+    envelope(propertyOrderPlan, []).fingerprint,
   );
 });
 
@@ -656,10 +656,29 @@ test("full-context mandatory and selected supporting overflow fail before infere
 test("full-context fingerprint is stable across GitHub file and tree ordering", async () => {
   const f = fixture(),
     other = fixture();
-  for (const key of Object.keys(other.responses)) {
-    if (key.includes("/files?")) other.responses[key].reverse();
-    if (key.includes("/git/trees/")) other.responses[key].tree.reverse();
+  // Reverse the entire enumeration before repaging, not just within pages.
+  const allFiles = [1, 2, 3]
+    .flatMap(
+      (page) => other.responses[`/pulls/1/files?per_page=100&page=${page}`],
+    )
+    .reverse();
+  for (let page = 1; page <= 3; page++)
+    other.responses[`/pulls/1/files?per_page=100&page=${page}`] =
+      allFiles.slice((page - 1) * 100, page * 100);
+  // Include a nonempty base tree to exercise both trees' enumeration order.
+  for (const fixture of [f, other]) {
+    const entries = fixture.responses[`/git/trees/${head}?recursive=1`].tree
+      .slice(0, 2)
+      .map((entry, index) => ({
+        ...entry,
+        path: `metadata/reference${index}.txt`,
+      }));
+    fixture.responses[`/git/trees/${base}?recursive=1`].tree =
+      structuredClone(entries);
+    fixture.responses[`/git/trees/${head}?recursive=1`].tree.push(...entries);
   }
+  for (const ref of [base, head])
+    other.responses[`/git/trees/${ref}?recursive=1`].tree.reverse();
   const a = await collectFullPlan(f.api, target, "standards");
   const b = await collectFullPlan(other.api, target, "standards");
   assert.equal(envelope(a, []).fingerprint, envelope(b, []).fingerprint);
@@ -730,4 +749,19 @@ test("unsupported unchanged neighbors are disclosed while failed source reads st
   });
   const broken = await collectFullPlan(f.api, target, "standards");
   assert.match(broken.issues.join(" "), /Cannot collect related source/);
+});
+
+test("failed full collection publishes full-context labels even without a batch", async () => {
+  const f = fixture([added("a.ts", "a")]);
+  f.responses["/pulls/1"].changed_files = 301;
+  const plan = await collectFullPlan(f.api, target, "standards");
+  assert.equal(plan.batches.length, 0);
+  assert.equal(
+    await publishBatches(f.api, target, envelope(plan, []), "standards"),
+    false,
+  );
+  const comment = JSON.stringify(f.writes);
+  assert.match(comment, /0\/0 full-context text reviews/);
+  assert.match(comment, /extended context/);
+  assert.doesNotMatch(comment, /Each batch requests/);
 });

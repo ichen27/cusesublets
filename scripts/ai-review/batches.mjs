@@ -175,6 +175,7 @@ export async function collectPlan(
     base: target.base,
     head: target.head,
     repository: target.repository,
+    reviewMode: full ? "full-context-v1" : "batches-v1",
     changedFiles: 0,
     issues: [],
     excluded: [],
@@ -589,7 +590,7 @@ export async function reviewPlan(
 }
 export function renderBatches(plan, value, latest) {
   const summary = validateEnvelope(value, plan);
-  const full = plan.batches[0]?.reviewMode === "full-context-v1";
+  const full = plan.reviewMode === "full-context-v1";
   const report = {
     ...emptyReport(
       plan,

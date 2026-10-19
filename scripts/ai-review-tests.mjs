@@ -1348,7 +1348,7 @@ const leftFinding = {
 };
 const badFinding = { ...finding, evidence: "untrusted-invalid-evidence" };
 
-test("repair preserves valid findings from both attempts and sends only sanitized feedback", async () => {
+test("completed repair replaces the earlier assessment and sends only sanitized feedback", async () => {
   const bodies = [];
   const result = await review(
     context,
@@ -1364,7 +1364,7 @@ test("repair preserves valid findings from both attempts and sends only sanitize
     },
   );
   assert.equal(result.status, "completed");
-  assert.deepEqual(result.findings, [finding, leftFinding]);
+  assert.deepEqual(result.findings, [leftFinding]);
   assert.equal(bodies.length, 2);
   assert.equal(
     bodies[0].messages[1].content,
@@ -1466,7 +1466,7 @@ test("union overflow is explicit and exact duplicates retain the higher severity
       evidence: "x".repeat(i + (calls === 1 ? 1 : 40)),
     }));
     if (calls === 1) findings.push(badFinding);
-    return response(subscriptionResponse({ status: "completed", findings }));
+    return response(subscriptionResponse({ status: "incomplete", findings }));
   });
   assert.equal(result.status, "incomplete");
   assert.equal(result.findings.length, 40);
