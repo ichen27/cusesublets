@@ -295,3 +295,46 @@ test("repair and async polling share a deadline and late validation cannot start
   assert.equal(posts, 1);
   assert.equal(late.status, "incomplete");
 });
+
+test("input rejection discloses no provider call and repair overflow retains the original failure", async () => {
+  let baseBytes = 0;
+  await review(
+    { ...context, standards: "" },
+    subscriptionCfg,
+    async (_url, options) => {
+      baseBytes = Buffer.byteLength(options.body);
+      return response(subscriptionResponse());
+    },
+  );
+  const nearLimit = Math.floor(
+    (SUBSCRIPTION_LIMITS.bodyBytes - baseBytes - 100) / 4,
+  );
+  let calls = 0;
+  const fetcher = async () => {
+    calls++;
+    return response(
+      subscriptionResponse({
+        status: "completed",
+        findings: [finding, badFinding],
+      }),
+    );
+  };
+  const blocked = await review(
+    { ...context, standards: "\\".repeat(nearLimit + 100) },
+    subscriptionCfg,
+    fetcher,
+  );
+  assert.equal(calls, 0);
+  assert.equal(blocked.status, "incomplete");
+  assert.equal(blocked.gpt.status, "unavailable");
+  assert.match(blocked.reason, /no provider called/);
+  const partial = await review(
+    { ...context, standards: "\\".repeat(nearLimit) },
+    subscriptionCfg,
+    fetcher,
+  );
+  assert.equal(calls, 1);
+  assert.equal(partial.status, "incomplete");
+  assert.deepEqual(partial.findings, [finding]);
+  assert.match(partial.reason, /evidence_mismatch; repair_input_limit/);
+});
