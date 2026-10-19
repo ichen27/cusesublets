@@ -225,16 +225,19 @@ export function validateFindings(value, context) {
         "evidence_mismatch",
         "Evidence does not match cited source",
       );
-    unique.set(
-      [
-        finding.path,
-        finding.side,
-        finding.start,
-        finding.end,
-        finding.evidence,
-      ].join(":"),
-      finding,
-    );
+    const key = [
+      finding.path,
+      finding.side,
+      finding.start,
+      finding.end,
+      finding.evidence,
+    ].join(":");
+    const severity = { critical: 0, high: 1, medium: 2, low: 3 };
+    if (
+      !unique.has(key) ||
+      severity[finding.severity] < severity[unique.get(key).severity]
+    )
+      unique.set(key, finding);
   }
   return { status: value.status, findings: [...unique.values()] };
 }

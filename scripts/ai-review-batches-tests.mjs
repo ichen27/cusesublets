@@ -442,3 +442,30 @@ test("large modified files retain evidence coordinates on both diff sides", () =
     );
   }
 });
+
+test("artifact identifies covered source units and rejects altered coverage manifests", async () => {
+  const plan = await collectPlan(fixture().api, target, "s");
+  const report = envelope(plan, []);
+  assert.equal(report.coverage.flatMap((b) => b.units).length, 106);
+  report.coverage[0].units.pop();
+  assert.throws(() => validateEnvelope(report, plan), /manifest/);
+});
+test("duplicate findings within a response retain the higher severity", () => {
+  const f = {
+    path: "a.ts",
+    patch: "@@ -0,0 +1 @@\n+unsafe",
+    base: "",
+    head: "unsafe",
+    headStart: 1,
+    baseStart: 1,
+  };
+  const high = answer(f),
+    low = { ...high, severity: "low" };
+  assert.equal(
+    validateFindings(
+      { status: "completed", findings: [high, low] },
+      { files: [f] },
+    ).findings[0].severity,
+    "high",
+  );
+});

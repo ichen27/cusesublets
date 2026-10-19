@@ -434,12 +434,27 @@ export function combine(plan, results, interrupted = false) {
     ),
   };
 }
+export function coverageManifest(plan) {
+  return plan.batches.map((context) => ({
+    id: batchFingerprint(context),
+    units: context.files.map((file) => ({
+      id: file.unitId,
+      path: file.path,
+      baseStart: file.baseStart,
+      headStart: file.headStart,
+      baseLines: file.base.split("\n").length,
+      headLines: file.head.split("\n").length,
+    })),
+    supportingPaths: context.surrounding.map((file) => file.path),
+  }));
+}
 export function envelope(plan, results, interrupted = false) {
   return {
     version: 2,
     base: plan.base,
     head: plan.head,
     fingerprint: planFingerprint(plan),
+    coverage: coverageManifest(plan),
     results,
     interrupted,
     summary: combine(plan, results, interrupted),
@@ -451,6 +466,7 @@ export function validateEnvelope(value, plan) {
     "base",
     "head",
     "fingerprint",
+    "coverage",
     "results",
     "summary",
     "interrupted",
@@ -463,6 +479,8 @@ export function validateEnvelope(value, plan) {
     value.fingerprint !== planFingerprint(plan)
   )
     throw new Error("Review coverage fingerprint mismatch");
+  if (JSON.stringify(value.coverage) !== JSON.stringify(coverageManifest(plan)))
+    throw new Error("Coverage manifest mismatch");
   const summary = combine(plan, value.results, value.interrupted);
   if (JSON.stringify(value.summary) !== JSON.stringify(summary))
     throw new Error("Forged aggregate report");
