@@ -69,7 +69,7 @@ export function exactKeys(object, keys) {
 export function text(value, max) {
   if (
     typeof value !== "string" ||
-    value.length > max ||
+    [...value].length > max ||
     [...value].some(
       (char) =>
         char.charCodeAt(0) < 32 && ![9, 10, 13].includes(char.charCodeAt(0)),

@@ -12,6 +12,7 @@ import {
   SUBSCRIPTION_ENDPOINT,
   SUBSCRIPTION_LIMITS,
   OUTPUT_SCHEMA,
+  text,
 } from "./ai-review/core.mjs";
 
 const base = "a".repeat(40);
@@ -853,6 +854,23 @@ test("subscription prompt declares enforced text bounds and oversized output sti
     assert.equal(result.status, "failed");
     assert.deepEqual(result.findings, []);
   }
+});
+
+test("text bounds count Unicode code points like the requested JSON schema", () => {
+  for (const max of [120, 500, 1000]) {
+    const atLimit = "x".repeat(max - 1) + "😀";
+    assert.equal(text(atLimit, max), atLimit);
+    assert.throws(() => text(atLimit + "x", max));
+  }
+  const unicode = {
+    ...finding,
+    title: "t".repeat(119) + "😀",
+    explanation: "e".repeat(999) + "😀",
+  };
+  assert.deepEqual(
+    validateFindings({ ...output, findings: [unicode] }, context).findings,
+    [unicode],
+  );
 });
 
 const jobId = "0f8fad5b-d9cb-469f-a165-70867728950e";
