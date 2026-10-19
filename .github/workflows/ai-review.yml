@@ -47,7 +47,7 @@ jobs:
   review:
     needs: pending
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 75
     # Separate environment contains ONLY credentials for the shared review endpoint.
     # Configure environment deployment-branch restrictions to main.
     environment: ai-review
@@ -75,18 +75,19 @@ jobs:
           SUBSCRIPTION_ACCESS_CLIENT_SECRET: ${{ secrets.SUBSCRIPTION_ACCESS_CLIENT_SECRET }}
           # Fixed route/model in trusted code; no paid API fallback or Jev call.
           AI_JEV_ENABLED: "false"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: advisory-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: ai-review-output/report.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 14
 
   publish:
     if: always() && needs.pending.result == 'success' && !cancelled()
     needs: [pending, review]
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
