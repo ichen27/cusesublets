@@ -29,7 +29,7 @@ export function githubApi(repository, token, fetcher = fetch) {
   let calls = 0;
   return async (path, options = {}) => {
     if (
-      ++calls > 220 ||
+      ++calls > 1000 ||
       !path.startsWith("/") ||
       (path.includes("..") &&
         !/^\/compare\/[a-f0-9]{40}\.\.\.[a-f0-9]{40}$/.test(path)) ||
@@ -63,7 +63,7 @@ export function validateTarget(target) {
   )
     throw new Error("Invalid target");
 }
-function currentMatches(pr, target) {
+export function currentMatches(pr, target) {
   return (
     pr.state === "open" &&
     pr.number === target.pr &&
@@ -489,6 +489,14 @@ export async function publish(api, target, report) {
         context,
       );
   }
+  const outcome = await publishComment(api, target, (latest) =>
+    renderComment(report, latest.head.sha, target.repository, latest.base.sha),
+  );
+  return { ...outcome, status: outcome.current ? report.status : "stale" };
+}
+
+export async function publishComment(api, target, render) {
+  validateTarget(target);
   const comments = [];
   for (let page = 1; page <= 5; page++) {
     const items = await api(
@@ -510,17 +518,19 @@ export async function publish(api, target, report) {
     throw new Error("Duplicate reviewer markers require maintainer cleanup");
   const latest = await api("/pulls/" + target.pr);
   // Explicit SHA and this final check make any later racing push visibly out-of-scope.
-  const body = renderComment(
-    report,
-    latest.head.sha,
-    target.repository,
-    latest.base.sha,
-  );
+  if (
+    latest.state !== "open" ||
+    latest.base.ref !== "main" ||
+    latest.base.repo.full_name !== target.repository
+  )
+    throw new Error("Publication target changed");
+  const body = render(latest);
   if (Buffer.byteLength(body) > 18000) throw new Error("Comment too large");
-  return api(
+  const response = await api(
     existing.length
       ? "/issues/comments/" + existing[0].id
       : "/issues/" + target.pr + "/comments",
     { method: existing.length ? "PATCH" : "POST", body: { body } },
   );
+  return { response, current: currentMatches(latest, target) };
 }
