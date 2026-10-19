@@ -424,6 +424,109 @@ export async function callJev(body, cfg, fetcher = fetch) {
   return raw;
 }
 
+// Only unwrap one enclosing fence. Extra prose, nested fences and concatenated
+// JSON remain invalid. The strict validator is also used at publication time.
+function parseReviewReply(content, context) {
+  const trimmed = content.trim();
+  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*)\r?\n```$/.exec(trimmed);
+  const value = JSON.parse(fenced ? fenced[1] : trimmed);
+  exactKeys(value, ["status", "findings"]);
+  if (
+    !["completed", "incomplete"].includes(value.status) ||
+    !Array.isArray(value.findings) ||
+    value.findings.length > 8
+  )
+    throw new Error("Invalid review envelope");
+  const findings = [];
+  const rejected = [];
+  for (const [index, finding] of value.findings.entries()) {
+    try {
+      findings.push(
+        ...validateFindings(
+          { status: value.status, findings: [finding] },
+          context,
+        ).findings,
+      );
+    } catch (error) {
+      rejected.push({
+        index: index + 1,
+        category:
+          error instanceof FindingValidationError
+            ? error.code
+            : "output_schema",
+      });
+    }
+  }
+  return { status: value.status, findings, rejected };
+}
+
+// Both submissions and every poll share the same deadline. A transport error
+// never causes another submission: the job might still be consuming allowance.
+async function subscriptionRequest(
+  serialized,
+  headers,
+  limits,
+  deadline,
+  fetcher,
+  wait,
+) {
+  const signal = () => {
+    const remaining = Math.floor(deadline - performance.now());
+    if (remaining <= 0) throw new Error("Review deadline expired");
+    return AbortSignal.timeout(Math.min(limits.requestTimeoutMs, remaining));
+  };
+  const submitted = await fetcher(SUBSCRIPTION_ENDPOINT, {
+    method: "POST",
+    redirect: "error",
+    signal: signal(),
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+      Prefer: "respond-async",
+    },
+    body: serialized,
+  });
+  let raw = await boundedJson(submitted);
+  if (submitted.status === 202) {
+    const id = raw.id;
+    if (typeof id !== "string" || !JOB_ID.test(id))
+      throw new Error("Invalid review job");
+    let job = raw;
+    const maxPolls = Math.floor(limits.waitMs / limits.pollIntervalMs);
+    for (
+      let polls = 0;
+      job.status === "queued" || job.status === "running";
+      polls++
+    ) {
+      if (
+        polls >= maxPolls ||
+        performance.now() + limits.pollIntervalMs >= deadline
+      )
+        throw new Error("Review job did not finish in time");
+      await wait(limits.pollIntervalMs);
+      job = await boundedJson(
+        await fetcher(SUBSCRIPTION_ENDPOINT + "?job=" + id, {
+          method: "GET",
+          redirect: "error",
+          signal: signal(),
+          headers,
+        }),
+        LIMITS.responseBytes + 4096,
+      );
+      if (job.id !== id) throw new Error("Mismatched review job");
+    }
+    if (
+      job.status !== "completed" ||
+      !job.result ||
+      typeof job.result !== "object"
+    )
+      throw new Error("Review job failed");
+    raw = job.result;
+  }
+  if (performance.now() >= deadline) throw new Error("Review deadline expired");
+  return raw;
+}
+
 // This endpoint and model are fixed in trusted code, never selected by a PR.
 export const SUBSCRIPTION_ENDPOINT =
   "https://app-subscription-api.chenagent.com/ci/slice/review";
@@ -454,119 +557,146 @@ async function subscriptionReview(
       { role: "user", content: JSON.stringify({ originalContext: presented }) },
     ],
     stream: false,
-    response_format: { type: "json_schema", json_schema: { name: "review", schema: OUTPUT_SCHEMA } },
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "review", schema: OUTPUT_SCHEMA },
+    },
   };
-  const serialized = JSON.stringify(body);
-  if (
-    body.messages.reduce((n, m) => n + m.content.length, 0) >
-      SUBSCRIPTION_LIMITS.characters ||
-    Buffer.byteLength(serialized) > SUBSCRIPTION_LIMITS.bodyBytes
-  )
-    return {
-      ...report,
-      status: "incomplete",
-      reason:
-        "Subscription request exceeds the gateway input limit; no provider called.",
-    };
+  const limits = SUBSCRIPTION_LIMITS;
+  const model = cfg.gptModel;
   const start = performance.now();
-  report.gpt = metadata("failed", cfg.gptModel);
-  let stage = "provider_transport";
-  try {
-    const headers = {
-      Authorization: "Bearer " + cfg.gptKey,
-      "CF-Access-Client-Id": cfg.accessId,
-      "CF-Access-Client-Secret": cfg.accessSecret,
-    };
-    const submitted = await fetcher(SUBSCRIPTION_ENDPOINT, {
-      method: "POST",
-      redirect: "error",
-      signal: AbortSignal.timeout(SUBSCRIPTION_LIMITS.requestTimeoutMs),
-      headers: {
-        ...headers,
-        "Content-Type": "application/json",
-        Prefer: "respond-async",
-      },
-      body: serialized,
-    });
-    let raw = await boundedJson(submitted);
-    // 202 means the gateway queued a job; a plain 200 is a gateway without jobs answering directly.
-    if (submitted.status === 202) {
-      const id = raw.id;
-      if (typeof id !== "string" || !JOB_ID.test(id))
-        throw new Error("Invalid review job");
-      const deadline = performance.now() + SUBSCRIPTION_LIMITS.waitMs;
-      const maxPolls = Math.floor(
-        SUBSCRIPTION_LIMITS.waitMs / SUBSCRIPTION_LIMITS.pollIntervalMs,
-      );
-      let job = raw;
-      for (
-        let polls = 0;
-        job.status === "queued" || job.status === "running";
-        polls++
-      ) {
-        if (
-          polls >= maxPolls ||
-          performance.now() + SUBSCRIPTION_LIMITS.pollIntervalMs > deadline
-        )
-          throw new Error("Review job did not finish in time");
-        await wait(SUBSCRIPTION_LIMITS.pollIntervalMs);
-        job = await boundedJson(
-          await fetcher(SUBSCRIPTION_ENDPOINT + "?job=" + id, {
-            method: "GET",
-            redirect: "error",
-            signal: AbortSignal.timeout(SUBSCRIPTION_LIMITS.requestTimeoutMs),
-            headers,
-          }),
-          LIMITS.responseBytes + 4096,
-        );
-        if (job.id !== id) throw new Error("Mismatched review job");
-      }
-      if (
-        job.status !== "completed" ||
-        !job.result ||
-        typeof job.result !== "object"
-      )
-        throw new Error("Review job failed");
-      raw = job.result;
+  const deadline = start + limits.waitMs;
+  report.gpt = metadata("failed", model);
+  const headers = {
+    Authorization: "Bearer " + cfg.gptKey,
+    "CF-Access-Client-Id": cfg.accessId,
+    "CF-Access-Client-Secret": cfg.accessSecret,
+  };
+  const retained = new Map();
+  const severity = { critical: 0, high: 1, medium: 2, low: 3 };
+  let overflow = false;
+  let failure = "output_schema";
+  let feedback = [];
+  let resolved = false;
+  let attempts = 0;
+  let reviewerStatus = "incomplete";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Leave at least three minutes for a repair; never reset the shared clock.
+    if (attempt && deadline - performance.now() < 180000) break;
+    const request = attempt
+      ? {
+          ...body,
+          messages: [
+            body.messages[0],
+            {
+              role: "system",
+              content:
+                "The previous response failed validation: " +
+                JSON.stringify(feedback) +
+                ". Review the entire original scope again and return a complete replacement JSON object. Verify every citation against changed lines and exact source text. Re-evaluate unsupported claims; do not invent evidence. If you cannot complete the review, return status incomplete.",
+            },
+            body.messages[1],
+          ],
+        }
+      : body;
+    const serialized = JSON.stringify(request);
+    if (
+      request.messages.reduce((n, m) => n + m.content.length, 0) >
+        limits.characters ||
+      Buffer.byteLength(serialized) > limits.bodyBytes
+    ) {
+      failure = "input_limit";
+      break;
     }
-    stage = "provider_model";
-    if (raw.model !== cfg.gptModel)
-      throw new Error("Unexpected requested route");
-    stage = "provider_output";
-    if (
-      raw.object !== "chat.completion" ||
-      !Array.isArray(raw.choices) ||
-      raw.choices.length !== 1
-    )
-      throw new Error("Invalid completion");
-    const choice = raw.choices[0];
-    if (
-      choice.finish_reason !== "stop" ||
-      choice.message?.role !== "assistant" ||
-      choice.message?.tool_calls ||
-      choice.message?.refusal ||
-      typeof choice.message?.content !== "string"
-    )
-      throw new Error("Incomplete or unsupported completion");
-    stage = "output_schema";
-    const valid = validateFindings(JSON.parse(choice.message.content), context);
-    Object.assign(report, valid, {
-      reason:
-        valid.status === "incomplete"
-          ? "Reviewer reported insufficient context."
-          : "Subscription route requested Claude Opus 5.5. Upstream model identity, token usage and cost are not independently reported by the gateway.",
-    });
-    report.gpt.status = valid.status;
-  } catch (error) {
-    const category =
-      error instanceof FindingValidationError ? error.code : stage;
-    Object.assign(report, {
-      status: "failed",
-      reason:
-        "Subscription review failed [" + category + "]; no findings published.",
-      findings: [],
-    });
+    attempts++;
+    let stage = "provider_transport";
+    try {
+      const raw = await subscriptionRequest(
+        serialized,
+        headers,
+        limits,
+        deadline,
+        fetcher,
+        wait,
+      );
+      stage = "provider_model";
+      if (raw.model !== model) throw new Error("Unexpected requested route");
+      stage = "provider_output";
+      if (
+        raw.object !== "chat.completion" ||
+        !Array.isArray(raw.choices) ||
+        raw.choices.length !== 1
+      )
+        throw new Error("Invalid completion");
+      const choice = raw.choices[0];
+      if (
+        choice.finish_reason !== "stop" ||
+        choice.message?.role !== "assistant" ||
+        choice.message?.tool_calls ||
+        choice.message?.refusal ||
+        typeof choice.message?.content !== "string"
+      )
+        throw new Error("Incomplete or unsupported completion");
+      stage = "output_schema";
+      const parsed = parseReviewReply(choice.message.content, context);
+      // A fully validated completed replacement is authoritative, including
+      // withdrawals. Until then, preserve every independently valid finding.
+      if (parsed.status === "completed" && !parsed.rejected.length) {
+        retained.clear();
+        overflow = false;
+      }
+      for (const finding of parsed.findings) {
+        const key = JSON.stringify([
+          finding.path,
+          finding.side,
+          finding.start,
+          finding.end,
+          finding.evidence,
+        ]);
+        if (retained.has(key)) {
+          if (severity[finding.severity] < severity[retained.get(key).severity])
+            retained.set(key, finding);
+        } else if (retained.size < 8) retained.set(key, finding);
+        else overflow = true;
+      }
+      reviewerStatus = parsed.status;
+      feedback = parsed.rejected;
+      if (!feedback.length) {
+        resolved = true;
+        break;
+      }
+      failure = [...new Set(feedback.map((item) => item.category))].join(", ");
+    } catch (error) {
+      failure = error instanceof FindingValidationError ? error.code : stage;
+      feedback = [{ category: failure }];
+      if (stage !== "output_schema") break;
+    }
   }
+  const status =
+    resolved && !overflow
+      ? reviewerStatus
+      : retained.size || overflow || !attempts
+        ? "incomplete"
+        : "failed";
+  const notes =
+    attempts > 1 ? "Retried once after output validation failed. " : "";
+  const reason = overflow
+    ? "Combined findings exceed the 8-finding limit; retained the first 8. Review incomplete."
+    : !resolved
+      ? "Subscription review unresolved [" +
+        failure +
+        "]; " +
+        retained.size +
+        " validated finding(s) retained."
+      : reviewerStatus === "incomplete"
+        ? "Reviewer reported insufficient context."
+        : "Subscription route requested Claude Opus 5.5. Upstream model identity, token usage and cost are not independently reported by the gateway.";
+  Object.assign(report, {
+    status,
+    reason: notes + reason,
+    findings: [...retained.values()],
+  });
+  report.gpt.status = status;
   // No invented token counts or price estimate: zero tokens mean unreported here,
   // estimatedUsd stays null, and reservedUsd=0 is not a subscription spending cap.
   report.gpt.latencyMs = Math.round(performance.now() - start);
