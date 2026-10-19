@@ -904,6 +904,7 @@ test("subscription review submits a gateway job and checks back until it complet
   assert.equal(calls.length, 3);
   assert.equal(calls[0].options.method, "POST");
   assert.equal(calls[0].options.headers.Prefer, "respond-async");
+  assert.deepEqual(JSON.parse(calls[0].options.body).response_format.json_schema.schema, OUTPUT_SCHEMA);
   for (const call of calls.slice(1)) {
     assert.equal(call.url, SUBSCRIPTION_ENDPOINT + "?job=" + jobId);
     assert.equal(call.options.method, "GET");
