@@ -692,6 +692,14 @@ test("segmented tests keep their imported implementation as priority supporting 
   assert.ok(plan.batches.some((b) => b.files.some((f) => f.headStart > 1)));
   for (const b of plan.batches)
     assert.ok(b.surrounding.some((f) => f.path === "implementation/check.mjs"));
+  const full = await collectFullPlan(f.api, target, "standards");
+  assert.deepEqual(full.issues, []);
+  assert.equal(full.batches.length, 1);
+  assert.ok(
+    full.batches[0].surrounding.some(
+      (f) => f.path === "implementation/check.mjs",
+    ),
+  );
 });
 
 test("unsupported unchanged neighbors are disclosed while failed source reads still block full review", async () => {

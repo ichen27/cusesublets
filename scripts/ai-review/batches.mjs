@@ -628,7 +628,7 @@ export function renderBatches(plan, value, latest) {
     );
   lines.push(
     full
-      ? "One request reviews all collected text using Claude Opus 5.5 with extended context and constrained JSON output. Exact source evidence and coverage are independently revalidated. Binary assets still require human review; completion is not a guarantee of correctness."
+      ? "One request reviews all collected text, requesting Claude Opus 5.5 with extended context and constrained JSON output. The gateway does not independently attest upstream model identity, effort or usage. Exact source evidence and coverage are independently revalidated. Binary assets still require human review; completion is not a guarantee of correctness."
       : "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
   );
   return lines.join("\n\n");

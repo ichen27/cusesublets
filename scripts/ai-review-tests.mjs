@@ -1295,3 +1295,14 @@ test("full review selects extended context and sends the enforced schema to the 
   );
   assert.deepEqual(presented.files[0].changedRight, [[1, 1]]);
 });
+
+test("full review rejects a completion echoing the standard context route", async () => {
+  const result = await review(
+    { ...context, reviewMode: "full-context-v1" },
+    subscriptionCfg,
+    async () => response(subscriptionResponse()),
+  );
+  assert.equal(result.status, "failed");
+  assert.deepEqual(result.findings, []);
+  assert.match(result.reason, /provider_model/);
+});
