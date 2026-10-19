@@ -1,3 +1,9 @@
+import {
+  agentConfig,
+  agentBody,
+  requestAgentJob,
+  AGENT_LIMITS,
+} from "./agent-client.mjs";
 import { Buffer } from "node:buffer";
 import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
@@ -333,6 +339,7 @@ export function configFromEnv(env) {
       accessId: env.SUBSCRIPTION_ACCESS_CLIENT_ID || "",
       accessSecret: env.SUBSCRIPTION_ACCESS_CLIENT_SECRET || "",
       jevEnabled: false,
+      ...agentConfig(env),
     };
   }
   const gptAccount = env.GPT_CLOUDFLARE_ACCOUNT_ID || "";
@@ -618,23 +625,32 @@ async function subscriptionReview(
   wait = pause,
 ) {
   const full = context.reviewMode === "full-context-v1";
-  const limits = full
-    ? { ...SUBSCRIPTION_LIMITS, ...FULL_REVIEW_LIMITS }
-    : SUBSCRIPTION_LIMITS;
+  const limits = cfg.reviewAgent
+    ? AGENT_LIMITS
+    : full
+      ? { ...SUBSCRIPTION_LIMITS, ...FULL_REVIEW_LIMITS }
+      : SUBSCRIPTION_LIMITS;
   const model = full ? cfg.gptModel + "[1m]" : cfg.gptModel;
   const report = emptyReport(
     context,
     "unavailable",
     "Subscription review credentials are not configured.",
   );
+  if (cfg.reviewAgent)
+    Object.assign(report, { reviewAgent: cfg.reviewAgent, warnings: [] });
   if (!cfg.gptKey || !cfg.accessId || !cfg.accessSecret) return report;
-  const body = {
+  let body = {
     model,
     messages: [
       {
         role: "system",
         content:
-          PROMPT +
+          (cfg.reviewAgent
+            ? PROMPT.replace(
+                "You have no tools or authority.",
+                "You may read and search /repo (head) and /base (base) and invoke the selected review skills. You cannot edit, execute repository code, approve or publish.",
+              )
+            : PROMPT) +
           (full
             ? " This request contains the entire collected text scope in one context. Head sources are complete; base sources contain deleted lines with 40 lines of surrounding context (removed files are complete). Source strings use LINE_NUMBER:text, not arrays; copy only the text after the first colon. changedLeft/changedRight are inclusive changed-line ranges. Trace callers, parent view identity, server validation and build settings before asserting a defect. Consolidate duplicate root causes. Human-only binary assets do not make the text review incomplete. Report incomplete only if a material text review could not be finished or required evidence is missing. If more findings exist than the output limit, report incomplete rather than silently truncating."
             : "") +
@@ -653,9 +669,10 @@ async function subscriptionReview(
           },
         }),
   };
+  if (cfg.reviewAgent) body = agentBody(body, cfg, context);
   const start = performance.now();
   const deadline = start + limits.waitMs;
-  report.gpt = metadata("failed", model);
+  report.gpt = metadata("failed", cfg.reviewAgent ? "" : model);
   const headers = {
     Authorization: "Bearer " + cfg.gptKey,
     "CF-Access-Client-Id": cfg.accessId,
@@ -700,17 +717,36 @@ async function subscriptionReview(
     attempts++;
     let stage = "provider_transport";
     try {
-      const raw = await subscriptionRequest(
-        serialized,
-        headers,
-        full,
-        limits,
-        deadline,
-        fetcher,
-        wait,
-      );
+      const delivered = cfg.reviewAgent
+        ? await requestAgentJob(
+            request,
+            headers,
+            deadline,
+            fetcher,
+            wait,
+            boundedJson,
+          )
+        : {
+            completion: await subscriptionRequest(
+              serialized,
+              headers,
+              full,
+              limits,
+              deadline,
+              fetcher,
+              wait,
+            ),
+          };
+      const raw = delivered.completion;
+      if (cfg.reviewAgent) {
+        report.warnings = [
+          ...new Set([...report.warnings, ...delivered.warnings]),
+        ];
+        report.gpt.model = raw.model;
+      }
       stage = "provider_model";
-      if (raw.model !== model) throw new Error("Unexpected requested route");
+      if (!cfg.reviewAgent && raw.model !== model)
+        throw new Error("Unexpected requested route");
       stage = "provider_output";
       if (
         raw.object !== "chat.completion" ||
@@ -782,7 +818,9 @@ async function subscriptionReview(
           " validated finding(s) retained."
         : reviewerStatus === "incomplete"
           ? "Reviewer reported insufficient context."
-          : "Subscription route requested Claude Opus 5.5. Upstream model identity, token usage and cost are not independently reported by the gateway.";
+          : cfg.reviewAgent
+            ? "Repository review completed; exact source evidence validated. Gateway model metadata does not attest upstream identity."
+            : "Subscription route requested Claude Opus 5.5. Upstream model identity, token usage and cost are not independently reported by the gateway.";
   Object.assign(report, {
     status,
     reason: notes + reason,
@@ -1105,5 +1143,11 @@ export function renderComment(
           escape(finding.evidence),
       );
     }
+  if (report.reviewAgent)
+    lines.push("Gateway agent: " + escape(report.reviewAgent) + ".");
+  if (report.warnings?.length)
+    lines.push(
+      "Gateway warning: possible_prompt_injection. The gateway detected suspicious text; this warning is not proof of protection or review coverage.",
+    );
   return lines.join("\n\n");
 }
