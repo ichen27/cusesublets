@@ -560,3 +560,53 @@ test("compact context retains complete head and deleted base lines with context"
   assert.equal(c.head.split("\n").length, 200);
   assert.match(c.head, /100:replacement/);
 });
+
+test("wide citations narrow only to unique exact evidence in the original changed range", () => {
+  const head = Array.from({ length: 30 }, (_, i) => `source${i}`).join("\n");
+  const f = { ...added("range.ts", head), path: "range.ts", head, base: "" };
+  const finding = {
+    ...answer(f),
+    start: 1,
+    end: 20,
+    evidence: "source15\nsource16",
+  };
+  const valid = validateFindings(
+    { status: "completed", findings: [finding] },
+    { files: [f] },
+  );
+  assert.equal(valid.findings[0].start, 16);
+  assert.equal(valid.findings[0].end, 17);
+  assert.equal(finding.start, 1);
+  assert.equal(
+    validateFindings(
+      { status: "incomplete", findings: [finding] },
+      { files: [f] },
+    ).status,
+    "incomplete",
+  );
+  for (const patch of [
+    { evidence: "source25" },
+    { evidence: "source1" },
+    { end: 200 },
+    { end: 31 },
+    { evidence: head },
+  ])
+    assert.throws(() =>
+      validateFindings(
+        { status: "completed", findings: [{ ...finding, ...patch }] },
+        { files: [f] },
+      ),
+    );
+  const limited = {
+    ...f,
+    patch: "@@ -15,2 +16,2 @@\n-source15\n-source16\n+source15\n+source16",
+  };
+  assert.throws(
+    () =>
+      validateFindings(
+        { status: "completed", findings: [finding] },
+        { files: [limited] },
+      ),
+    /outside changed/,
+  );
+});
