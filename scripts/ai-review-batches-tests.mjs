@@ -693,3 +693,33 @@ test("segmented tests keep their imported implementation as priority supporting 
   for (const b of plan.batches)
     assert.ok(b.surrounding.some((f) => f.path === "implementation/check.mjs"));
 });
+
+test("unsupported unchanged neighbors are disclosed while failed source reads still block full review", async () => {
+  const f = fixture([added("a.ts", "changed")]);
+  const tree = f.responses[`/git/trees/${head}?recursive=1`].tree;
+  for (const [i, mode, size, content] of [
+    [1, "120000", 4, "link"],
+    [2, "100644", 1000001, ""],
+    [3, "100644", 1, "AA=="],
+    [4, "100644", 1, "/w=="],
+  ]) {
+    const id = (1000 + i).toString(16).padStart(40, "0");
+    tree.push({ path: `neighbor${i}.ts`, type: "blob", mode, sha: id, size });
+    if (i > 2)
+      f.responses[`/git/blobs/${id}`] = { encoding: "base64", content, size };
+  }
+  const plan = await collectFullPlan(f.api, target, "standards");
+  assert.deepEqual(plan.issues, []);
+  assert.equal(plan.batches[0].scope.supportingFilesOmitted, 4);
+  assert.equal(plan.batches[0].surrounding.length, 0);
+  const missingId = "e".repeat(40);
+  tree.push({
+    path: "unavailable.ts",
+    type: "blob",
+    mode: "100644",
+    sha: missingId,
+    size: 10,
+  });
+  const broken = await collectFullPlan(f.api, target, "standards");
+  assert.match(broken.issues.join(" "), /Cannot collect related source/);
+});

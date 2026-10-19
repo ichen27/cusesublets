@@ -34,6 +34,7 @@ export const BATCH_LIMITS = Object.freeze({
   runMs: 60 * 60 * 1000,
   artifactBytes: 1000000,
 });
+class UnsupportedSourceError extends Error {}
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value));
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -226,27 +227,30 @@ export async function collectPlan(
   let loaded = 0;
   const source = async (path, ref) => {
     safePath(path);
-    if (sensitive(path)) throw new Error("Sensitive path excluded");
+    if (sensitive(path))
+      throw new UnsupportedSourceError("Sensitive path excluded");
     const entry = trees[ref].get(path);
     if (
       !entry ||
       !["100644", "100755"].includes(entry.mode) ||
       entry.size > BATCH_LIMITS.blobBytes
     )
-      throw new Error("Unsupported source type or size");
+      throw new UnsupportedSourceError("Unsupported source type or size");
     if (cache.has(entry.sha)) return cache.get(entry.sha);
     const blob = await api("/git/blobs/" + sha(entry.sha));
     if (blob.encoding !== "base64" || blob.size > BATCH_LIMITS.blobBytes)
       throw new Error("Unsupported blob");
     const raw = Buffer.from(blob.content, "base64");
     loaded += raw.length;
-    if (
-      raw.length !== blob.size ||
-      raw.includes(0) ||
-      loaded > BATCH_LIMITS.sourceBytes
-    )
+    if (raw.length !== blob.size || loaded > BATCH_LIMITS.sourceBytes)
       throw new Error("Invalid source or total source budget exceeded");
-    const content = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    if (raw.includes(0)) throw new UnsupportedSourceError("Binary source");
+    let content;
+    try {
+      content = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    } catch {
+      throw new UnsupportedSourceError("Non-UTF-8 source");
+    }
     cache.set(entry.sha, content);
     return content;
   };
@@ -406,9 +410,10 @@ export async function collectPlan(
           context.scope.supportingFilesOmitted++;
           if (full) return fail("Full review context exceeds bound: " + path);
         } else count++;
-      } catch {
+      } catch (error) {
         context.scope.supportingFilesOmitted++;
-        if (full) return fail("Cannot collect related source: " + path);
+        if (full && !(error instanceof UnsupportedSourceError))
+          return fail("Cannot collect related source: " + path);
       }
     }
   }
