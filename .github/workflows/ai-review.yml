@@ -47,7 +47,7 @@ jobs:
   review:
     needs: pending
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     # Separate environment contains ONLY credentials for the shared review endpoint.
     # Configure environment deployment-branch restrictions to main.
     environment: ai-review
@@ -70,10 +70,14 @@ jobs:
           TARGET_HEAD: ${{ needs.pending.outputs.head }}
           TARGET_PR: ${{ needs.pending.outputs.pr }}
           GPT_PROVIDER: subscription
+          # Explicit opt-in after gateway acceptance; empty keeps the legacy route.
+          SUBSCRIPTION_REVIEW_ROUTE: ${{ vars.SUBSCRIPTION_REVIEW_ROUTE }}
+          REVIEW_AGENT: ${{ vars.REVIEW_AGENT }}
+          SUBSCRIPTION_AGENT_KEY: ${{ secrets.SUBSCRIPTION_AGENT_KEY }}
           SUBSCRIPTION_REVIEW_KEY: ${{ secrets.SUBSCRIPTION_REVIEW_KEY }}
           SUBSCRIPTION_ACCESS_CLIENT_ID: ${{ secrets.SUBSCRIPTION_ACCESS_CLIENT_ID }}
           SUBSCRIPTION_ACCESS_CLIENT_SECRET: ${{ secrets.SUBSCRIPTION_ACCESS_CLIENT_SECRET }}
-          # Fixed route/model in trusted code; no paid API fallback or Jev call.
+          # Fixed endpoint in trusted code; no paid API fallback or Jev call.
           AI_JEV_ENABLED: "false"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

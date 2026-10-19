@@ -599,8 +599,19 @@ export function renderBatches(plan, value, latest) {
     ),
     findings: summary.findings.slice(0, 8),
   };
+  const agentReports = value.results
+    .map((entry) => entry.report)
+    .filter((result) => result.reviewAgent);
+  if (agentReports.length) {
+    report.reviewAgent = agentReports[0].reviewAgent;
+    report.warnings = [
+      ...new Set(agentReports.flatMap((result) => result.warnings)),
+    ];
+  }
   report.gpt.status = summary.status;
-  report.gpt.model = "claude/claude-opus-5-5" + (full ? "[1m]" : "");
+  report.gpt.model = agentReports.length
+    ? agentReports[0].gpt.model
+    : "claude/claude-opus-5-5" + (full ? "[1m]" : "");
   const lines = [
     renderComment(report, latest.head.sha, plan.repository, latest.base.sha),
   ];
@@ -628,9 +639,11 @@ export function renderBatches(plan, value, latest) {
       "Human asset review required: " + summary.excluded.map(escape).join(", "),
     );
   lines.push(
-    full
-      ? "One request reviews all collected text, requesting Claude Opus 5.5 with extended context and constrained JSON output. The gateway does not independently attest upstream model identity, effort or usage. Exact source evidence and coverage are independently revalidated. Binary assets still require human review; completion is not a guarantee of correctness."
-      : "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
+    agentReports.length
+      ? "Repository agents may read pinned head/base source. Exact source evidence and declared coverage are independently revalidated. Model metadata is not upstream attestation; assets still require human review."
+      : full
+        ? "One request reviews all collected text, requesting Claude Opus 5.5 with extended context and constrained JSON output. The gateway does not independently attest upstream model identity, effort or usage. Exact source evidence and coverage are independently revalidated. Binary assets still require human review; completion is not a guarantee of correctness."
+        : "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
   );
   return lines.join("\n\n");
 }

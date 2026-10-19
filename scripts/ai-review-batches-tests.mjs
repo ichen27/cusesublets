@@ -765,3 +765,25 @@ test("failed full collection publishes full-context labels even without a batch"
   assert.match(comment, /extended context/);
   assert.doesNotMatch(comment, /Each batch requests/);
 });
+
+test("agent warning survives independent envelope validation and publication", async () => {
+  const f = fixture([added("auth.ts", "const allowed = true;")]);
+  const plan = await collectFullPlan(f.api, target, "s");
+  const result = envelope(
+    plan,
+    plan.batches.map((b) =>
+      batchResult(b, {
+        ...complete(b),
+        reviewAgent: "general-review",
+        warnings: ["possible_prompt_injection"],
+      }),
+    ),
+  );
+  assert.equal(await publishBatches(f.api, target, result, "s"), true);
+  assert.match(f.writes.at(-1).body, /possible_prompt_injection/);
+  assert.match(f.writes.at(-1).body, /Repository agents/);
+  assert.doesNotMatch(
+    f.writes.at(-1).body,
+    /requesting Claude Opus 5.5 with extended context/,
+  );
+});
