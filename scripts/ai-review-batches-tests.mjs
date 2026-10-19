@@ -610,3 +610,57 @@ test("wide citations narrow only to unique exact evidence in the original change
     /outside changed/,
   );
 });
+
+test("full-context mandatory and selected supporting overflow fail before inference", async () => {
+  const huge = "x".repeat(800000);
+  const mandatory = fixture([
+    added("a.ts", huge),
+    added("b.ts", huge),
+    added("c.ts", huge),
+  ]);
+  const supporting = fixture([added("a.ts", "changed")]);
+  for (let i = 0; i < 4; i++) {
+    const id = (1000 + i).toString(16).padStart(40, "0");
+    supporting.responses[`/git/trees/${head}?recursive=1`].tree.push({
+      path: `support${i}.ts`,
+      type: "blob",
+      mode: "100644",
+      sha: id,
+      size: huge.length,
+    });
+    supporting.responses[`/git/blobs/${id}`] = {
+      encoding: "base64",
+      content: Buffer.from(huge).toString("base64"),
+      size: huge.length,
+    };
+  }
+  for (const f of [mandatory, supporting]) {
+    let calls = 0;
+    const plan = await collectFullPlan(f.api, target, "standards");
+    assert.ok(plan.issues.length > 0);
+    const result = await reviewPlan(
+      plan,
+      { gptProvider: "subscription" },
+      {
+        reviewer: async () => {
+          calls++;
+          throw new Error("must not run");
+        },
+      },
+    );
+    assert.equal(calls, 0);
+    assert.equal(result.summary.status, "incomplete");
+  }
+});
+
+test("full-context fingerprint is stable across GitHub file and tree ordering", async () => {
+  const f = fixture(),
+    other = fixture();
+  for (const key of Object.keys(other.responses)) {
+    if (key.includes("/files?")) other.responses[key].reverse();
+    if (key.includes("/git/trees/")) other.responses[key].tree.reverse();
+  }
+  const a = await collectFullPlan(f.api, target, "standards");
+  const b = await collectFullPlan(other.api, target, "standards");
+  assert.equal(envelope(a, []).fingerprint, envelope(b, []).fingerprint);
+});

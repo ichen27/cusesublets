@@ -378,12 +378,11 @@ export async function collectPlan(
         ) {
           context.surrounding.pop();
           context.scope.supportingFilesOmitted++;
-          if (full)
-            plan.issues.push("Full review context exceeds bound: " + path);
+          if (full) return fail("Full review context exceeds bound: " + path);
         } else count++;
       } catch {
         context.scope.supportingFilesOmitted++;
-        if (full) plan.issues.push("Cannot collect related source: " + path);
+        if (full) return fail("Cannot collect related source: " + path);
       }
     }
   }
