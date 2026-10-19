@@ -143,14 +143,14 @@ class FindingValidationError extends Error {
 // Model presentation only: validation and publication retain the original source bytes.
 // Number every line, including blank/trailing lines; do not trim CRLF or Unicode.
 export function modelContext(context) {
-  const lines = (source) =>
-    source.split("\n").map((text, index) => ({ line: index + 1, text }));
+  const lines = (source, start = 1) =>
+    source.split("\n").map((text, index) => ({ line: index + start, text }));
   return {
     ...context,
     files: context.files.map((file) => ({
       ...file,
-      base: lines(file.base),
-      head: lines(file.head),
+      base: lines(file.base, file.baseStart),
+      head: lines(file.head, file.headStart),
     })),
     surrounding: context.surrounding.map((file) => ({
       ...file,
@@ -171,9 +171,15 @@ export function validateFindings(value, context) {
   for (const finding of value.findings) {
     exactKeys(finding, Object.keys(findingProperties));
     safePath(finding.path);
-    const file = context.files.find(
+    const candidates = context.files.filter(
       (candidate) => candidate.path === finding.path,
     );
+    const file =
+      candidates.find((candidate) =>
+        parsePatch(candidate.patch)[
+          finding.side === "RIGHT" ? "right" : "left"
+        ].has(finding.start),
+      ) ?? candidates[0];
     if (!file || !["LEFT", "RIGHT"].includes(finding.side))
       throw new FindingValidationError("location", "Invalid finding location");
     if (
@@ -205,11 +211,13 @@ export function validateFindings(value, context) {
           "Finding outside changed lines",
         );
     const source = finding.side === "RIGHT" ? file.head : file.base;
+    const offset =
+      (finding.side === "RIGHT" ? file.headStart : file.baseStart) ?? 1;
     if (
       typeof source !== "string" ||
       !source
         .split("\n")
-        .slice(finding.start - 1, finding.end)
+        .slice(finding.start - offset, finding.end - offset + 1)
         .join("\n")
         .includes(finding.evidence)
     )
@@ -802,7 +810,7 @@ async function reviewContext(context, cfg, fetcher, wait) {
   return result;
 }
 
-const escape = (value) =>
+export const escape = (value) =>
   String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
