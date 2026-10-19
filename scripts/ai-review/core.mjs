@@ -676,7 +676,7 @@ async function subscriptionReview(
       ? {
           ...body,
           messages: [
-            ...body.messages,
+            body.messages[0],
             {
               role: "system",
               content:
@@ -684,6 +684,7 @@ async function subscriptionReview(
                 JSON.stringify(feedback) +
                 ". Review the entire original scope again and return a complete replacement JSON object. Verify every citation against changed lines and exact source text. Re-evaluate unsupported claims; do not invent evidence. If you cannot complete the review, return status incomplete.",
             },
+            body.messages[1],
           ],
         }
       : body;

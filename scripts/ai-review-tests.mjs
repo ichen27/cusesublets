@@ -1366,8 +1366,15 @@ test("repair preserves valid findings from both attempts and sends only sanitize
   assert.equal(result.status, "completed");
   assert.deepEqual(result.findings, [finding, leftFinding]);
   assert.equal(bodies.length, 2);
-  assert.equal(bodies[0].messages[1].content, bodies[1].messages[1].content);
-  assert.match(bodies[1].messages[2].content, /evidence_mismatch/);
+  assert.equal(
+    bodies[0].messages[1].content,
+    bodies[1].messages.at(-1).content,
+  );
+  assert.match(bodies[1].messages[1].content, /evidence_mismatch/);
+  for (const body of bodies) {
+    assert.equal(body.messages.at(-1).role, "user");
+    assert.ok(body.messages.at(-1).content.trim());
+  }
   assert.doesNotMatch(JSON.stringify(bodies[1]), /untrusted-invalid-evidence/);
   validateReport(result);
 });
