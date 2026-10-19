@@ -47,7 +47,7 @@ jobs:
   review:
     needs: pending
     runs-on: ubuntu-latest
-    timeout-minutes: 155
+    timeout-minutes: 75
     # Separate environment contains ONLY credentials for the shared review endpoint.
     # Configure environment deployment-branch restrictions to main.
     environment: ai-review

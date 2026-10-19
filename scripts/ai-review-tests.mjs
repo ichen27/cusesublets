@@ -11,6 +11,7 @@ import {
   modelContext,
   SUBSCRIPTION_ENDPOINT,
   SUBSCRIPTION_LIMITS,
+  OUTPUT_SCHEMA,
 } from "./ai-review/core.mjs";
 
 const base = "a".repeat(40);
@@ -821,6 +822,36 @@ test("subscription review rejects unsupported output, forged citations and wrong
       JSON.stringify(result),
       /forged secret|not JSON secret/,
     );
+  }
+});
+
+test("subscription prompt declares enforced text bounds and oversized output still fails", async () => {
+  let sentSchema;
+  const fetcher = (value) => async (_url, options) => {
+    const prompt = JSON.parse(options.body).messages[0].content;
+    sentSchema = JSON.parse(prompt.split(" Return only JSON matching this schema: ")[1]);
+    return response(subscriptionResponse(value));
+  };
+  const atLimit = {
+    ...finding,
+    title: "t".repeat(120),
+    explanation: "e".repeat(1000),
+  };
+  assert.equal(
+    (await review(context, subscriptionCfg, fetcher({ ...output, findings: [atLimit] }))).status,
+    "completed",
+  );
+  assert.deepEqual(sentSchema, OUTPUT_SCHEMA);
+  const properties = sentSchema.properties.findings.items.properties;
+  for (const [field, maxLength] of Object.entries({ path: 500, title: 120, explanation: 1000, evidence: 500 })) {
+    assert.equal(properties[field].maxLength, maxLength);
+    assert.equal(properties[field].minLength, 1);
+    const result = await review(context, subscriptionCfg, fetcher({
+      ...output,
+      findings: [{ ...finding, [field]: "x".repeat(maxLength + 1) }],
+    }));
+    assert.equal(result.status, "failed");
+    assert.deepEqual(result.findings, []);
   }
 });
 
