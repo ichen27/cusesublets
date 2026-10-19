@@ -223,21 +223,27 @@ test("union overflow is explicit and exact duplicates retain the higher severity
   assert.equal(result.status, "incomplete");
   assert.equal(result.findings.length, 8);
   assert.match(result.reason, /exceed the 8-finding limit/);
-  calls = 0;
-  const deduped = await review(context, subscriptionCfg, async () =>
-    response(
-      subscriptionResponse({
-        status: "completed",
-        findings:
-          ++calls === 1
-            ? [finding, badFinding]
-            : [{ ...finding, severity: "critical" }],
-      }),
-    ),
-  );
-  assert.equal(deduped.status, "completed");
-  assert.equal(deduped.findings.length, 1);
-  assert.equal(deduped.findings[0].severity, "critical");
+  for (const [first, second] of [
+    ["high", "critical"],
+    ["critical", "low"],
+  ]) {
+    calls = 0;
+    const deduped = await review(context, subscriptionCfg, async () =>
+      response(
+        subscriptionResponse({
+          status: "incomplete",
+          findings:
+            ++calls === 1
+              ? [{ ...finding, severity: first }, badFinding]
+              : [{ ...finding, severity: second }],
+        }),
+      ),
+    );
+    assert.equal(calls, 2);
+    assert.equal(deduped.status, "incomplete");
+    assert.equal(deduped.findings.length, 1);
+    assert.equal(deduped.findings[0].severity, "critical");
+  }
 });
 
 test("repair and async polling share a deadline and late validation cannot start another job", async (t) => {
