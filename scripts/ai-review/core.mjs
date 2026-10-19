@@ -539,7 +539,14 @@ async function subscriptionReview(
       { role: "user", content: JSON.stringify({ originalContext: presented }) },
     ],
     stream: false,
-    ...(full ? { json_schema: OUTPUT_SCHEMA } : {}),
+    ...(full
+      ? { json_schema: OUTPUT_SCHEMA }
+      : {
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "review", schema: OUTPUT_SCHEMA },
+          },
+        }),
   };
   const serialized = JSON.stringify(body);
   if (
