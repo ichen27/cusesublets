@@ -773,6 +773,7 @@ test("subscription review uses one fixed authenticated request and validates rea
   assert.deepEqual(Object.keys(JSON.parse(calls[0].options.body)).sort(), [
     "messages",
     "model",
+    "response_format",
     "stream",
   ]);
   assert.equal(result.gpt.estimatedUsd, null);
