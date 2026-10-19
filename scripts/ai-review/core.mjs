@@ -605,7 +605,7 @@ async function subscriptionReview(
         limits.characters ||
       Buffer.byteLength(serialized) > limits.bodyBytes
     ) {
-      failure = "input_limit";
+      failure = attempts ? failure + "; repair_input_limit" : "input_limit";
       break;
     }
     attempts++;
@@ -682,21 +682,23 @@ async function subscriptionReview(
     attempts > 1 ? "Retried once after output validation failed. " : "";
   const reason = overflow
     ? "Combined findings exceed the 8-finding limit; retained the first 8. Review incomplete."
-    : !resolved
-      ? "Subscription review unresolved [" +
-        failure +
-        "]; " +
-        retained.size +
-        " validated finding(s) retained."
-      : reviewerStatus === "incomplete"
-        ? "Reviewer reported insufficient context."
-        : "Subscription route requested Claude Opus 5.5. Upstream model identity, token usage and cost are not independently reported by the gateway.";
+    : !attempts
+      ? "Subscription request exceeds the gateway input limit; no provider called."
+      : !resolved
+        ? "Subscription review unresolved [" +
+          failure +
+          "]; " +
+          retained.size +
+          " validated finding(s) retained."
+        : reviewerStatus === "incomplete"
+          ? "Reviewer reported insufficient context."
+          : "Subscription route requested Claude Opus 5.5. Upstream model identity, token usage and cost are not independently reported by the gateway.";
   Object.assign(report, {
     status,
     reason: notes + reason,
     findings: [...retained.values()],
   });
-  report.gpt.status = status;
+  report.gpt.status = attempts ? status : "unavailable";
   // No invented token counts or price estimate: zero tokens mean unreported here,
   // estimatedUsd stays null, and reservedUsd=0 is not a subscription spending cap.
   report.gpt.latencyMs = Math.round(performance.now() - start);
