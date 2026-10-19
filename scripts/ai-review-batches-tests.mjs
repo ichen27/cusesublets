@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   collectPlan,
+  collectFullPlan,
   fileUnits,
   combine,
   envelope,
@@ -18,6 +19,7 @@ import {
 import {
   emptyReport,
   modelContext,
+  compactContext,
   parsePatch,
   validateFindings,
 } from "./ai-review/core.mjs";
@@ -255,13 +257,16 @@ test("combined result retains findings from every batch and cannot turn missing 
 });
 test("publisher independently rebuilds coverage and rejects fabricated successful summaries", async () => {
   const f = fixture();
-  const plan = await collectPlan(f.api, target, "s");
+  const plan = await collectFullPlan(f.api, target, "s");
   const result = envelope(
     plan,
     plan.batches.map((b) => batchResult(b, complete(b))),
   );
   assert.equal(await publishBatches(f.api, target, result, "s"), true);
-  assert.match(f.writes.at(-1).body, /3\/3 text batches completed/);
+  assert.match(
+    f.writes.at(-1).body,
+    /1\/1 full-context text reviews completed/,
+  );
   result.results.pop();
   await assert.rejects(
     () => publishBatches(f.api, target, result, "s"),
@@ -468,4 +473,90 @@ test("duplicate findings within a response retain the higher severity", () => {
     ).findings[0].severity,
     "high",
   );
+});
+
+test("full context keeps all changed source together and includes related source beyond eight files", async () => {
+  const f = fixture();
+  const tree = f.responses[`/git/trees/${head}?recursive=1`].tree;
+  for (let i = 0; i < 12; i++) {
+    const id = (1000 + i).toString(16).padStart(40, "0");
+    const content = `let supporting${i} = true`;
+    tree.push({
+      path: `ios/Supporting${i}.swift`,
+      type: "blob",
+      mode: "100644",
+      sha: id,
+      size: content.length,
+    });
+    f.responses[`/git/blobs/${id}`] = {
+      encoding: "base64",
+      content: Buffer.from(content).toString("base64"),
+      size: content.length,
+    };
+  }
+  const plan = await collectFullPlan(f.api, target, "standards");
+  assert.deepEqual(plan.issues, []);
+  assert.equal(plan.batches.length, 1);
+  const c = plan.batches[0];
+  assert.equal(c.files.length, 106);
+  assert.equal(c.surrounding.length, 12);
+  assert.equal(c.scope.supportingFilesOmitted, 0);
+  const shown = compactContext(c);
+  assert.match(shown.files[0].head, /^1:let value/);
+  assert.deepEqual(shown.files[0].changedRight, [[1, 1]]);
+  assert.equal(shown.files[0].patch, undefined);
+  assert.equal(plan.batches[0].files[0].patch.startsWith("@@"), true);
+  const reordered = await collectFullPlan(
+    f.api,
+    { repository: target.repository, head, base, pr: 1 },
+    "standards",
+  );
+  assert.equal(
+    envelope(plan, []).fingerprint,
+    envelope(reordered, []).fingerprint,
+  );
+});
+
+test("full context verifies large patches without obsolete segment limits", async () => {
+  for (const content of [
+    "x".repeat(120000),
+    Array(400).fill("x".repeat(1000)).join("\n"),
+  ]) {
+    const file = added("large.ts", content);
+    const plan = await collectFullPlan(
+      fixture([file]).api,
+      target,
+      "standards",
+    );
+    assert.deepEqual(plan.issues, []);
+    assert.equal(plan.batches.length, 1);
+    assert.equal(plan.batches[0].files[0].head, content);
+    assert.throws(
+      () =>
+        fileUnits(
+          { ...file, path: file.filename, base: "", head: "wrong" },
+          { full: true },
+        ),
+      /evidence mismatch/,
+    );
+  }
+});
+
+test("compact context retains complete head and deleted base lines with context", () => {
+  const baseLines = Array.from({ length: 200 }, (_, i) => `old${i + 1}`);
+  const headLines = [...baseLines];
+  headLines[99] = "replacement";
+  const f = {
+    path: "x.ts",
+    status: "modified",
+    base: baseLines.join("\n"),
+    head: headLines.join("\n"),
+    patch: "@@ -100 +100 @@\n-old100\n+replacement",
+  };
+  const c = compactContext({ files: [f], surrounding: [] }).files[0];
+  assert.equal(c.base.split("\n").length, 81);
+  assert.match(c.base, /^60:old60/);
+  assert.match(c.base, /140:old140$/);
+  assert.equal(c.head.split("\n").length, 200);
+  assert.match(c.head, /100:replacement/);
 });

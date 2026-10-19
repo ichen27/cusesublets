@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import {
   BATCH_LIMITS,
-  collectPlan,
+  collectFullPlan,
   reviewPlan,
   publishBatches,
   envelope,
@@ -85,7 +85,7 @@ if (mode === "pending") {
   let report, plan;
   try {
     const standards = await loadStandards();
-    plan = await collectPlan(api, target, standards);
+    plan = await collectFullPlan(api, target, standards);
     report = envelope(plan, []);
     await saveReport(report);
     report = await reviewPlan(plan, configFromEnv(process.env), {

@@ -830,7 +830,9 @@ test("subscription prompt declares enforced text bounds and oversized output sti
   let sentSchema;
   const fetcher = (value) => async (_url, options) => {
     const prompt = JSON.parse(options.body).messages[0].content;
-    sentSchema = JSON.parse(prompt.split(" Return only JSON matching this schema: ")[1]);
+    sentSchema = JSON.parse(
+      prompt.split(" Return only JSON matching this schema: ")[1],
+    );
     return response(subscriptionResponse(value));
   };
   const atLimit = {
@@ -839,18 +841,33 @@ test("subscription prompt declares enforced text bounds and oversized output sti
     explanation: "e".repeat(1000),
   };
   assert.equal(
-    (await review(context, subscriptionCfg, fetcher({ ...output, findings: [atLimit] }))).status,
+    (
+      await review(
+        context,
+        subscriptionCfg,
+        fetcher({ ...output, findings: [atLimit] }),
+      )
+    ).status,
     "completed",
   );
   assert.deepEqual(sentSchema, OUTPUT_SCHEMA);
   const properties = sentSchema.properties.findings.items.properties;
-  for (const [field, maxLength] of Object.entries({ path: 500, title: 120, explanation: 1000, evidence: 500 })) {
+  for (const [field, maxLength] of Object.entries({
+    path: 500,
+    title: 120,
+    explanation: 1000,
+    evidence: 500,
+  })) {
     assert.equal(properties[field].maxLength, maxLength);
     assert.equal(properties[field].minLength, 1);
-    const result = await review(context, subscriptionCfg, fetcher({
-      ...output,
-      findings: [{ ...finding, [field]: "x".repeat(maxLength + 1) }],
-    }));
+    const result = await review(
+      context,
+      subscriptionCfg,
+      fetcher({
+        ...output,
+        findings: [{ ...finding, [field]: "x".repeat(maxLength + 1) }],
+      }),
+    );
     assert.equal(result.status, "failed");
     assert.deepEqual(result.findings, []);
   }
@@ -1248,4 +1265,28 @@ test("iPhone review includes relevant Worker authorization context across direct
       (file) => file.path === "worker/scans.ts" && file.content === source,
     ),
   );
+});
+
+test("full review selects extended context and sends the enforced schema to the gateway", async () => {
+  let request;
+  const full = { ...context, reviewMode: "full-context-v1" };
+  const result = await review(full, subscriptionCfg, async (_url, options) => {
+    request = options;
+    return response({
+      ...subscriptionResponse(),
+      model: "claude/claude-opus-5-5[1m]",
+    });
+  });
+  assert.equal(result.status, "completed");
+  const body = JSON.parse(request.body);
+  assert.equal(request.headers["X-Review-Mode"], "full-context-v1");
+  assert.equal(body.model, "claude/claude-opus-5-5[1m]");
+  assert.deepEqual(body.json_schema, OUTPUT_SCHEMA);
+  assert.equal(body.json_schema.properties.findings.maxItems, 40);
+  const presented = JSON.parse(body.messages[1].content).originalContext;
+  assert.equal(
+    presented.files[0].head,
+    "1:const allowed = true;\n2:return allowed;\n3:",
+  );
+  assert.deepEqual(presented.files[0].changedRight, [[1, 1]]);
 });

@@ -6,6 +6,8 @@ import {
   exactKeys,
   escape,
   modelContext,
+  compactContext,
+  FULL_REVIEW_LIMITS,
   parsePatch,
   renderComment,
   review,
@@ -51,7 +53,7 @@ const targetOf = (plan) => ({
 
 // Verify complete patches against immutable blobs, then split oversized files at
 // original diff coordinates. No contributor code, external diff tool or model runs here.
-export function fileUnits(file) {
+export function fileUnits(file, { full = false } = {}) {
   const changed = parsePatch(file.patch);
   if (
     changed.left.size !== file.deletions ||
@@ -120,7 +122,7 @@ export function fileUnits(file) {
     headStart: 1,
   };
   const size = (f) => bytes(modelContext({ files: [f], surrounding: [] }));
-  if (size(basic) <= BATCH_LIMITS.unitBytes) return [basic];
+  if (full || size(basic) <= BATCH_LIMITS.unitBytes) return [basic];
   const window = (group) => {
     const first = group[0],
       last = group.at(-1);
@@ -157,10 +159,21 @@ export function fileUnits(file) {
   return units;
 }
 
-export async function collectPlan(api, target, standards) {
+export async function collectFullPlan(api, target, standards) {
+  return collectPlan(api, target, standards, { full: true });
+}
+export async function collectPlan(
+  api,
+  target,
+  standards,
+  { full = false } = {},
+) {
   validateTarget(target);
   const plan = {
-    ...target,
+    pr: target.pr,
+    base: target.base,
+    head: target.head,
+    repository: target.repository,
     changedFiles: 0,
     issues: [],
     excluded: [],
@@ -260,18 +273,21 @@ export async function collectPlan(api, target, standards) {
         file.status === "removed"
           ? ""
           : await source(file.filename, target.head);
-      for (const [index, unit] of fileUnits({
+      const original = {
         ...file,
         path: file.filename,
         base,
         head,
-      }).entries())
+      };
+      const verifiedUnits = fileUnits(original, { full });
+      for (const [index, unit] of verifiedUnits.entries())
         units.push({ ...unit, unitId: file.filename + "#" + index });
     } catch {
       plan.issues.push("Cannot fully collect text change: " + file.filename);
     }
   }
   const template = {
+    ...(full ? { reviewMode: "full-context-v1" } : {}),
     base: target.base,
     head: target.head,
     mergeBase: target.base,
@@ -286,23 +302,28 @@ export async function collectPlan(api, target, standards) {
     scope: { visualAssets: plan.excluded, supportingFilesOmitted: 0 },
     batch: {
       changedPaths: files.map((f) => f.filename),
-      instructions:
-        "This is one bounded batch. Review its changed lines; other changed paths are inventory, not reviewed evidence. Source excerpts preserve original line numbers. Supporting files provide cross-component context but may be incomplete. Report insufficient relevant context honestly.",
+      instructions: full
+        ? "Review all collected changed text together. Complete head files, deleted base lines with surrounding context, removed files, and related source retain original line coordinates. Report insufficient relevant context honestly."
+        : "This is one bounded batch. Review its changed lines; other changed paths are inventory, not reviewed evidence. Source excerpts preserve original line numbers. Supporting files provide cross-component context but may be incomplete. Report insufficient relevant context honestly.",
     },
   };
+  const present = full ? compactContext : modelContext;
+  const inputLimit = full
+    ? FULL_REVIEW_LIMITS.characters - 20_000
+    : BATCH_LIMITS.changedBytes;
   let batch = structuredClone(template);
   for (const unit of units) {
     const proposed = { ...batch, files: [...batch.files, unit] };
     if (
       batch.files.length &&
-      (batch.files.length >= 40 ||
-        bytes(modelContext(proposed)) > BATCH_LIMITS.changedBytes)
+      !full &&
+      (batch.files.length >= 40 || bytes(present(proposed)) > inputLimit)
     ) {
       plan.batches.push(batch);
       batch = structuredClone(template);
     }
     batch.files.push(unit);
-    if (bytes(modelContext(batch)) > BATCH_LIMITS.changedBytes)
+    if (bytes(present(batch)) > inputLimit)
       return fail(
         "A source unit plus mandatory context exceeds the batch budget.",
       );
@@ -326,7 +347,7 @@ export async function collectPlan(api, target, standards) {
     const candidates = [...trees[target.head].keys()].filter(
       (p) =>
         !paths.has(p) &&
-        /\.(swift|[cm]?[jt]sx?|json|sql|py)$/.test(p) &&
+        /\.(swift|[cm]?[jt]sx?|json|sql|py|html|css)$/.test(p) &&
         !/(package-lock\.json|worker-configuration\.d\.ts)$/.test(p) &&
         (folders.has(posix.dirname(p)) ||
           /^(shared\/|worker\/(?:.*auth|account|member)|ios\/CuseSublets\/(?:APIClient|Models|PhotoCapturePolicy))/.test(
@@ -341,19 +362,28 @@ export async function collectPlan(api, target, standards) {
     );
     let count = 0;
     for (const path of candidates) {
-      if (count >= 8 || (trees[target.head].get(path).size || 0) > 60000) {
+      if (
+        !full &&
+        (count >= 8 || (trees[target.head].get(path).size || 0) > 60000)
+      ) {
         context.scope.supportingFilesOmitted++;
         continue;
       }
       try {
         const content = await source(path, target.head);
         context.surrounding.push({ path, ref: target.head, content });
-        if (bytes(modelContext(context)) > BATCH_LIMITS.contextBytes) {
+        if (
+          bytes(present(context)) >
+          (full ? inputLimit : BATCH_LIMITS.contextBytes)
+        ) {
           context.surrounding.pop();
           context.scope.supportingFilesOmitted++;
+          if (full)
+            plan.issues.push("Full review context exceeds bound: " + path);
         } else count++;
       } catch {
         context.scope.supportingFilesOmitted++;
+        if (full) plan.issues.push("Cannot collect related source: " + path);
       }
     }
   }
@@ -529,16 +559,17 @@ export async function reviewPlan(
 }
 export function renderBatches(plan, value, latest) {
   const summary = validateEnvelope(value, plan);
+  const full = plan.batches[0]?.reviewMode === "full-context-v1";
   const report = {
     ...emptyReport(
       plan,
       summary.status,
-      `${summary.completed}/${summary.total} text batches completed; ${summary.changedFiles} changed files, ${summary.units} source units. ${summary.excluded.length} assets excluded for human review.`,
+      `${summary.completed}/${summary.total} ${full ? "full-context text reviews" : "text batches"} completed; ${summary.changedFiles} changed files, ${summary.units} source units. ${summary.excluded.length} assets excluded for human review.`,
     ),
     findings: summary.findings.slice(0, 8),
   };
   report.gpt.status = summary.status;
-  report.gpt.model = "claude/claude-opus-5-5";
+  report.gpt.model = "claude/claude-opus-5-5" + (full ? "[1m]" : "");
   const lines = [
     renderComment(report, latest.head.sha, plan.repository, latest.base.sha),
   ];
@@ -566,12 +597,14 @@ export function renderBatches(plan, value, latest) {
       "Human asset review required: " + summary.excluded.map(escape).join(", "),
     );
   lines.push(
-    "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
+    full
+      ? "One request reviews all collected text using Claude Opus 5.5 with extended context and constrained JSON output. Exact source evidence and coverage are independently revalidated. Binary assets still require human review; completion is not a guarantee of correctness."
+      : "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
   );
   return lines.join("\n\n");
 }
 export async function publishBatches(api, target, value, standards) {
-  const plan = await collectPlan(api, target, standards);
+  const plan = await collectFullPlan(api, target, standards);
   const summary = validateEnvelope(value, plan);
   const result = await publishComment(api, target, (latest) =>
     renderBatches(plan, value, latest),
