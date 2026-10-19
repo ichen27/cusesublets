@@ -323,18 +323,44 @@ export async function collectPlan(api, target, standards) {
     context.batch.total = plan.batches.length;
     const paths = new Set(context.files.map((f) => f.path)),
       folders = new Set([...paths].map(posix.dirname));
+    const imports = new Set();
+    for (const file of context.files) {
+      // Read already-verified complete blobs so segmented units still retain imports.
+      const source = [target.base, target.head]
+        .map((ref) => cache.get(trees[ref].get(file.path)?.sha) || "")
+        .join("\n");
+      for (const match of source.matchAll(
+        /(?:from\s*|import\s*\(\s*|import\s*)["'](\.[^"']+)["']/g,
+      )) {
+        const imported = posix.normalize(
+          posix.join(posix.dirname(file.path), match[1]),
+        );
+        for (const suffix of [
+          "",
+          ".ts",
+          ".tsx",
+          ".js",
+          ".mjs",
+          "/index.ts",
+          "/index.tsx",
+        ])
+          imports.add(imported + suffix);
+      }
+    }
     const candidates = [...trees[target.head].keys()].filter(
       (p) =>
         !paths.has(p) &&
         /\.(swift|[cm]?[jt]sx?|json|sql|py)$/.test(p) &&
         !/(package-lock\.json|worker-configuration\.d\.ts)$/.test(p) &&
-        (folders.has(posix.dirname(p)) ||
+        (imports.has(p) ||
+          folders.has(posix.dirname(p)) ||
           /^(shared\/|worker\/(?:.*auth|account|member)|ios\/CuseSublets\/(?:APIClient|Models|PhotoCapturePolicy))/.test(
             p,
           )),
     );
     candidates.sort(
       (a, b) =>
+        Number(!imports.has(a)) - Number(!imports.has(b)) ||
         Number(!/auth|Models|APIClient|shared\//i.test(a)) -
           Number(!/auth|Models|APIClient|shared\//i.test(b)) ||
         a.localeCompare(b, "en"),

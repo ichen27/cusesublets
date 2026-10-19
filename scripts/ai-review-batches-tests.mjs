@@ -469,3 +469,32 @@ test("duplicate findings within a response retain the higher severity", () => {
     "high",
   );
 });
+
+test("segmented tests keep their imported implementation as priority supporting context", async () => {
+  const f = fixture([
+    added(
+      "tests/check.mjs",
+      'import { check } from "../implementation/check.mjs";\n' +
+        Array(3000).fill("// padding padding padding padding").join("\n"),
+    ),
+  ]);
+  const id = "c".repeat(40),
+    content = "export function check() {}";
+  f.responses[`/git/trees/${head}?recursive=1`].tree.push({
+    path: "implementation/check.mjs",
+    type: "blob",
+    mode: "100644",
+    sha: id,
+    size: content.length,
+  });
+  f.responses[`/git/blobs/${id}`] = {
+    encoding: "base64",
+    content: Buffer.from(content).toString("base64"),
+    size: content.length,
+  };
+  const plan = await collectPlan(f.api, target, "standards");
+  assert.deepEqual(plan.issues, []);
+  assert.ok(plan.batches.some((b) => b.files.some((f) => f.headStart > 1)));
+  for (const b of plan.batches)
+    assert.ok(b.surrounding.some((f) => f.path === "implementation/check.mjs"));
+});
