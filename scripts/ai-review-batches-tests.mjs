@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   collectPlan,
+  collectFullPlan,
   fileUnits,
   combine,
   envelope,
@@ -18,6 +19,7 @@ import {
 import {
   emptyReport,
   modelContext,
+  compactContext,
   parsePatch,
   validateFindings,
 } from "./ai-review/core.mjs";
@@ -255,13 +257,16 @@ test("combined result retains findings from every batch and cannot turn missing 
 });
 test("publisher independently rebuilds coverage and rejects fabricated successful summaries", async () => {
   const f = fixture();
-  const plan = await collectPlan(f.api, target, "s");
+  const plan = await collectFullPlan(f.api, target, "s");
   const result = envelope(
     plan,
     plan.batches.map((b) => batchResult(b, complete(b))),
   );
   assert.equal(await publishBatches(f.api, target, result, "s"), true);
-  assert.match(f.writes.at(-1).body, /3\/3 text batches completed/);
+  assert.match(
+    f.writes.at(-1).body,
+    /1\/1 full-context text reviews completed/,
+  );
   result.results.pop();
   await assert.rejects(
     () => publishBatches(f.api, target, result, "s"),
@@ -468,4 +473,295 @@ test("duplicate findings within a response retain the higher severity", () => {
     ).findings[0].severity,
     "high",
   );
+});
+
+test("full context keeps all changed source together and includes related source beyond eight files", async () => {
+  const f = fixture();
+  const tree = f.responses[`/git/trees/${head}?recursive=1`].tree;
+  for (let i = 0; i < 12; i++) {
+    const id = (1000 + i).toString(16).padStart(40, "0");
+    const content = `let supporting${i} = true`;
+    tree.push({
+      path: `ios/Supporting${i}.swift`,
+      type: "blob",
+      mode: "100644",
+      sha: id,
+      size: content.length,
+    });
+    f.responses[`/git/blobs/${id}`] = {
+      encoding: "base64",
+      content: Buffer.from(content).toString("base64"),
+      size: content.length,
+    };
+  }
+  const plan = await collectFullPlan(f.api, target, "standards");
+  assert.deepEqual(plan.issues, []);
+  assert.equal(plan.batches.length, 1);
+  const c = plan.batches[0];
+  assert.equal(c.files.length, 106);
+  assert.equal(c.surrounding.length, 12);
+  assert.equal(c.scope.supportingFilesOmitted, 0);
+  const shown = compactContext(c);
+  assert.match(shown.files[0].head, /^1:let value/);
+  assert.deepEqual(shown.files[0].changedRight, [[1, 1]]);
+  assert.equal(shown.files[0].patch, undefined);
+  assert.equal(plan.batches[0].files[0].patch.startsWith("@@"), true);
+  const propertyOrderPlan = await collectFullPlan(
+    f.api,
+    { repository: target.repository, head, base, pr: 1 },
+    "standards",
+  );
+  assert.equal(
+    envelope(plan, []).fingerprint,
+    envelope(propertyOrderPlan, []).fingerprint,
+  );
+});
+
+test("full context verifies large patches without obsolete segment limits", async () => {
+  for (const content of [
+    "x".repeat(120000),
+    Array(400).fill("x".repeat(1000)).join("\n"),
+  ]) {
+    const file = added("large.ts", content);
+    const plan = await collectFullPlan(
+      fixture([file]).api,
+      target,
+      "standards",
+    );
+    assert.deepEqual(plan.issues, []);
+    assert.equal(plan.batches.length, 1);
+    assert.equal(plan.batches[0].files[0].head, content);
+    assert.throws(
+      () =>
+        fileUnits(
+          { ...file, path: file.filename, base: "", head: "wrong" },
+          { full: true },
+        ),
+      /evidence mismatch/,
+    );
+  }
+});
+
+test("compact context retains complete head and deleted base lines with context", () => {
+  const baseLines = Array.from({ length: 200 }, (_, i) => `old${i + 1}`);
+  const headLines = [...baseLines];
+  headLines[99] = "replacement";
+  const f = {
+    path: "x.ts",
+    status: "modified",
+    base: baseLines.join("\n"),
+    head: headLines.join("\n"),
+    patch: "@@ -100 +100 @@\n-old100\n+replacement",
+  };
+  const c = compactContext({ files: [f], surrounding: [] }).files[0];
+  assert.equal(c.base.split("\n").length, 81);
+  assert.match(c.base, /^60:old60/);
+  assert.match(c.base, /140:old140$/);
+  assert.equal(c.head.split("\n").length, 200);
+  assert.match(c.head, /100:replacement/);
+});
+
+test("wide citations narrow only to unique exact evidence in the original changed range", () => {
+  const head = Array.from({ length: 30 }, (_, i) => `source${i}`).join("\n");
+  const f = { ...added("range.ts", head), path: "range.ts", head, base: "" };
+  const finding = {
+    ...answer(f),
+    start: 1,
+    end: 20,
+    evidence: "source15\nsource16",
+  };
+  const valid = validateFindings(
+    { status: "completed", findings: [finding] },
+    { files: [f] },
+  );
+  assert.equal(valid.findings[0].start, 16);
+  assert.equal(valid.findings[0].end, 17);
+  assert.equal(finding.start, 1);
+  assert.equal(
+    validateFindings(
+      { status: "incomplete", findings: [finding] },
+      { files: [f] },
+    ).status,
+    "incomplete",
+  );
+  for (const patch of [
+    { evidence: "source25" },
+    { evidence: "source1" },
+    { end: 200 },
+    { end: 31 },
+    { evidence: head },
+  ])
+    assert.throws(() =>
+      validateFindings(
+        { status: "completed", findings: [{ ...finding, ...patch }] },
+        { files: [f] },
+      ),
+    );
+  const limited = {
+    ...f,
+    patch: "@@ -15,2 +16,2 @@\n-source15\n-source16\n+source15\n+source16",
+  };
+  assert.throws(
+    () =>
+      validateFindings(
+        { status: "completed", findings: [finding] },
+        { files: [limited] },
+      ),
+    /outside changed/,
+  );
+});
+
+test("full-context mandatory and selected supporting overflow fail before inference", async () => {
+  const huge = "x".repeat(800000);
+  const mandatory = fixture([
+    added("a.ts", huge),
+    added("b.ts", huge),
+    added("c.ts", huge),
+  ]);
+  const supporting = fixture([added("a.ts", "changed")]);
+  for (let i = 0; i < 4; i++) {
+    const id = (1000 + i).toString(16).padStart(40, "0");
+    supporting.responses[`/git/trees/${head}?recursive=1`].tree.push({
+      path: `support${i}.ts`,
+      type: "blob",
+      mode: "100644",
+      sha: id,
+      size: huge.length,
+    });
+    supporting.responses[`/git/blobs/${id}`] = {
+      encoding: "base64",
+      content: Buffer.from(huge).toString("base64"),
+      size: huge.length,
+    };
+  }
+  for (const f of [mandatory, supporting]) {
+    let calls = 0;
+    const plan = await collectFullPlan(f.api, target, "standards");
+    assert.ok(plan.issues.length > 0);
+    const result = await reviewPlan(
+      plan,
+      { gptProvider: "subscription" },
+      {
+        reviewer: async () => {
+          calls++;
+          throw new Error("must not run");
+        },
+      },
+    );
+    assert.equal(calls, 0);
+    assert.equal(result.summary.status, "incomplete");
+  }
+});
+
+test("full-context fingerprint is stable across GitHub file and tree ordering", async () => {
+  const f = fixture(),
+    other = fixture();
+  // Reverse the entire enumeration before repaging, not just within pages.
+  const allFiles = [1, 2, 3]
+    .flatMap(
+      (page) => other.responses[`/pulls/1/files?per_page=100&page=${page}`],
+    )
+    .reverse();
+  for (let page = 1; page <= 3; page++)
+    other.responses[`/pulls/1/files?per_page=100&page=${page}`] =
+      allFiles.slice((page - 1) * 100, page * 100);
+  // Include a nonempty base tree to exercise both trees' enumeration order.
+  for (const fixture of [f, other]) {
+    const entries = fixture.responses[`/git/trees/${head}?recursive=1`].tree
+      .slice(0, 2)
+      .map((entry, index) => ({
+        ...entry,
+        path: `metadata/reference${index}.txt`,
+      }));
+    fixture.responses[`/git/trees/${base}?recursive=1`].tree =
+      structuredClone(entries);
+    fixture.responses[`/git/trees/${head}?recursive=1`].tree.push(...entries);
+  }
+  for (const ref of [base, head])
+    other.responses[`/git/trees/${ref}?recursive=1`].tree.reverse();
+  const a = await collectFullPlan(f.api, target, "standards");
+  const b = await collectFullPlan(other.api, target, "standards");
+  assert.equal(envelope(a, []).fingerprint, envelope(b, []).fingerprint);
+});
+
+test("segmented tests keep their imported implementation as priority supporting context", async () => {
+  const f = fixture([
+    added(
+      "tests/check.mjs",
+      'import { check } from "../implementation/check.mjs";\n' +
+        Array(3000).fill("// padding padding padding padding").join("\n"),
+    ),
+  ]);
+  const id = "c".repeat(40),
+    content = "export function check() {}";
+  f.responses[`/git/trees/${head}?recursive=1`].tree.push({
+    path: "implementation/check.mjs",
+    type: "blob",
+    mode: "100644",
+    sha: id,
+    size: content.length,
+  });
+  f.responses[`/git/blobs/${id}`] = {
+    encoding: "base64",
+    content: Buffer.from(content).toString("base64"),
+    size: content.length,
+  };
+  const plan = await collectPlan(f.api, target, "standards");
+  assert.deepEqual(plan.issues, []);
+  assert.ok(plan.batches.some((b) => b.files.some((f) => f.headStart > 1)));
+  for (const b of plan.batches)
+    assert.ok(b.surrounding.some((f) => f.path === "implementation/check.mjs"));
+  const full = await collectFullPlan(f.api, target, "standards");
+  assert.deepEqual(full.issues, []);
+  assert.equal(full.batches.length, 1);
+  assert.ok(
+    full.batches[0].surrounding.some(
+      (f) => f.path === "implementation/check.mjs",
+    ),
+  );
+});
+
+test("unsupported unchanged neighbors are disclosed while failed source reads still block full review", async () => {
+  const f = fixture([added("a.ts", "changed")]);
+  const tree = f.responses[`/git/trees/${head}?recursive=1`].tree;
+  for (const [i, mode, size, content] of [
+    [1, "120000", 4, "link"],
+    [2, "100644", 1000001, ""],
+    [3, "100644", 1, "AA=="],
+    [4, "100644", 1, "/w=="],
+  ]) {
+    const id = (1000 + i).toString(16).padStart(40, "0");
+    tree.push({ path: `neighbor${i}.ts`, type: "blob", mode, sha: id, size });
+    if (i > 2)
+      f.responses[`/git/blobs/${id}`] = { encoding: "base64", content, size };
+  }
+  const plan = await collectFullPlan(f.api, target, "standards");
+  assert.deepEqual(plan.issues, []);
+  assert.equal(plan.batches[0].scope.supportingFilesOmitted, 4);
+  assert.equal(plan.batches[0].surrounding.length, 0);
+  const missingId = "e".repeat(40);
+  tree.push({
+    path: "unavailable.ts",
+    type: "blob",
+    mode: "100644",
+    sha: missingId,
+    size: 10,
+  });
+  const broken = await collectFullPlan(f.api, target, "standards");
+  assert.match(broken.issues.join(" "), /Cannot collect related source/);
+});
+
+test("failed full collection publishes full-context labels even without a batch", async () => {
+  const f = fixture([added("a.ts", "a")]);
+  f.responses["/pulls/1"].changed_files = 301;
+  const plan = await collectFullPlan(f.api, target, "standards");
+  assert.equal(plan.batches.length, 0);
+  assert.equal(
+    await publishBatches(f.api, target, envelope(plan, []), "standards"),
+    false,
+  );
+  const comment = JSON.stringify(f.writes);
+  assert.match(comment, /0\/0 full-context text reviews/);
+  assert.match(comment, /extended context/);
+  assert.doesNotMatch(comment, /Each batch requests/);
 });

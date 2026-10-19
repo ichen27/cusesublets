@@ -6,6 +6,8 @@ import {
   exactKeys,
   escape,
   modelContext,
+  compactContext,
+  FULL_REVIEW_LIMITS,
   parsePatch,
   renderComment,
   review,
@@ -32,6 +34,7 @@ export const BATCH_LIMITS = Object.freeze({
   runMs: 60 * 60 * 1000,
   artifactBytes: 1000000,
 });
+class UnsupportedSourceError extends Error {}
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value));
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -51,7 +54,7 @@ const targetOf = (plan) => ({
 
 // Verify complete patches against immutable blobs, then split oversized files at
 // original diff coordinates. No contributor code, external diff tool or model runs here.
-export function fileUnits(file) {
+export function fileUnits(file, { full = false } = {}) {
   const changed = parsePatch(file.patch);
   if (
     changed.left.size !== file.deletions ||
@@ -120,7 +123,7 @@ export function fileUnits(file) {
     headStart: 1,
   };
   const size = (f) => bytes(modelContext({ files: [f], surrounding: [] }));
-  if (size(basic) <= BATCH_LIMITS.unitBytes) return [basic];
+  if (full || size(basic) <= BATCH_LIMITS.unitBytes) return [basic];
   const window = (group) => {
     const first = group[0],
       last = group.at(-1);
@@ -157,10 +160,22 @@ export function fileUnits(file) {
   return units;
 }
 
-export async function collectPlan(api, target, standards) {
+export async function collectFullPlan(api, target, standards) {
+  return collectPlan(api, target, standards, { full: true });
+}
+export async function collectPlan(
+  api,
+  target,
+  standards,
+  { full = false } = {},
+) {
   validateTarget(target);
   const plan = {
-    ...target,
+    pr: target.pr,
+    base: target.base,
+    head: target.head,
+    repository: target.repository,
+    reviewMode: full ? "full-context-v1" : "batches-v1",
     changedFiles: 0,
     issues: [],
     excluded: [],
@@ -213,27 +228,30 @@ export async function collectPlan(api, target, standards) {
   let loaded = 0;
   const source = async (path, ref) => {
     safePath(path);
-    if (sensitive(path)) throw new Error("Sensitive path excluded");
+    if (sensitive(path))
+      throw new UnsupportedSourceError("Sensitive path excluded");
     const entry = trees[ref].get(path);
     if (
       !entry ||
       !["100644", "100755"].includes(entry.mode) ||
       entry.size > BATCH_LIMITS.blobBytes
     )
-      throw new Error("Unsupported source type or size");
+      throw new UnsupportedSourceError("Unsupported source type or size");
     if (cache.has(entry.sha)) return cache.get(entry.sha);
     const blob = await api("/git/blobs/" + sha(entry.sha));
     if (blob.encoding !== "base64" || blob.size > BATCH_LIMITS.blobBytes)
       throw new Error("Unsupported blob");
     const raw = Buffer.from(blob.content, "base64");
     loaded += raw.length;
-    if (
-      raw.length !== blob.size ||
-      raw.includes(0) ||
-      loaded > BATCH_LIMITS.sourceBytes
-    )
+    if (raw.length !== blob.size || loaded > BATCH_LIMITS.sourceBytes)
       throw new Error("Invalid source or total source budget exceeded");
-    const content = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    if (raw.includes(0)) throw new UnsupportedSourceError("Binary source");
+    let content;
+    try {
+      content = new TextDecoder("utf-8", { fatal: true }).decode(raw);
+    } catch {
+      throw new UnsupportedSourceError("Non-UTF-8 source");
+    }
     cache.set(entry.sha, content);
     return content;
   };
@@ -260,18 +278,21 @@ export async function collectPlan(api, target, standards) {
         file.status === "removed"
           ? ""
           : await source(file.filename, target.head);
-      for (const [index, unit] of fileUnits({
+      const original = {
         ...file,
         path: file.filename,
         base,
         head,
-      }).entries())
+      };
+      const verifiedUnits = fileUnits(original, { full });
+      for (const [index, unit] of verifiedUnits.entries())
         units.push({ ...unit, unitId: file.filename + "#" + index });
     } catch {
       plan.issues.push("Cannot fully collect text change: " + file.filename);
     }
   }
   const template = {
+    ...(full ? { reviewMode: "full-context-v1" } : {}),
     base: target.base,
     head: target.head,
     mergeBase: target.base,
@@ -286,23 +307,28 @@ export async function collectPlan(api, target, standards) {
     scope: { visualAssets: plan.excluded, supportingFilesOmitted: 0 },
     batch: {
       changedPaths: files.map((f) => f.filename),
-      instructions:
-        "This is one bounded batch. Review its changed lines; other changed paths are inventory, not reviewed evidence. Source excerpts preserve original line numbers. Supporting files provide cross-component context but may be incomplete. Report insufficient relevant context honestly.",
+      instructions: full
+        ? "Review all collected changed text together. Complete head files, deleted base lines with surrounding context, removed files, and related source retain original line coordinates. Report insufficient relevant context honestly."
+        : "This is one bounded batch. Review its changed lines; other changed paths are inventory, not reviewed evidence. Source excerpts preserve original line numbers. Supporting files provide cross-component context but may be incomplete. Report insufficient relevant context honestly.",
     },
   };
+  const present = full ? compactContext : modelContext;
+  const inputLimit = full
+    ? FULL_REVIEW_LIMITS.characters - 20_000
+    : BATCH_LIMITS.changedBytes;
   let batch = structuredClone(template);
   for (const unit of units) {
     const proposed = { ...batch, files: [...batch.files, unit] };
     if (
       batch.files.length &&
-      (batch.files.length >= 40 ||
-        bytes(modelContext(proposed)) > BATCH_LIMITS.changedBytes)
+      !full &&
+      (batch.files.length >= 40 || bytes(present(proposed)) > inputLimit)
     ) {
       plan.batches.push(batch);
       batch = structuredClone(template);
     }
     batch.files.push(unit);
-    if (bytes(modelContext(batch)) > BATCH_LIMITS.changedBytes)
+    if (bytes(present(batch)) > inputLimit)
       return fail(
         "A source unit plus mandatory context exceeds the batch budget.",
       );
@@ -323,37 +349,72 @@ export async function collectPlan(api, target, standards) {
     context.batch.total = plan.batches.length;
     const paths = new Set(context.files.map((f) => f.path)),
       folders = new Set([...paths].map(posix.dirname));
+    const imports = new Set();
+    for (const file of context.files) {
+      // Read already-verified complete blobs so segmented units still retain imports.
+      const source = [target.base, target.head]
+        .map((ref) => cache.get(trees[ref].get(file.path)?.sha) || "")
+        .join("\n");
+      for (const match of source.matchAll(
+        /(?:from\s*|import\s*\(\s*|import\s*)["'](\.[^"']+)["']/g,
+      )) {
+        const imported = posix.normalize(
+          posix.join(posix.dirname(file.path), match[1]),
+        );
+        for (const suffix of [
+          "",
+          ".ts",
+          ".tsx",
+          ".js",
+          ".mjs",
+          "/index.ts",
+          "/index.tsx",
+        ])
+          imports.add(imported + suffix);
+      }
+    }
     const candidates = [...trees[target.head].keys()].filter(
       (p) =>
         !paths.has(p) &&
-        /\.(swift|[cm]?[jt]sx?|json|sql|py)$/.test(p) &&
+        /\.(swift|[cm]?[jt]sx?|json|sql|py|html|css)$/.test(p) &&
         !/(package-lock\.json|worker-configuration\.d\.ts)$/.test(p) &&
-        (folders.has(posix.dirname(p)) ||
+        (imports.has(p) ||
+          folders.has(posix.dirname(p)) ||
           /^(shared\/|worker\/(?:.*auth|account|member)|ios\/CuseSublets\/(?:APIClient|Models|PhotoCapturePolicy))/.test(
             p,
           )),
     );
     candidates.sort(
       (a, b) =>
+        Number(!imports.has(a)) - Number(!imports.has(b)) ||
         Number(!/auth|Models|APIClient|shared\//i.test(a)) -
           Number(!/auth|Models|APIClient|shared\//i.test(b)) ||
         a.localeCompare(b, "en"),
     );
     let count = 0;
     for (const path of candidates) {
-      if (count >= 8 || (trees[target.head].get(path).size || 0) > 60000) {
+      if (
+        !full &&
+        (count >= 8 || (trees[target.head].get(path).size || 0) > 60000)
+      ) {
         context.scope.supportingFilesOmitted++;
         continue;
       }
       try {
         const content = await source(path, target.head);
         context.surrounding.push({ path, ref: target.head, content });
-        if (bytes(modelContext(context)) > BATCH_LIMITS.contextBytes) {
+        if (
+          bytes(present(context)) >
+          (full ? inputLimit : BATCH_LIMITS.contextBytes)
+        ) {
           context.surrounding.pop();
           context.scope.supportingFilesOmitted++;
+          if (full) return fail("Full review context exceeds bound: " + path);
         } else count++;
-      } catch {
+      } catch (error) {
         context.scope.supportingFilesOmitted++;
+        if (full && !(error instanceof UnsupportedSourceError))
+          return fail("Cannot collect related source: " + path);
       }
     }
   }
@@ -529,16 +590,17 @@ export async function reviewPlan(
 }
 export function renderBatches(plan, value, latest) {
   const summary = validateEnvelope(value, plan);
+  const full = plan.reviewMode === "full-context-v1";
   const report = {
     ...emptyReport(
       plan,
       summary.status,
-      `${summary.completed}/${summary.total} text batches completed; ${summary.changedFiles} changed files, ${summary.units} source units. ${summary.excluded.length} assets excluded for human review.`,
+      `${summary.completed}/${summary.total} ${full ? "full-context text reviews" : "text batches"} completed; ${summary.changedFiles} changed files, ${summary.units} source units. ${summary.excluded.length} assets excluded for human review.`,
     ),
     findings: summary.findings.slice(0, 8),
   };
   report.gpt.status = summary.status;
-  report.gpt.model = "claude/claude-opus-5-5";
+  report.gpt.model = "claude/claude-opus-5-5" + (full ? "[1m]" : "");
   const lines = [
     renderComment(report, latest.head.sha, plan.repository, latest.base.sha),
   ];
@@ -566,12 +628,14 @@ export function renderBatches(plan, value, latest) {
       "Human asset review required: " + summary.excluded.map(escape).join(", "),
     );
   lines.push(
-    "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
+    full
+      ? "One request reviews all collected text, requesting Claude Opus 5.5 with extended context and constrained JSON output. The gateway does not independently attest upstream model identity, effort or usage. Exact source evidence and coverage are independently revalidated. Binary assets still require human review; completion is not a guarantee of correctness."
+      : "Each batch requests Claude Opus 5.5 through the High-effort subscription route. The gateway does not independently attest upstream model identity, effort or usage. Cross-file context is bounded; completed means all planned text batches completed, not a guarantee of correctness.",
   );
   return lines.join("\n\n");
 }
 export async function publishBatches(api, target, value, standards) {
-  const plan = await collectPlan(api, target, standards);
+  const plan = await collectFullPlan(api, target, standards);
   const summary = validateEnvelope(value, plan);
   const result = await publishComment(api, target, (latest) =>
     renderBatches(plan, value, latest),

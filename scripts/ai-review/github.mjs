@@ -386,7 +386,7 @@ export function validateReport(report) {
       report.status,
     ) ||
     !Array.isArray(report.findings) ||
-    report.findings.length > 8
+    report.findings.length > 40
   )
     throw new Error("Invalid report envelope");
   if (
