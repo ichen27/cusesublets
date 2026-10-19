@@ -13,6 +13,7 @@ import {
   reviewPlan,
   publishBatches,
   BATCH_LIMITS,
+  batchResult,
 } from "./ai-review/batches.mjs";
 import {
   emptyReport,
@@ -226,12 +227,17 @@ test("supported binary assets are disclosed; unsupported source and secrets bloc
 });
 test("combined result retains findings from every batch and cannot turn missing or failed batches green", async () => {
   const plan = await collectPlan(fixture().api, target, "s");
-  const results = plan.batches.map((b) => complete(b, [answer(b.files[0])]));
+  const results = plan.batches.map((b) =>
+    batchResult(b, complete(b, [answer(b.files[0])])),
+  );
   assert.equal(combine(plan, results).findings.length, 3);
   assert.equal(combine(plan, results).status, "completed");
   for (const status of ["incomplete", "failed", "unavailable"]) {
     const r = [...results];
-    r[1] = emptyReport(plan, status, "synthetic failure");
+    r[1] = batchResult(
+      plan.batches[1],
+      emptyReport(plan, status, "synthetic failure"),
+    );
     const all = combine(plan, r);
     assert.equal(all.status, "incomplete");
     assert.equal(all.findings.length, 2);
@@ -241,10 +247,10 @@ test("combined result retains findings from every batch and cannot turn missing 
   forged.summary.completed = 99;
   assert.throws(() => validateEnvelope(forged, plan), /Forged/);
   const wrong = structuredClone(envelope(plan, results));
-  wrong.results[0].head = "c".repeat(40);
+  wrong.results[0].report.head = "c".repeat(40);
   assert.throws(() => validateEnvelope(wrong, plan), /commit/);
   const uncovered = structuredClone(envelope(plan, results));
-  uncovered.results[0].findings = [answer(plan.batches[2].files[0])];
+  uncovered.results[0].report.findings = [answer(plan.batches[2].files[0])];
   assert.throws(() => validateEnvelope(uncovered, plan), /location/);
 });
 test("publisher independently rebuilds coverage and rejects fabricated successful summaries", async () => {
@@ -252,7 +258,7 @@ test("publisher independently rebuilds coverage and rejects fabricated successfu
   const plan = await collectPlan(f.api, target, "s");
   const result = envelope(
     plan,
-    plan.batches.map((b) => complete(b)),
+    plan.batches.map((b) => batchResult(b, complete(b))),
   );
   assert.equal(await publishBatches(f.api, target, result, "s"), true);
   assert.match(f.writes.at(-1).body, /3\/3 text batches completed/);
@@ -341,7 +347,98 @@ test("CLI writes failure artifact, publishes it and exits nonzero for incomplete
       { cwd: dir, env, encoding: "utf8" },
     );
     assert.equal(published.status, 1, published.stderr);
+    await writeFile(
+      join(dir, "ai-review-output/report.json"),
+      JSON.stringify(complete(target)),
+    );
+    const legacy = spawnSync(
+      process.execPath,
+      ["--import", preload, command, "publish"],
+      { cwd: dir, env, encoding: "utf8" },
+    );
+    assert.equal(
+      legacy.status,
+      1,
+      "Legacy success must not bypass batch coverage verification",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("duplicated or reordered empty successes cannot stand in for missing batches", async () => {
+  const plan = await collectPlan(fixture().api, target, "s");
+  const results = plan.batches.map((b) => batchResult(b, complete(b)));
+  assert.throws(
+    () => envelope(plan, [results[0], results[0], results[2]]),
+    /identity/,
+  );
+  assert.throws(
+    () => envelope(plan, [results[1], results[0], results[2]]),
+    /identity/,
+  );
+});
+test("transient orchestration failure retains completed findings and marks interruption", async () => {
+  const plan = await collectPlan(fixture().api, target, "s");
+  let reads = 0;
+  const result = await reviewPlan(
+    plan,
+    { gptProvider: "subscription" },
+    {
+      reviewer: async (c) => complete(c, [answer(c.files[0])]),
+      isCurrent: async () => {
+        if (++reads === 2) throw new Error("GitHub unavailable");
+        return true;
+      },
+    },
+  );
+  assert.equal(result.results.length, 1);
+  assert.equal(result.interrupted, true);
+  assert.equal(result.summary.status, "incomplete");
+  assert.equal(result.summary.findings.length, 1);
+  assert.equal(validateEnvelope(result, plan).completed, 1);
+});
+test("aggregate retains more than eight findings in the artifact", async () => {
+  const plan = await collectPlan(fixture().api, target, "s");
+  const results = plan.batches.map((b) =>
+    batchResult(b, complete(b, b.files.slice(0, 5).map(answer))),
+  );
+  assert.equal(envelope(plan, results).summary.findings.length, 15);
+});
+test("large modified files retain evidence coordinates on both diff sides", () => {
+  const lines = Array.from(
+      { length: 4000 },
+      (_, i) => `value${i}=${"x".repeat(70)}`,
+    ),
+    before = lines.join("\n");
+  const oldA = lines[99],
+    oldB = lines[2999];
+  lines[99] = "newA";
+  lines[2999] = "newB";
+  const units = fileUnits({
+    path: "large.ts",
+    status: "modified",
+    base: before,
+    head: lines.join("\n"),
+    additions: 2,
+    deletions: 2,
+    patch: `@@ -100 +100 @@\n-${oldA}\n+newA\n@@ -3000 +3000 @@\n-${oldB}\n+newB`,
+  });
+  assert.equal(units.length, 2);
+  for (const side of ["LEFT", "RIGHT"]) {
+    const finding = {
+      ...answer(units[1]),
+      side,
+      start: 3000,
+      end: 3000,
+      evidence: side === "LEFT" ? oldB : "newB",
+    };
+    assert.equal(
+      validateFindings(
+        { status: "completed", findings: [finding] },
+        { files: units },
+      ).findings.length,
+      1,
+    );
   }
 });

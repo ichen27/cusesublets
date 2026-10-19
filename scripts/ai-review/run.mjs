@@ -82,25 +82,30 @@ if (mode === "pending") {
     ),
   );
 } else if (mode === "review") {
-  let report;
+  let report, plan;
   try {
     const standards = await loadStandards();
-    const plan = await collectPlan(api, target, standards);
-    await saveReport(envelope(plan, []));
+    plan = await collectPlan(api, target, standards);
+    report = envelope(plan, []);
+    await saveReport(report);
     report = await reviewPlan(plan, configFromEnv(process.env), {
       isCurrent: async () =>
         currentMatches(await api("/pulls/" + target.pr), target),
       onBatch: async (index, status, partial) => {
+        report = partial;
         await saveReport(partial);
         console.log(`Batch ${index}: ${status}`);
       },
     });
   } catch {
-    report = emptyReport(
-      target,
-      "failed",
-      "Trusted source collection or configuration failed; no review result available.",
-    );
+    report =
+      report?.version === 2
+        ? envelope(plan, report.results, true)
+        : emptyReport(
+            target,
+            "failed",
+            "Trusted source collection or configuration failed; no review result available.",
+          );
   }
   if (report.version === 1) validateReport(report);
   await saveReport(report);
@@ -115,7 +120,11 @@ if (mode === "pending") {
     if (data.byteLength > BATCH_LIMITS.artifactBytes)
       throw new Error("Oversized report");
     report = JSON.parse(data.toString("utf8"));
-    if (report.version !== 2) validateReport(report);
+    if (report.version !== 2) {
+      validateReport(report);
+      if (report.status === "completed")
+        throw new Error("Successful publication requires batch coverage");
+    }
   } catch {
     report = emptyReport(
       target,
@@ -132,8 +141,7 @@ if (mode === "pending") {
         report,
         await loadStandards(),
       );
-    else
-      completed = (await publish(api, target, report)).status === "completed";
+    else await publish(api, target, report);
   } catch {
     await publish(
       api,

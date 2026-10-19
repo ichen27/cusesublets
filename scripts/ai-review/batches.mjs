@@ -365,12 +365,21 @@ export async function collectPlan(api, target, standards) {
 export function planFingerprint(plan) {
   return digest(plan);
 }
-export function combine(plan, results) {
+export const batchFingerprint = (context) => digest(context);
+export const batchResult = (context, report) => ({
+  id: batchFingerprint(context),
+  report,
+});
+export function combine(plan, results, interrupted = false) {
   if (!Array.isArray(results) || results.length > plan.batches.length)
     throw new Error("Unexpected batch results");
   const findings = new Map();
   let completed = 0;
-  results.forEach((result, index) => {
+  results.forEach((entry, index) => {
+    exactKeys(entry, ["id", "report"]);
+    if (entry.id !== batchFingerprint(plan.batches[index]))
+      throw new Error("Batch identity mismatch");
+    const result = entry.report;
     validateReport(result);
     if (result.base !== plan.base || result.head !== plan.head)
       throw new Error("Batch commit mismatch");
@@ -397,6 +406,7 @@ export function combine(plan, results) {
     }
   });
   const status =
+    interrupted ||
     plan.issues.length ||
     !plan.batches.length ||
     completed !== plan.batches.length
@@ -410,7 +420,12 @@ export function combine(plan, results) {
     changedFiles: plan.changedFiles,
     units: plan.batches.reduce((n, b) => n + b.files.length, 0),
     excluded: plan.excluded,
-    issues: plan.issues,
+    issues: interrupted
+      ? [
+          ...plan.issues,
+          "Review orchestration interrupted; retained completed batches.",
+        ]
+      : plan.issues,
     findings: [...findings.values()].sort(
       (a, b) =>
         severity[a.severity] - severity[b.severity] ||
@@ -419,14 +434,15 @@ export function combine(plan, results) {
     ),
   };
 }
-export function envelope(plan, results) {
+export function envelope(plan, results, interrupted = false) {
   return {
     version: 2,
     base: plan.base,
     head: plan.head,
     fingerprint: planFingerprint(plan),
     results,
-    summary: combine(plan, results),
+    interrupted,
+    summary: combine(plan, results, interrupted),
   };
 }
 export function validateEnvelope(value, plan) {
@@ -437,15 +453,17 @@ export function validateEnvelope(value, plan) {
     "fingerprint",
     "results",
     "summary",
+    "interrupted",
   ]);
   if (
+    typeof value.interrupted !== "boolean" ||
     value.version !== 2 ||
     value.base !== plan.base ||
     value.head !== plan.head ||
     value.fingerprint !== planFingerprint(plan)
   )
     throw new Error("Review coverage fingerprint mismatch");
-  const summary = combine(plan, value.results);
+  const summary = combine(plan, value.results, value.interrupted);
   if (JSON.stringify(value.summary) !== JSON.stringify(summary))
     throw new Error("Forged aggregate report");
   return summary;
@@ -467,7 +485,12 @@ export async function reviewPlan(
   // Collection problems are explicit coverage failures. Do not spend quota on a partial plan.
   if (!plan.issues.length)
     for (const [index, context] of plan.batches.entries()) {
-      if (now() - start >= BATCH_LIMITS.runMs || !(await isCurrent())) break;
+      if (now() - start >= BATCH_LIMITS.runMs) break;
+      try {
+        if (!(await isCurrent())) return envelope(plan, results, true);
+      } catch {
+        return envelope(plan, results, true);
+      }
       let result;
       try {
         result = await reviewer(context, cfg);
@@ -479,7 +502,7 @@ export async function reviewPlan(
           "Batch execution failed; no result available.",
         );
       }
-      results.push(result);
+      results.push(batchResult(context, result));
       await onBatch(index + 1, result.status, envelope(plan, results));
       // A provider outage should not trigger 24 futile calls. Unattempted batches remain missing.
       if (["failed", "unavailable"].includes(result.status)) break;
@@ -507,7 +530,7 @@ export function renderBatches(plan, value, latest) {
       plan.batches
         .map(
           (b, i) =>
-            `batch ${i + 1}: ${value.results[i]?.status || "missing"} (${b.files.length} units)`,
+            `batch ${i + 1}: ${value.results[i]?.report.status || "missing"} (${b.files.length} units)`,
         )
         .join("; "),
   );
@@ -517,9 +540,9 @@ export function renderBatches(plan, value, latest) {
     );
   for (const issue of summary.issues)
     lines.push("Coverage failure: " + escape(issue));
-  for (const [i, result] of value.results.entries())
-    if (result.status !== "completed")
-      lines.push(`Batch ${i + 1}: ` + escape(result.reason));
+  for (const [i, entry] of value.results.entries())
+    if (entry.report.status !== "completed")
+      lines.push(`Batch ${i + 1}: ` + escape(entry.report.reason));
   if (summary.excluded.length)
     lines.push(
       "Human asset review required: " + summary.excluded.map(escape).join(", "),
