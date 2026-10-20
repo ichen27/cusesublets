@@ -1,0 +1,87 @@
+name: CuseSublets
+options:
+  bundleIdPrefix: com.ichen27
+  deploymentTarget:
+    iOS: '17.0'
+configs:
+  Debug: debug
+  Release: release
+  PersonalDevice: debug
+settings:
+  configs:
+    PersonalDevice:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG PERSONAL_DEVICE"
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1'
+    CODE_SIGN_STYLE: Automatic
+    CUSE_CALLBACK_SCHEME: cusesublets
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: CuseSublets
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_NSCameraUsageDescription: Capture room images and approximate layouts to create tours for your listing.
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+    INFOPLIST_KEY_APIBaseURL: https://app-cusesublets.chenagent.com
+    SWIFT_EMIT_LOC_STRINGS: YES
+targets:
+  CuseSublets:
+    type: application
+    platform: iOS
+    sources:
+      - CuseSublets
+      - path: ../shared/privacy.json
+        buildPhase: resources
+    info:
+      path: CuseSublets/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: ["$(CUSE_CALLBACK_SCHEME)"]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: '1'
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_BUNDLE_IDENTIFIER: com.ichen27.cusesublets
+        CODE_SIGN_ENTITLEMENTS: CuseSublets/CuseSublets.entitlements
+      configs:
+        PersonalDevice:
+          CODE_SIGN_ENTITLEMENTS: ''
+          PRODUCT_BUNDLE_IDENTIFIER: com.ichen27.cusesublets.devicetest
+          INFOPLIST_KEY_CFBundleDisplayName: Cuse Capture Test
+          CUSE_CALLBACK_SCHEME: cusesublets-capture-test
+  CuseSubletsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [CuseSubletsTests]
+    dependencies:
+      - target: CuseSublets
+  CuseSubletsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [CuseSubletsUITests]
+    dependencies:
+      - target: CuseSublets
+schemes:
+  CuseSublets:
+    build:
+      targets:
+        CuseSublets: all
+    test:
+      targets: [CuseSubletsTests, CuseSubletsUITests]
+  Cuse Capture Test:
+    build:
+      targets:
+        CuseSublets: all
+    run:
+      config: PersonalDevice
+    test:
+      config: PersonalDevice
+      targets:
+        - name: CuseSubletsUITests
+          selectedTests: [PersonalDeviceTests/testStandaloneCaptureCheckWithoutMarketplace()]
+    archive:
+      config: Release

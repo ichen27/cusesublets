@@ -1,0 +1,189 @@
+import XCTest
+
+final class MarketplaceTests: XCTestCase {
+  @MainActor func testPublicBrowseAndSignedInNavigation() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
+    app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
+    app.launch()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    signOutIfNeeded(app)
+    app.tabBars.buttons["Browse"].tap()
+    XCTAssertTrue(app.staticTexts["Find a sublet.\nList your place."].exists)
+    attach(app, "Browse")
+    app.buttons["Filters"].tap()
+    XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["Reset filters"].exists)
+    XCTAssertTrue(app.switches["Furnished"].exists)
+    app.buttons["Done"].tap()
+    app.tabBars.buttons["Matches"].tap()
+    XCTAssertTrue(app.staticTexts["Find your fit"].waitForExistence(timeout: 5))
+    app.tabBars.buttons["Inbox"].tap()
+    XCTAssertTrue(app.staticTexts["Your conversations"].waitForExistence(timeout: 5))
+    app.tabBars.buttons["You"].tap()
+    app.buttons["Log in or create an account"].tap()
+    let create = app.buttons["Create an account"]
+    XCTAssertTrue(create.waitForExistence(timeout: 15))
+    create.tap()
+    XCTAssertTrue(app.textFields["Your name"].waitForExistence(timeout: 15))
+    app.textFields["Your name"].tap()
+    app.textFields["Your name"].typeText("iPhone UI Test")
+    app.textFields["Email"].tap()
+    app.textFields["Email"].typeText("iphone-\(UUID().uuidString)@example.test")
+    reveal(app.secureTextFields["Password"], in: app)
+    app.secureTextFields["Password"].tap()
+    app.secureTextFields["Password"].typeText("isolated-test-password-2026")
+    reveal(app.buttons["Create account"], in: app)
+    app.buttons["Create account"].tap()
+    XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 20))
+    attach(app, "Account")
+    app.buttons["List your place"].tap()
+    XCTAssertTrue(app.textFields["Listing title"].waitForExistence(timeout: 10))
+    app.textFields["Listing title"].tap()
+    app.textFields["Listing title"].typeText("Private iPhone draft")
+    let save = app.buttons["Save private draft & finish later"]
+    reveal(save, in: app)
+    save.tap()
+    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
+    app.swipeUp()
+    let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
+      .firstMatch
+    XCTAssertTrue(resume.waitForExistence(timeout: 10))
+    resume.tap()
+    let neighborhood = app.textFields["Neighborhood"]
+    XCTAssertTrue(neighborhood.waitForExistence(timeout: 10))
+    neighborhood.tap()
+    neighborhood.typeText("Westcott")
+    reveal(app.textFields["Approximate public address"], in: app)
+    app.textFields["Approximate public address"].tap()
+    app.textFields["Approximate public address"].typeText("Near Westcott — synthetic UI test")
+    app.swipeUp()
+    let description = app.descendants(matching: .any).matching(identifier: "listing-description")
+      .firstMatch
+    reveal(description, in: app)
+    description.tap()
+    description.typeText("Synthetic simulator listing only. This is not an available property.")
+    reveal(app.buttons["Publish listing"], in: app)
+    app.buttons["Publish listing"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Your place is published. Checks are still independent."].waitForExistence(
+        timeout: 15))
+    attach(app, "Published sample listing")
+    app.buttons["Add photos, room scans & documents"].tap()
+    app.buttons["View listing"].tap()
+    let comment = app.descendants(matching: .any).matching(identifier: "comment-draft").firstMatch
+    reveal(comment, in: app)
+    comment.tap()
+    let initialComment = "Synthetic public comment"
+    comment.typeText(initialComment)
+    reveal(app.buttons["Post"], in: app)
+    app.buttons["Post"].tap()
+    XCTAssertTrue(app.staticTexts[initialComment].waitForExistence(timeout: 10))
+    app.buttons["Edit"].tap()
+    reveal(comment, in: app)
+    comment.tap()
+    // Focusing this multiline field places the caret at the start. Test an explicit insertion.
+    comment.typeText("Edited ")
+    reveal(app.buttons["Save comment"], in: app)
+    app.buttons["Save comment"].tap()
+    XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 10))
+    attach(app, "Edited listing comment")
+    app.navigationBars.buttons.firstMatch.tap()
+    app.buttons["Capture or manage room layouts"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
+    attach(app, "Room capture capability")
+    // Return through the two pushed screens and close the editor explicitly.
+    app.navigationBars.buttons.firstMatch.tap()
+    app.navigationBars.buttons.firstMatch.tap()
+    app.buttons["Done"].tap()
+    app.tabBars.buttons["You"].tap()
+    reveal(app.buttons["Log out"], in: app)
+    app.buttons["Log out"].tap()
+    app.tabBars.buttons["You"].tap()
+    XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
+  }
+  @MainActor func testLocalDeviceCheckDoesNotRequireAccountOrSupportedCamera() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
+    app.launch()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    signOutIfNeeded(app)
+    reveal(app.buttons["Device capture check"], in: app)
+    app.buttons["Device capture check"].tap()
+    XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 10))
+    let start = app.buttons["Start camera test"]
+    reveal(start, in: app)
+    XCTAssertFalse(start.isEnabled, "Simulator must not pretend camera capture works")
+    attach(app, "Local device capture check")
+  }
+  @MainActor func testPrivacyNoticeAtLargestDynamicType() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
+    app.launchArguments += [
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+    ]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    signOutIfNeeded(app)
+    reveal(app.buttons["Data & privacy"], in: app)
+    app.buttons["Data & privacy"].tap()
+    XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      app.staticTexts["Development preview. Public release and real transactions are not enabled."]
+        .exists)
+    attach(app, "Privacy notice at largest Dynamic Type")
+  }
+  @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    if app.keyboards.firstMatch.exists {
+      let done = app.buttons["dismiss-keyboard"]
+      XCTAssertTrue(done.waitForExistence(timeout: 10))
+      done.tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+    }
+    // Floating tab bars can cover controls that XCTest still reports as hittable.
+    // Bring the whole control clear of the actual bars before asking XCTest to tap it.
+    func safeTop() -> CGFloat {
+      let bar = app.navigationBars.firstMatch
+      return bar.exists ? bar.frame.maxY + 4 : app.frame.minY
+    }
+    func safeBottom() -> CGFloat {
+      let bar = app.tabBars.firstMatch
+      return bar.exists ? bar.frame.minY - 4 : app.frame.maxY
+    }
+    func safelyVisible() -> Bool {
+      guard element.exists && element.isHittable else { return false }
+      let frame = element.frame
+      return frame.minY >= safeTop() && frame.maxY <= safeBottom()
+    }
+    for _ in 0..<8 {
+      if safelyVisible() { return }
+      // Scroll along the form margin so embedded maps do not consume the gesture.
+      let above = element.exists && element.frame.minY < safeTop()
+      let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: above ? 0.3 : 0.75))
+      let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: above ? 0.75 : 0.3))
+      start.press(forDuration: 0.05, thenDragTo: end)
+    }
+    XCTAssertTrue(safelyVisible(), "Expected a form control clear of navigation and tab bars")
+  }
+  @MainActor private func signOutIfNeeded(_ app: XCUIApplication) {
+    app.tabBars.buttons["You"].tap()
+    let login = app.buttons["Log in or create an account"]
+    if login.waitForExistence(timeout: 3) { return }
+    let logout = app.buttons["Log out"]
+    reveal(logout, in: app)
+    logout.tap()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 15))
+    app.tabBars.buttons["You"].tap()
+    XCTAssertTrue(login.waitForExistence(timeout: 10))
+  }
+  @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
+    let a = XCTAttachment(screenshot: app.screenshot())
+    a.name = name
+    a.lifetime = .keepAlways
+    add(a)
+  }
+}

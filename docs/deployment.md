@@ -153,3 +153,9 @@ Verification:42 unit tests, typecheck/build, migration fixture1, search concurre
 Implementation screenshot in local task artifacts: community-implemented.jpg (hosted Browse with checked-listing filter). Existing nonfatal bundle warning remains. File selections must be reselected after leaving a draft; UI explains this. Existing payment, legal-signature and password-reset-provider limitations are unchanged.
 
 Rollback source:57e2a39. The new schema is additive; stop service before source/build changes. Prefer source rollback retaining current data; restoring a snapshot after new member activity needs reconciliation. The hosted backup is after migration, and the earlier activity backup predates this rollout. Never replace live state with isolated8932 fixtures.
+
+## iPhone development isolation — October 16, 2026
+
+The hosted launcher runs Wrangler in watch mode from the canonical checkout. Editing that checkout or rebuilding its `dist/` changes the hosted preview without a separate deploy command. Feature work must use an isolated worktree with a separate persistence directory and port. The iPhone worktree is `/Volumes/SamsungSSD1/code/cusesublets-iphone`, branch `feat/iphone-app`, local test port 8936, state under `/Volumes/SamsungSSD1/tools/cusesublets/iphone-test-state`.
+
+During initial iPhone intake the canonical checkout was used, and the watcher picked up development source/assets. This was corrected by restoring canonical `main` at `2e6d7b4` and rebuilding it. Public root asset `index-B-K9E7JA.js` and anonymous session HTTP 200 were verified afterward. No migration or seed was applied to either operational datastore; migration0012 was applied only to isolated test state. New room scans and native Google sign-in must not be claimed deployed until a deliberate, backed-up migration and deployment occurs.

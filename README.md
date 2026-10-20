@@ -1,87 +1,76 @@
 # CuseSublets
 
-A Syracuse-first sublease marketplace. Warm cream/orange React interface, interactive map and catalog, private messaging, offers, local reservations, and an admin review workspace. Cloudflare Workers hosts the API and built static assets; D1 persists records and R2 stores private review documents and guarded listing media.
+An iPhone-first sublease marketplace for Syracuse, with public web browsing and a web staff workspace. Members can publish places and housing searches, find compatible stays, discuss posts, negotiate in private conversations, and share room layouts or photographic tours.
 
-## Run on the Mac mini
+**Status:** working development preview, not an App Store release or a live payment service. Native simulator flows and synthetic reconstruction are tested; real-room quality, physical-device recovery, hosted authorization and distribution remain release gates. See [the mobile plan](docs/mobile/iphone-plan.md), [validation evidence](docs/mobile/validation.md) and [release checklist](docs/mobile/release-checklist.md).
 
-Canonical project: `/Volumes/SamsungSSD1/code/cusesublets`, branch `feat/initial-marketplace`. Start with `ssh mini`; shell commands below run in that directory. Node/npm on mini are under `/opt/homebrew/bin`.
+## Local quickstart
+
+Prerequisites: Node.js 22+, npm and Python 3 for API checks. Native development additionally needs macOS, Xcode and an iOS simulator. No Cloudflare account is needed for the isolated local demo.
 
 ```sh
-export PATH=/opt/homebrew/bin:$PATH
+git clone https://github.com/ichen27/cusesublets.git
+cd cusesublets
+# Until the mobile PR is merged:
+git switch feat/iphone-app
 npm ci
-npm run db:local
-npm run seed:local
 npm run build
-npm run preview:demo
+npx wrangler d1 migrations apply DB --local --persist-to work/demo-state
+npx wrangler d1 execute DB --local --persist-to work/demo-state --file seeds/demo.sql
+npx wrangler dev --ip 127.0.0.1 --port 8936 \
+  --persist-to work/demo-state --var APP_ENV:development
 ```
 
-Open `http://127.0.0.1:8917`. From the MacBook, forward the port with `ssh -N -L 8917:127.0.0.1:8917 mini` and open the same URL. Port 8791 belongs to an unrelated app; do not use or stop it.
+Open <http://127.0.0.1:8936>. Use **Log in / Switch demo role** for renter, host or admin. Demo identities require both development mode and a loopback request hostname. Seeds contain synthetic homes and externally hosted illustrative photos; no real housing offer is created. Keep one runtime per persistence directory and never seed operational data. `work/`, dependencies, private uploads and credentials are excluded from Git.
 
-Choose **Log in** or **Switch demo role** to try renter, host, or admin. Demo identities work only with `APP_ENV=development` and a loopback request hostname. Production defaults never expose demo sessions. Seed files contain clearly identified sample homes and illustrative Unsplash photos, not real offers.
+For the iPhone client, follow [ios/README.md](ios/README.md), using the same local API. Release builds ignore local URL overrides. The checked-in project needs no project generator to build.
 
-### Try the flow
+## Try the marketplace
 
-1. Search a neighborhood, set dates/budget, save a listing, or select a map pin.
-2. As renter, open a listing, send a message or request dates at the asking rent / make an offer.
-3. Switch to host, open Inbox → Offers and accept a nonoverlapping request.
-4. Both roles acknowledge the demo agreement. The renter can simulate payment, confirm move-in on/after the start date, and report an issue.
-5. As host, create a listing, upload photos/video and private lease/permission evidence. It stays pending.
-6. As admin, review documents, record decisions with reasons, and inspect the audit log or disputes. New evidence resets its corresponding review and unpublishes the listing pending review.
+1. Browse places and people, filter dates/budget/amenities and map areas, or save a post.
+2. Sign up with a synthetic account. Save and resume a private listing or search draft, then publish it explicitly.
+3. Choose your activity in Matches; contact a compatible member. Messages, shared documents, offers, counteroffers and reservations use participant permissions.
+4. Add listing media and private review evidence. Check badges remain separate from publication and never guarantee identity, safety or permission to sublet.
+5. On supported physical hardware, capture an approximate RoomPlan layout or an ARKit photographic dataset. Review privately before publishing. Photographic training requires a separately configured processor; it is not enabled by the quickstart.
+6. Report inappropriate posts or members, block contact, and review reports in the staff workspace. Existing reservation history remains accessible. Account deletion removes personal content and provides a recoverable status receipt.
 
-## Checks
+Local demo signing and payment are simulations only. Production endpoints fail closed: no money, escrow, legal signature, transfer or refund is created.
+
+## Architecture and deliverables
+
+- `ios/`: SwiftUI iPhone app, MapKit, RoomPlan, ARKit capture, native tests, editable app icon and Xcode project.
+- `src/`: React web marketplace, staff review tools and lazy-loaded PlayCanvas Gaussian viewer.
+- `worker/`, `migrations/`, `shared/`: Worker API, D1 schema, R2 storage integration and shared policy/data definitions.
+- `processing/`: private reconstruction job runner; see [processor setup and pinned engine access](docs/mobile/photographic-tours.md).
+- [Artifact index and screenshots](docs/mobile/validation.md#artifacts): native interaction evidence, editable room fixture, actual synthetic capture archive and trained Gaussian PLY output. Synthetic training proves compatibility, not room quality.
+- [Accounts/deletion](docs/mobile/accounts-and-deletion.md), [API contract](docs/API.md), [deployment runbook](docs/deployment.md): behavior and operator prerequisites.
+
+RoomPlan geometry and Gaussian appearance models serve different purposes. PLY export requires a compatible Gaussian importer for Blender; it is not an editable architectural wall mesh. Captures can contain private details and are never automatically published.
+
+## Validation
 
 ```sh
 npm run typecheck
 npm test
 npm run build
-npm run deploy:check
-# With preview running; uses local demo records only:
-API_BASE=http://127.0.0.1:8917 python3 tests/api-runtime.py
+npm run deploy:check # validates packaging; does not deploy
+# Against the isolated quickstart runtime only:
+API_BASE=http://127.0.0.1:8936 python3 tests/iphone-runtime.py
+API_BASE=http://127.0.0.1:8936 python3 tests/account-deletion-runtime.py
+API_BASE=http://127.0.0.1:8936 python3 tests/member-blocks-runtime.py
 ```
 
-The runtime test creates local test records and pauses its listings, preserving the audit trail. Browser checks and screenshots are recorded separately in `docs/verification.md`.
+The [iPhone workflow](.github/workflows/iphone.yml) creates fresh local state, tests scan/auth/tour/deletion/blocking APIs, and runs native units and interaction tests. The web workflow runs type checks, units and a production build. Browser engine chunks remain large; photographic playback is loaded separately. Simulator success does not establish camera quality or VoiceOver usability.
 
-## What works
+## Release limits
 
-- Browse is the main marketplace page with recent apartment and seeker posts in a responsive three-column feed; apartments can be saved from Browse. The Apartments catalog retains neighborhood, date, budget, room type, amenity, review and tour filters plus the map. Saved is a separate shortlist. Hosts choose an approximate listing pin.
-- Listing details, photo gallery, validated Matterport embeds, direct media upload, and video player.
-- Cloudflare Access JWT validation and explicit server-side admin email allowlist.
-- Persistent listing submission, private document upload, review checklist and user identity review records.
-- Separate identity, lease, permission statuses; private reviewer notes; append-only admin audit. Listing reports and audited account suspension/restoration preserve existing dispute access.
-- Participant-only messages/offers/reservations, atomic overlap rejection, agreement/payment actor guards.
-- Local demo reservation acknowledgments, simulated payment, move-in, dispute and payout-eligibility timeline.
+Before accepting real customer data: configure and test hosted Apple/Google authorization, deletion scheduling and backup handling, private support contact and privacy/retention terms; validate physical capture and accessibility; obtain signing/provisioning and complete TestFlight review. The local watched preview does not automatically execute cloud Cron Triggers. See the release checklist for concrete evidence required.
 
-## Explicit production limits
+Verified email/password recovery, push notifications, a legal-signing provider and real payments are not configured. Android is deferred. The photographic processor depends on a separate private research repository; the app reports unavailable until configured. No distribution-signed phone package is included.
 
-This is a runnable local MVP, not a launched financial marketplace. No Stripe Checkout/Connect account, identity-provider SDK, or legal e-signature provider has been connected. Payment and signing endpoints fail closed outside local demo; no actual money, escrow, signature, or ID verification is created. Admin identity review records a result supplied by an external review process. Payout eligibility is calculated, but the app never initiates a transfer or refund.
+## Contribution and licensing
 
-Live provider integrations and webhook handling, abuse controls, operator refund/dispute policies, identity-provider housing-use approval, legal agreement and privacy/retention terms, production map provider/geocoding, and operational support are required before accepting real users/documents/payments. Offer counteroffers/withdrawal, notifications and attachment sharing within conversations are not part of this first local build. Private documents currently support listing-review access only; no automatic sharing with renters.
-
-See [deployment runbook](docs/deployment.md), [API contract](docs/API.md), and [approved design](docs/superpowers/specs/2026-09-16-cusesublets.md).
-
-Run one Wrangler process per local persistence directory. Concurrent dev runtimes sharing .wrangler SQLite files can produce database locks. Use API_BASE against the existing preview for runtime checks.
-
-## Hosted private preview
-
-https://app-cusesublets.chenagent.com runs on the Mac mini through your existing Google-protected app launcher. Google identity now creates a marketplace account with listing submission, messaging, offers, date requests and admin review. Access remains owner-only until testers are explicitly added. Payments and legal signing are disabled; the local demo on 8917 remains separate. The catalog automatically follows the visible map area. See the deployment runbook for operations.
-
-## GitHub workflow (September 17, 2026)
-
-Source: https://github.com/ichen27/cusesublets (private), stable branch `main`. Development stays on the Mac mini SSD. Commit and push completed changes; GitHub Actions runs typecheck, unit tests and build for pushes and pull requests. Runtime data and credentials are excluded. Pushes do not automatically deploy the mini service. See AGENTS.md and docs/deployment.md.
-
-Email/password signup and login are available alongside Google. Public signup grants no staff role or identity badge. Account settings support changing the password with the current password; this signs out other password sessions. Automated email verification and forgotten-password recovery are not configured. See the [authentication API](docs/API.md#email-and-password-authentication).
-
-Password runtime checks use a separate staging runtime on 8922 and persistence at `/Volumes/SamsungSSD1/tools/cusesublets/.wrangler-password-test`; apply migrations there first, start Wrangler with `APP_ENV:staging`, `APP_ORIGIN:http://localhost:8922`, `ADMIN_EMAILS:staff@example.test`, `ACCESS_TEAM_DOMAIN:example.cloudflareaccess.com`, and `ACCESS_AUD:test`, then run `python3 tests/password-runtime.py`. These tests create only isolated fixtures and verify real workerd scrypt behavior, session rotation and guards.
-
-## Browse, housing searches, and My activity
-
-Browse is the main marketplace page, with All / Places / People, side filters, and a map. People appear for areas they want to live in; selecting a person highlights their desired regions. Wide list views use three columns.
-
-My activity replaces My listings. Members can edit and pause their subleases while independently turning their one profile-linked search on or off. Search setup includes dates, a rent range, room type, optional bedrooms, required/preferred conditions, and up to five map areas. Editing or toggling preserves the same search ID and creation order.
-
-Top matches supports both roles: choose your search to find places, or choose a published listing to find people. Every match covers the full stay, price range, room type, desired area and required conditions; preferences and rent order the eligible results. Identity and demographic traits do not affect ranking.
-
-Migration 0009 preserves legacy requests and conversation/report history, chooses one canonical search per owner, and switches old active requests off until area setup is completed. See docs/deployment.md before updating any running datastore.
+Use focused branches and pull requests; run applicable checks and preserve existing data. See [CONTRIBUTING.md](CONTRIBUTING.md). This existing repository is public. No open-source license has been selected for the original project code/artifacts; public visibility does not grant redistribution rights. Resolve licensing before distributing a release. Dependencies retain their own licenses; no third-party reconstruction engine is vendored.
 
 ## Automated pull request review
 

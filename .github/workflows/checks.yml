@@ -18,6 +18,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: python3 tests/tour-processor-unit.py
       - run: python3 tests/housing-search-migration.py
       - run: python3 tests/search-write-races.py
       - run: python3 tests/social-write-races.py
