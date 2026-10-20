@@ -14,6 +14,14 @@ Hosted web checks passed at `ef9d00d` and `0e481e7`. [Advisory run39453269914](h
 
 No physical iPhone is attached and the mini has zero valid device-signing identities. Hosted authentication, staging migrations/processor, distribution and physical capture quality remain unverified. The default hosted preview is older than this mobile implementation. The local-only Debug camera test does not require that backend. No operational datastore or service was changed.
 
+## Personal Team handoff — October 20, 2026
+
+The user has a MacBook with Xcode and a personal Apple ID. The new **Cuse Capture Test** scheme runs the **PersonalDevice** configuration directly into local capture, without constructing marketplace session state. It uses a separate app identifier and callback scheme, and clears the Sign in with Apple entitlement for this configuration only. The normal Release configuration retains its original entitlement and marketplace behavior.
+
+Validation passed: one standalone simulator UI test with no API configuration; unsigned PersonalDevice and standard Release builds for physical iPhone. Built plist checks confirm separate names, bundle identifiers and callback schemes, with iPhone-only device families. PersonalDevice simulator code-sign inspection reports no entitlement blob; Release build settings still resolve `CuseSublets/CuseSublets.entitlements`. These checks do not prove Personal Team provisioning or installation on a real phone.
+
+The [Personal Team capture screenshot](screenshots/iphone-personal-team-capture.png) was exported from the passing UI test and visually inspected. It shows the standalone capture screen, no marketplace tabs, and disabled simulator camera capture. CI now runs this configuration's smoke test and retains its result bundle. The [installation guide](iphone-17-test-guide.md) covers Xcode Personal Team signing and Apple's seven-day provisioning limit. Current hosted checks and all physical/provider/operator acceptance gates remain required.
+
 ## Historical validation — October 16, 2026
 
 The sections below are dated development evidence, not the current release status.

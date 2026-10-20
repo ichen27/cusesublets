@@ -103,18 +103,24 @@ import SwiftUI
   }
 }
 @main struct CuseSubletsApp: App {
-  @StateObject private var state = AppState()
-  @Environment(\.scenePhase) private var scenePhase
+  #if !PERSONAL_DEVICE
+    @StateObject private var state = AppState()
+    @Environment(\.scenePhase) private var scenePhase
+  #endif
   var body: some Scene {
     WindowGroup {
-      RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
-        .tint(.cuseOrange).task(id: scenePhase) {
-          guard scenePhase == .active else { return }
-          while !Task.isCancelled {
-            await state.refreshSession(reportErrors: false)
-            try? await Task.sleep(for: .seconds(60))
+      #if PERSONAL_DEVICE
+        NavigationStack { DeviceCaptureCheckView() }.tint(.cuseOrange)
+      #else
+        RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
+          .tint(.cuseOrange).task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+              await state.refreshSession(reportErrors: false)
+              try? await Task.sleep(for: .seconds(60))
+            }
           }
-        }
+      #endif
     }
   }
 }

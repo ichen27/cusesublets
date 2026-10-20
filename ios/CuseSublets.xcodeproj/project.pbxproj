@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0DA6FA5D7CAB5AB1019F8DBB /* DeviceCaptureCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18FD04B5F43DF812CC9DCB52 /* DeviceCaptureCheckView.swift */; };
 		199CBEC7ECCA3954327BCF30 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C527909B5A83F43E0B1E6D77 /* Assets.xcassets */; };
+		19C5DDF1E387A550CB995F0A /* PersonalDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B61A7AC3E840348287474FB /* PersonalDeviceTests.swift */; };
 		1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B69E76AE94A17151C123A2E /* AccountView.swift */; };
 		1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DD0C534B5E075195EA6D1E /* BrowseView.swift */; };
 		2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */; };
@@ -69,6 +70,7 @@
 		3FD685FF874F61D99FC41025 /* Editors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editors.swift; sourceTree = "<group>"; };
 		4AF199AE777B4244D9088869 /* RoomToursView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomToursView.swift; sourceTree = "<group>"; };
 		61E43454C554AEC16735B4F1 /* PhotoCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCapture.swift; sourceTree = "<group>"; };
+		6B61A7AC3E840348287474FB /* PersonalDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalDeviceTests.swift; sourceTree = "<group>"; };
 		6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceTests.swift; sourceTree = "<group>"; };
 		711B1D9F42613404EFADDB6D /* CuseSublets.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CuseSublets.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureArchive.swift; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */,
+				6B61A7AC3E840348287474FB /* PersonalDeviceTests.swift */,
 			);
 			path = CuseSubletsUITests;
 			sourceTree = "<group>";
@@ -327,6 +330,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EEF60B25F6372CBA6348DBE7 /* MarketplaceTests.swift in Sources */,
+				19C5DDF1E387A550CB995F0A /* PersonalDeviceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,6 +350,82 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		119D6695D4178512C666BDA2 /* PersonalDevice */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				CUSE_CALLBACK_SCHEME = cusesublets;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
+				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Capture room images and approximate layouts to create tours for your listing.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG PERSONAL_DEVICE";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = PersonalDevice;
+		};
 		3457F3B3727424068A7754CB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -395,6 +475,25 @@
 			};
 			name = Release;
 		};
+		A8875011189CAB8A485184A1 /* PersonalDevice */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CUSE_CALLBACK_SCHEME = "cusesublets-capture-test";
+				INFOPLIST_FILE = CuseSublets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Cuse Capture Test";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.cusesublets.devicetest;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = PersonalDevice;
+		};
 		B39888A1D652FFBB7994125F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -431,6 +530,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
+				CUSE_CALLBACK_SCHEME = cusesublets;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -506,6 +606,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
+				CUSE_CALLBACK_SCHEME = cusesublets;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -554,6 +655,38 @@
 			};
 			name = Release;
 		};
+		DC1C8615EC1430915ADC437F /* PersonalDevice */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.CuseSubletsTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CuseSublets.app/CuseSublets";
+			};
+			name = PersonalDevice;
+		};
+		DD130C46F3FCA9C99BA9757B /* PersonalDevice */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.CuseSubletsUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CuseSublets;
+			};
+			name = PersonalDevice;
+		};
 		DFAE21C926B7AE65B223D1A9 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -594,6 +727,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3457F3B3727424068A7754CB /* Debug */,
+				A8875011189CAB8A485184A1 /* PersonalDevice */,
 				DFAE21C926B7AE65B223D1A9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -603,6 +737,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E57101564393473F48FCF701 /* Debug */,
+				DC1C8615EC1430915ADC437F /* PersonalDevice */,
 				D4465F5613EED2239E3DB95B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -612,6 +747,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				360E7C60DA1BF3EB3865D074 /* Debug */,
+				DD130C46F3FCA9C99BA9757B /* PersonalDevice */,
 				72D810EF21108159C0BA8D6C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -621,6 +757,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B39888A1D652FFBB7994125F /* Debug */,
+				119D6695D4178512C666BDA2 /* PersonalDevice */,
 				BC0D9B6DF4E0BF5E1A70ADAA /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;

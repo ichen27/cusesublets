@@ -14,7 +14,7 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 Run these commands from the repository root. If your active developer tools are the command-line tools, prefix with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. No global toolchain changes are required.
 
-For a physical iPhone, select your own signing team in Xcode and use an available bundle identifier. No team, signing keys or provisioning profiles are committed. RoomPlan layout capture requires a supported LiDAR-equipped device. Photographic capture uses ARKit world tracking and can work on supported non-LiDAR iPhones; both capabilities are checked at runtime. Neither can be validated in a simulator.
+For a local camera test using a free Personal Team, select the **Cuse Capture Test** scheme and follow the [iPhone17 installation guide](../docs/mobile/iphone-17-test-guide.md). That scheme opens only the local capture screen, omits the Sign in with Apple entitlement and uses separate app storage. The normal **CuseSublets** scheme retains its entitlement and full authentication requirements. For either physical build, select your own signing team in Xcode and use an available bundle identifier. No team, signing keys or provisioning profiles are committed. RoomPlan layout capture requires a supported LiDAR-equipped device. Photographic capture uses ARKit world tracking and can work on supported non-LiDAR iPhones; both capabilities are checked at runtime. Neither can be validated in a simulator.
 
 ## Backend and isolated testing
 

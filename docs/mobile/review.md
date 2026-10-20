@@ -46,3 +46,7 @@ Final review: standards 0 outstanding; spec 0 outstanding after the recovery cor
 UI follow-up `0e481e7`: a simulator recording showed XCTest tapping the floating Browse tab over an obscured Publish control. The helper now scrolls controls clear of the actual navigation/tab-bar edges and reverses direction after overshooting. Both scoped reviewers rechecked this test-only fix with no outstanding findings. Execution results are recorded separately in validation.md.
 
 Accessibility follow-up: the signed-out account page now scrolls at large Dynamic Type after a recording exposed clipped content. Regression tests establish signed-out state explicitly and wait for logout navigation before continuing. Both scoped reviewers confirmed these corrections with no outstanding standards/spec findings.
+
+## Personal Team configuration review — October 20, 2026
+
+Baseline: `372a84e`. Scoped standards and spec reviews found no actionable findings in the PersonalDevice configuration, standalone application root, selected simulator test and CI integration. Both rechecked the separate callback scheme; the standard app retains `cusesublets` while the capture test uses `cusesublets-capture-test`. This review does not establish physical signing, capture quality or provider readiness. Local execution evidence is recorded in [validation.md](validation.md).

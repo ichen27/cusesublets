@@ -21,7 +21,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>cusesublets</string>
+				<string>$(CUSE_CALLBACK_SCHEME)</string>
 			</array>
 		</dict>
 	</array>

@@ -6,15 +6,22 @@ This guide separates a local camera test from the complete marketplace test. Nei
 
 The regular iPhone 17 has no LiDAR scanner ([Apple specifications](https://www.apple.com/iphone-17/specs/)). Test ARKit photographic capture and Gaussian tours on it. The RoomPlan layout feature should report unavailable; a LiDAR-equipped supported device is needed to validate measured room layouts.
 
-## Install a development build
+## Install with your personal Apple ID
 
-1. On the Mac running Xcode, check out `feat/iphone-app` from this repository and open `ios/CuseSublets.xcodeproj`. Use the checked-in project.
-2. Connect and trust the iPhone. Enable Developer Mode on the phone if Xcode requests it.
-3. In the app target's Signing & Capabilities, select your Apple development team and an available bundle identifier. Keep these personal settings out of commits. The existing Sign in with Apple entitlement needs a team/provisioning profile supporting that capability; do not claim provider testing passed by removing it.
-4. Select **Debug**, the attached iPhone, and Run. This requires device signing; the simulator app cannot be installed on a phone. No signed phone package or TestFlight upload is provided yet.
-5. Open **You → Device capture check**. This screen is compiled only into Debug builds and works without signing into the marketplace. If an unrelated session error appears, dismiss it and open You.
+A paid membership is not needed for this local camera test. Apple supports Personal Team installation from Xcode; profiles expire after seven days, requiring a rebuild/reinstall. TestFlight and full provider testing remain separate paid-team work. See [Apple's account and Personal Team limits](https://developer.apple.com/help/account/basics/about-your-developer-account).
 
-If installing through TestFlight instead, complete the [distribution checklist](release-checklist.md). Release builds omit the local capture-check screen.
+1. On your MacBook, download the [feature branch ZIP](https://github.com/ichen27/cusesublets/archive/refs/heads/feat/iphone-app.zip) and unzip it, or clone `feat/iphone-app`. Open `ios/CuseSublets.xcodeproj`; no XcodeGen installation is needed.
+2. In **Xcode → Settings → Apple Accounts**, add your personal Apple Account. Select the **Cuse Capture Test** scheme in the toolbar. Its Run configuration is **PersonalDevice**.
+3. Select the **CuseSublets app target → Signing & Capabilities**, enable automatic signing and select your **Personal Team** for the PersonalDevice configuration. If Xcode says the bundle identifier is unavailable, change that configuration's identifier to your own unique value, such as `com.yourname.cusesublets.capturetest`. Keep team/identifier changes local.
+4. Connect your iPhone17 to the MacBook and trust the connection. Select the attached phone as the run destination. Enable **Settings → Privacy & Security → Developer Mode** on the phone when requested, following the restart/confirmation prompts.
+5. Click **Run**. Xcode creates the development signing assets and installs **Cuse Capture Test**. If the phone asks to trust your developer identity, follow its Settings prompt.
+6. The app opens directly into **Device capture check**. It has no marketplace login or background session requests and does not need a backend. Follow the capture steps below.
+
+The PersonalDevice configuration has no Sign in with Apple entitlement and uses a separate app identifier/storage container. If you see an unsupported Sign in with Apple provisioning error, verify you selected **Cuse Capture Test** and its **PersonalDevice** Run configuration. Do not remove the normal app's entitlement to make the error disappear.
+
+The standard **CuseSublets** scheme retains full marketplace behavior and its original signing requirements. Its Debug build exposes the same check through **You → Device capture check**. PersonalDevice is for Run/local capture only; do not use Archive or TestFlight for this test. The scheme's Archive action uses the standard Release configuration, which still needs the full team's signing setup.
+
+No signed phone package or physical installation is claimed by repository build checks. Use the same identifier when reinstalling, and export important takes privately before reinstalling or deleting the app. A simulator binary cannot be installed on the phone. The [distribution checklist](release-checklist.md) remains applicable to TestFlight and release work.
 
 ## Local photographic test — no backend required
 
