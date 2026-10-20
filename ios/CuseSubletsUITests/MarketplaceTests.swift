@@ -142,14 +142,23 @@ final class MarketplaceTests: XCTestCase {
       done.tap()
       XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
     }
+    // Floating tab bars can cover controls that XCTest still reports as hittable.
+    // Bring the whole control into the central viewport before asking XCTest to tap it.
+    func safelyVisible() -> Bool {
+      guard element.exists && element.isHittable else { return false }
+      let frame = element.frame
+      return frame.minY >= app.frame.minY + app.frame.height * 0.15
+        && frame.maxY <= app.frame.minY + app.frame.height * 0.8
+    }
     for _ in 0..<8 {
-      if element.exists && element.isHittable { return }
+      if safelyVisible() { return }
       // Scroll along the form margin so embedded maps do not consume the gesture.
-      let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.75))
-      let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.3))
+      let above = element.exists && element.frame.minY < app.frame.minY + app.frame.height * 0.15
+      let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: above ? 0.3 : 0.75))
+      let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: above ? 0.75 : 0.3))
       start.press(forDuration: 0.05, thenDragTo: end)
     }
-    XCTAssertTrue(element.exists && element.isHittable, "Expected a visible form control")
+    XCTAssertTrue(safelyVisible(), "Expected a form control clear of navigation and tab bars")
   }
   @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot())
