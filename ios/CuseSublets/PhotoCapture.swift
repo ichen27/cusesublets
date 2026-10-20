@@ -167,6 +167,9 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   }
   static func package(folder: URL) throws -> URL {
     let manifest = folder.appendingPathComponent("manifest.json")
+    guard FileManager.default.fileExists(atPath: manifest.path) else {
+      throw CaptureFailure.message("This take has no stable views. Discard it and capture again.")
+    }
     let json = try JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any]
     guard let frames = json?["frames"] as? [[String: Any]], frames.count >= 30 else {
       throw CaptureFailure.message(

@@ -3,6 +3,20 @@ import XCTest
 @testable import CuseSublets
 
 final class PhotoCaptureTests: XCTestCase {
+  func testInterruptedCaptureBeforeFirstFrameExplainsRecovery() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try Data("{}".utf8).write(to: folder.appendingPathComponent("draft.json"))
+    XCTAssertThrowsError(try PhotoRecorder.package(folder: folder)) { error in
+      XCTAssertEqual(
+        error.localizedDescription, "This take has no stable views. Discard it and capture again.")
+    }
+    try PhotoRecorder.writeManifest([], to: folder)
+    XCTAssertThrowsError(try PhotoRecorder.package(folder: folder)) { error in
+      XCTAssertTrue(error.localizedDescription.contains("fewer than 30"))
+    }
+  }
   func testCaptureWaitsForTrackingAndRejectsFastMotion() {
     var policy = CapturePolicy()
     let forward = SIMD3<Float>(0, 0, -1)
