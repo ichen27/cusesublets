@@ -8,6 +8,8 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     app.launch()
     XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    signOutIfNeeded(app)
+    app.tabBars.buttons["Browse"].tap()
     XCTAssertTrue(app.staticTexts["Find a sublet.\nList your place."].exists)
     attach(app, "Browse")
     app.buttons["Filters"].tap()
@@ -108,7 +110,7 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
     app.launch()
     XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
-    app.tabBars.buttons["You"].tap()
+    signOutIfNeeded(app)
     reveal(app.buttons["Device capture check"], in: app)
     app.buttons["Device capture check"].tap()
     XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 10))
@@ -126,7 +128,7 @@ final class MarketplaceTests: XCTestCase {
     ]
     app.launch()
     XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
-    app.tabBars.buttons["You"].tap()
+    signOutIfNeeded(app)
     reveal(app.buttons["Data & privacy"], in: app)
     app.buttons["Data & privacy"].tap()
     XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 10))
@@ -143,22 +145,40 @@ final class MarketplaceTests: XCTestCase {
       XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
     }
     // Floating tab bars can cover controls that XCTest still reports as hittable.
-    // Bring the whole control into the central viewport before asking XCTest to tap it.
+    // Bring the whole control clear of the actual bars before asking XCTest to tap it.
+    func safeTop() -> CGFloat {
+      let bar = app.navigationBars.firstMatch
+      return bar.exists ? bar.frame.maxY + 4 : app.frame.minY
+    }
+    func safeBottom() -> CGFloat {
+      let bar = app.tabBars.firstMatch
+      return bar.exists ? bar.frame.minY - 4 : app.frame.maxY
+    }
     func safelyVisible() -> Bool {
       guard element.exists && element.isHittable else { return false }
       let frame = element.frame
-      return frame.minY >= app.frame.minY + app.frame.height * 0.15
-        && frame.maxY <= app.frame.minY + app.frame.height * 0.8
+      return frame.minY >= safeTop() && frame.maxY <= safeBottom()
     }
     for _ in 0..<8 {
       if safelyVisible() { return }
       // Scroll along the form margin so embedded maps do not consume the gesture.
-      let above = element.exists && element.frame.minY < app.frame.minY + app.frame.height * 0.15
+      let above = element.exists && element.frame.minY < safeTop()
       let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: above ? 0.3 : 0.75))
       let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: above ? 0.75 : 0.3))
       start.press(forDuration: 0.05, thenDragTo: end)
     }
     XCTAssertTrue(safelyVisible(), "Expected a form control clear of navigation and tab bars")
+  }
+  @MainActor private func signOutIfNeeded(_ app: XCUIApplication) {
+    app.tabBars.buttons["You"].tap()
+    let login = app.buttons["Log in or create an account"]
+    if login.waitForExistence(timeout: 3) { return }
+    let logout = app.buttons["Log out"]
+    reveal(logout, in: app)
+    logout.tap()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 15))
+    app.tabBars.buttons["You"].tap()
+    XCTAssertTrue(login.waitForExistence(timeout: 10))
   }
   @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot())

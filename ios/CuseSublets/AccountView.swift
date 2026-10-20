@@ -78,20 +78,23 @@ struct AccountView: View {
           if !error.isEmpty { Text(error).foregroundStyle(.red) }
         }
       } else {
-        VStack(spacing: 20) {
-          NavigationLink("Data & privacy") { PrivacyView() }
-          #if DEBUG
-            NavigationLink("Device capture check") { DeviceCaptureCheckView() }
-          #endif
-          EmptyState(
-            title: "Make your next move",
-            text: "Post a place, find a match, and keep your conversations together.")
-          if state.deletionReceipt != nil {
-            NavigationLink("Account deletion status") { DeletionStatusView() }
+        ScrollView {
+          VStack(spacing: 20) {
+            NavigationLink("Data & privacy") { PrivacyView() }
+            #if DEBUG
+              NavigationLink("Device capture check") { DeviceCaptureCheckView() }
+            #endif
+            EmptyState(
+              title: "Make your next move",
+              text: "Post a place, find a match, and keep your conversations together.")
+            if state.deletionReceipt != nil {
+              NavigationLink("Account deletion status") { DeletionStatusView() }
+            }
+            Button("Log in or create an account") { state.showLogin = true }.buttonStyle(
+              .borderedProminent
+            ).tint(.cuseButtonFill)
           }
-          Button("Log in or create an account") { state.showLogin = true }.buttonStyle(
-            .borderedProminent
-          ).tint(.cuseButtonFill)
+          .padding()
         }
       }
     }.navigationTitle("You")
