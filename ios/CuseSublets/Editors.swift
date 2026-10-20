@@ -181,16 +181,16 @@ struct ListingEditor: View {
       if !notice.isEmpty { Text(notice) }
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
     }.scrollDismissesKeyboard(.interactively)
-    .navigationTitle(existing == nil ? "List your place" : "Edit listing").toolbar {
-      ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(busy) }
-      ToolbarItemGroup(placement: .keyboard) {
-        Spacer()
-        Button("Done") {
-          UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }.accessibilityIdentifier("dismiss-keyboard")
-      }
-    }.interactiveDismissDisabled(busy).task { await load() }
+      .navigationTitle(existing == nil ? "List your place" : "Edit listing").toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(busy) }
+        ToolbarItemGroup(placement: .keyboard) {
+          Spacer()
+          Button("Done") {
+            UIApplication.shared.sendAction(
+              #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+          }.accessibilityIdentifier("dismiss-keyboard")
+        }
+      }.interactiveDismissDisabled(busy).task { await load() }
   }
   func load() async {
     guard !loaded else { return }
@@ -237,6 +237,8 @@ struct ListingEditor: View {
     } catch { self.error = error.localizedDescription }
   }
   func saveDraft() async throws {
+    try ListingInputValidation.validate(
+      price: price, beds: beds, baths: baths, walkMinutes: walkMinutes, lat: lat, lng: lng)
     let r: DraftResponse = try await state.api.post(
       "/api/drafts/\(draftID)",
       ["revision": revision, "kind": "listing", "step": 4, "data": draftData])
@@ -386,6 +388,7 @@ struct SearchEditor: View {
   @State private var loaded = false
   @State private var busy = false
   @State private var error = ""
+  @State private var cleanupNotice = false
   var data: [String: Any] {
     [
       "startDate": isoDay(start), "endDate": isoDay(end), "minBudget": minimum,
@@ -469,6 +472,13 @@ struct SearchEditor: View {
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
     }.navigationTitle("Housing search").toolbar { Button("Close") { dismiss() }.disabled(busy) }
       .interactiveDismissDisabled(busy).task { await load() }
+      .alert("Housing search saved", isPresented: $cleanupNotice) {
+        Button("Done") { dismiss() }
+      } message: {
+        Text(
+          "Your search was saved successfully. Its private draft could not be removed; review the remaining draft in You."
+        )
+      }
   }
   func load() async {
     guard !loaded else { return }
@@ -509,6 +519,8 @@ struct SearchEditor: View {
     } catch { self.error = error.localizedDescription }
   }
   func save(close: Bool, publish: Bool) async {
+    guard !busy else { return }
+    error = ""
     busy = true
     defer { busy = false }
     do {
@@ -523,11 +535,34 @@ struct SearchEditor: View {
         b["minBedrooms"] = bedrooms.isEmpty || roomType != "Entire place" ? nil : Double(bedrooms)
         b["status"] = active ? "active" : "paused"
         b["clientDraftRevision"] = revision
-        try await state.api.act("/api/my-search", b)
-        try await state.api.act("/api/drafts/search/delete", ["revision": revision])
+        let cleaned = try await state.api.publishHousingSearch(b, draftRevision: revision)
+        if !cleaned {
+          onSaved()
+          cleanupNotice = true
+          return
+        }
       }
       onSaved()
       if close { dismiss() }
     } catch { self.error = error.localizedDescription }
+  }
+}
+
+// Keep these bounds aligned with shared/drafts.ts; explain invalid input rather than moving the pin.
+enum ListingInputValidation {
+  static func validate(
+    price: Double, beds: Double, baths: Double, walkMinutes: Double,
+    lat: Double, lng: Double
+  ) throws {
+    for (value, range, message) in [
+      (price, 0.0...20000.0, "Enter monthly rent between $0 and $20,000."),
+      (beds, 0.0...20.0, "Enter between 0 and 20 bedrooms."),
+      (baths, 0.0...20.0, "Enter between 0 and 20 bathrooms."),
+      (walkMinutes, 0.0...120.0, "Enter a walk time between 0 and 120 minutes."),
+      (lat, 42.9...43.15, "Move the approximate location pin into the Syracuse area."),
+      (lng, -76.3 ... -75.95, "Move the approximate location pin into the Syracuse area."),
+    ] {
+      guard value.isFinite && range.contains(value) else { throw APIError(message: message) }
+    }
   }
 }

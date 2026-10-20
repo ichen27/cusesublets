@@ -62,6 +62,9 @@ struct AccountView: View {
           }
           Section {
             NavigationLink("Data & privacy") { PrivacyView() }
+            #if DEBUG
+              NavigationLink("Device capture check") { DeviceCaptureCheckView() }
+            #endif
             Link("Open public website", destination: state.api.baseURL)
             if user.role == "admin" {
               Link("Staff review workspace (web)", destination: state.api.url("/#account"))
@@ -77,6 +80,9 @@ struct AccountView: View {
       } else {
         VStack(spacing: 20) {
           NavigationLink("Data & privacy") { PrivacyView() }
+          #if DEBUG
+            NavigationLink("Device capture check") { DeviceCaptureCheckView() }
+          #endif
           EmptyState(
             title: "Make your next move",
             text: "Post a place, find a match, and keep your conversations together.")

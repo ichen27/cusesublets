@@ -14,25 +14,44 @@ struct DeletionReceiptStore {
       kSecAttrAccount as String: account,
     ]
   }
-  func read() -> DeletionReceipt? {
+  func receipts() throws -> [DeletionReceipt] {
     var q = query
     q[kSecReturnData as String] = true
     q[kSecMatchLimit as String] = kSecMatchLimitOne
     var item: CFTypeRef?
-    guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess, let data = item as? Data
-    else { return nil }
-    return try? JSONDecoder().decode(DeletionReceipt.self, from: data)
-  }
-  func save(_ value: DeletionReceipt?) throws {
-    SecItemDelete(query as CFDictionary)
-    guard let value else { return }
-    var q = query
-    q[kSecValueData as String] = try JSONEncoder().encode(value)
-    q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-    guard SecItemAdd(q as CFDictionary, nil) == errSecSuccess else {
-      throw APIError(message: "Could not save the deletion receipt securely. Try again.")
+    let result = SecItemCopyMatching(q as CFDictionary, &item)
+    if result == errSecItemNotFound { return [] }
+    guard result == errSecSuccess, let data = item as? Data else {
+      throw APIError(
+        message: "Could not read saved deletion receipts. Unlock your iPhone and try again.")
     }
+    if let records = try? JSONDecoder().decode([DeletionReceipt].self, from: data) {
+      return records
+    }
+    // Preserve the single receipt saved by earlier app versions when adding another owner.
+    return [try JSONDecoder().decode(DeletionReceipt.self, from: data)]
   }
+  func read() -> DeletionReceipt? { try? receipts().last }
+  func read(ownerId: String) throws -> DeletionReceipt? {
+    try receipts().first { $0.ownerId == ownerId }
+  }
+  func save(_ value: DeletionReceipt) throws {
+    var records = try receipts()
+    records.removeAll { $0.ownerId == value.ownerId }
+    records.append(value)
+    let attributes: [String: Any] = [
+      kSecValueData as String: try JSONEncoder().encode(records),
+      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+    ]
+    let result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if result == errSecSuccess { return }
+    if result == errSecItemNotFound {
+      let item = query.merging(attributes) { _, new in new }
+      if SecItemAdd(item as CFDictionary, nil) == errSecSuccess { return }
+    }
+    throw APIError(message: "Could not save the deletion receipt securely. Try again.")
+  }
+
 }
 struct DeletionStatus: Decodable {
   let status: String
@@ -77,7 +96,7 @@ struct AccountDeletionView: View {
     do {
       let store = DeletionReceiptStore(account: state.api.baseURL.absoluteString)
       let receipt =
-        store.read().flatMap { $0.ownerId == user.id ? $0 : nil }
+        try store.read(ownerId: user.id)
         ?? DeletionReceipt(
           receipt: (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: ""),
           ownerId: user.id)
@@ -97,10 +116,28 @@ struct AccountDeletionView: View {
 struct DeletionStatusView: View {
   @EnvironmentObject var state: AppState
   @State private var status: DeletionStatus?
+  @State private var receipts: [DeletionReceipt] = []
+  @State private var selectedOwner = ""
   @State private var error = ""
   @State private var busy = false
   var body: some View {
     Form {
+      if receipts.count > 1 {
+        Picker("Account receipt", selection: $selectedOwner) {
+          ForEach(receipts, id: \.ownerId) { receipt in
+            Text("Account \(receipt.ownerId)").tag(receipt.ownerId)
+          }
+        }.disabled(busy).onChange(of: selectedOwner) { _, _ in
+          status = nil
+          error = ""
+          Task { await load() }
+        }
+      }
+      if status == nil {
+        Text(
+          "A saved receipt means deletion was requested on this iPhone. Check the server status to confirm whether the request was accepted."
+        )
+      }
       if let status {
         Label(
           status.status == "complete"
@@ -118,10 +155,18 @@ struct DeletionStatusView: View {
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
       Button("Check deletion status") { Task { await load() } }.disabled(busy)
       if busy { ProgressView() }
-    }.navigationTitle("Deletion status").task { await load() }
+    }.navigationTitle("Deletion status").task {
+      do {
+        receipts = try DeletionReceiptStore(account: state.api.baseURL.absoluteString).receipts()
+        selectedOwner = receipts.last?.ownerId ?? ""
+        if receipts.count <= 1 { await load() }
+      } catch { self.error = error.localizedDescription }
+    }
   }
   func load() async {
-    guard let receipt = state.deletionReceipt else { return }
+    guard let receipt = receipts.first(where: { $0.ownerId == selectedOwner }), !busy else {
+      return
+    }
     busy = true
     defer { busy = false }
     do {

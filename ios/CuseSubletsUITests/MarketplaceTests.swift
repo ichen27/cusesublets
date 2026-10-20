@@ -102,6 +102,21 @@ final class MarketplaceTests: XCTestCase {
     app.tabBars.buttons["You"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
   }
+  @MainActor func testLocalDeviceCheckDoesNotRequireAccountOrSupportedCamera() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
+    app.launch()
+    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    app.tabBars.buttons["You"].tap()
+    reveal(app.buttons["Device capture check"], in: app)
+    app.buttons["Device capture check"].tap()
+    XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 10))
+    let start = app.buttons["Start camera test"]
+    reveal(start, in: app)
+    XCTAssertFalse(start.isEnabled, "Simulator must not pretend camera capture works")
+    attach(app, "Local device capture check")
+  }
   @MainActor func testPrivacyNoticeAtLargestDynamicType() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

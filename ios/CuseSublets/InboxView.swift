@@ -221,6 +221,7 @@ struct ConversationView: View {
       let r: ConversationDetail = try await state.api.get("/api/conversations/\(id)")
       try Task.checkCancellation()
       detail = r
+      error = ""
     } catch is CancellationError {} catch { self.error = error.localizedDescription }
   }
   func act(_ path: String, _ body: [String: Any] = [:]) {

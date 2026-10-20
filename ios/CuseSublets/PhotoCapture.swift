@@ -26,6 +26,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published var running = false
   @Published var saved = false
   @Published var packaging = false
+  @Published var requestingPermission = false
   let view = ARSCNView(frame: .zero)
   let draft: PhotoCaptureDraft
   let folder: URL
@@ -47,18 +48,22 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   }
   deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
   func start() {
-    guard !running, !packaging, !saved else { return }
+    guard !running, !packaging, !saved, !requestingPermission else { return }
     guard ARWorldTrackingConfiguration.isSupported else {
       message = "Photographic capture needs a supported iPhone camera."
       return
     }
     let generation = UUID()
     permissionGeneration = generation
+    requestingPermission = true
     AVCaptureDevice.requestAccess(for: .video) { [weak self] allowed in
       DispatchQueue.main.async {
-        guard let self, self.permissionGeneration == generation,
-          UIApplication.shared.applicationState == .active
-        else { return }
+        guard let self, self.permissionGeneration == generation else { return }
+        self.requestingPermission = false
+        guard UIApplication.shared.applicationState == .active else {
+          self.message = "Return to the app and tap Start capture when ready."
+          return
+        }
         guard allowed else {
           self.message = "Enable camera access for CuseSublets in Settings."
           return
@@ -180,6 +185,10 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   }
   func stop() {
     permissionGeneration = UUID()
+    if requestingPermission {
+      requestingPermission = false
+      message = "After answering the camera prompt, tap Start capture when ready."
+    }
     guard running else { return }
     running = false
     view.session.pause()
@@ -231,6 +240,10 @@ struct PhotoCaptureScreen: View {
         if recorder.running {
           Button("Finish capture") { recorder.stop() }.buttonStyle(.borderedProminent).tint(
             .cuseButtonFill)
+        }
+        if !recorder.running && !recorder.saved && recorder.count == 0 {
+          Button("Start capture") { recorder.start() }
+            .disabled(recorder.packaging || recorder.requestingPermission)
         }
         Button(recorder.saved ? "Review saved take" : "Close") {
           if recorder.running { recorder.stop() } else { dismiss() }

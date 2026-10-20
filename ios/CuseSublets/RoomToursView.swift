@@ -210,6 +210,7 @@ struct RoomToursView: View {
       let r: ToursResponse = try await state.api.get("/api/listings/\(listing.id)/tours")
       tours = r.tours
       enabled = r.captureEnabled
+      error = ""
     } catch { self.error = error.localizedDescription }
   }
   func upload(_ draft: PhotoCaptureDraft) async {

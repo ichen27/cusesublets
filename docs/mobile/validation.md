@@ -1,6 +1,18 @@
-# iPhone validation — October 16, 2026
+# iPhone validation
 
-Latest completed simulator evidence: **`2a7bf1e` passed** [run38989941387](https://github.com/ichen27/cusesublets/actions/runs/38989941387), including the expanded marketplace flow and account lifecycle tests. Release-preparation changes after that revision require their own CI. Historical results below remain revision-specific; none establishes physical scan quality or App Store readiness.
+## Current preparation — October 20, 2026
+
+The last completed hosted native check before this repair is [run39288539489](https://github.com/ichen27/cusesublets/actions/runs/39288539489) at `0e9e6a6`. Web checks passed there; the advisory review failed with incomplete coverage. The repairs below require fresh native CI and review; historical results are not substituted for the current revision.
+
+This preparation fixes tour-cookie protections, independent durable deletion receipts with legacy migration, iPhone-only target settings, search-save cleanup feedback, stale error banners, numeric/map validation and native workflow coverage/pinning/concurrency. The camera screen offers an explicit retry after a permission interruption. Debug builds add a local-only capture check and private archive export; Release excludes that screen. See [the iPhone 17 handoff](iphone-17-test-guide.md).
+
+Local checks so far: 62 web/SQLite tests, TypeScript, web build, 20 database migration/race checks, processor cleanup test, six isolated mobile API tests and reviewer regressions pass. Native build-for-testing passes. Release settings report device family `1` and a camera usage description. A first simulator run verified cookie protection but exposed a test-only case mismatch in normalized host names; that assertion was corrected. Final simulator/native CI results will be recorded below.
+
+No physical iPhone is attached and the mini has zero valid device-signing identities. Hosted authentication, staging migrations/processor, distribution and physical capture quality remain unverified. The default hosted preview is older than this mobile implementation. The local-only Debug camera test does not require that backend. No operational datastore or service was changed.
+
+## Historical validation — October 16, 2026
+
+The sections below are dated development evidence, not the current release status.
 
 ## Verified
 
@@ -26,7 +38,7 @@ The native workflow runs for pull requests and relevant pushes to main. This avo
 - Real LiDAR capture, local recovery after failed upload/relaunch, interruptions/backgrounding, low-memory behavior, accessibility and room geometry accuracy need device testing.
 - Hosted Google/Access authentication, mobile-code expiry and suspended-account native flows are not covered by the two runtime tests.
 - Signing team, provisioning, bundle ownership and TestFlight distribution are not configured. No physical iPhone was available for this run.
-- Full marketplace parity and photographic/Gaussian reconstruction remain open in the [implementation plan](iphone-plan.md).
+- Marketplace and photographic pipeline software was subsequently implemented; real-room quality and hosted deployment remain open in the [implementation plan](iphone-plan.md).
 
 ## Artifacts
 
@@ -57,7 +69,7 @@ CI retains its result bundle and isolated API log as the `iphone-validation` art
 
 Migration 0012 was applied only to isolated test data. No operational database was migrated or seeded. The hosted preview watches its checkout: it briefly picked up development assets before this was discovered. The canonical checkout was restored to stable main (`2e6d7b4`), rebuilt, and the public site was verified serving its stable bundle (`index-B-K9E7JA.js`). Feature work continues in a separate Git worktree. See the [deployment runbook](../deployment.md).
 
-PR 1 remains draft and unmerged. GitHub reports no protection on main; this record does not claim enforced branch checks. The existing repository is public; its earlier agent instructions incorrectly described it as private. Visibility was not changed during this work.
+At this historical checkpoint PR 1 was draft and unmerged, and branch protection was unavailable. See the current GitHub settings for present enforcement. The existing repository is public; its earlier agent instructions incorrectly described it as private. Visibility was not changed during this work.
 
 ## Continued marketplace and photographic work — October 16, 2026
 

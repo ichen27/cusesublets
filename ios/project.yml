@@ -35,6 +35,7 @@ targets:
           NSAllowsLocalNetworking: true
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: '1'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.ichen27.cusesublets
         CODE_SIGN_ENTITLEMENTS: CuseSublets/CuseSublets.entitlements

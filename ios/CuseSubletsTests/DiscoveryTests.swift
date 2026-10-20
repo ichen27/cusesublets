@@ -3,6 +3,21 @@ import XCTest
 @testable import CuseSublets
 
 final class DiscoveryTests: XCTestCase {
+  func testListingDraftBoundsRejectInvalidNumbersAndLocation() throws {
+    try ListingInputValidation.validate(
+      price: 20000, beds: 20, baths: 20, walkMinutes: 120, lat: 42.9, lng: -75.95)
+    for price in [Double.nan, Double.infinity, -1, 20001] {
+      XCTAssertThrowsError(
+        try ListingInputValidation.validate(
+          price: price, beds: 1, baths: 1, walkMinutes: 10, lat: 43, lng: -76.1))
+    }
+    XCTAssertThrowsError(
+      try ListingInputValidation.validate(
+        price: 900, beds: 1, baths: 1, walkMinutes: 121, lat: 43, lng: -76.1))
+    XCTAssertThrowsError(
+      try ListingInputValidation.validate(
+        price: 900, beds: 1, baths: 1, walkMinutes: 10, lat: 44, lng: -76.1))
+  }
   private let today = "2026-01-01"
   private func listing() -> Listing {
     Listing(

@@ -19,6 +19,50 @@ final class SessionProtocol: URLProtocol {
   override func stopLoading() {}
 }
 final class SessionLifecycleTests: XCTestCase {
+  @MainActor func testTourCookieKeepsSessionProtectionsAndExpires() throws {
+    let base = URL(string: "https://cookie-\(UUID().uuidString).example.test")!
+    let vault = KeychainSession(account: base.absoluteString)
+    let expires = Date().addingTimeInterval(60)
+    try vault.save(.init(cookie: "cuse_password_session=synthetic", expires: expires))
+    var time = Date()
+    let api = APIClient(baseURL: base, now: { time })
+    defer { try? api.clearSession() }
+    let cookie = try XCTUnwrap(api.webSessionCookie())
+    XCTAssertTrue(cookie.isHTTPOnly)
+    XCTAssertTrue(cookie.isSecure)
+    XCTAssertEqual(cookie.sameSitePolicy, .sameSiteLax)
+    XCTAssertEqual(cookie.domain, base.host?.lowercased())
+    XCTAssertEqual(cookie.value, "synthetic")
+    time = expires.addingTimeInterval(1)
+    XCTAssertNil(api.webSessionCookie())
+  }
+  @MainActor func testSearchPublicationSurvivesDraftCleanupFailure() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [SessionProtocol.self]
+    let api = APIClient(
+      baseURL: URL(string: "https://search.example.test"), configuration: configuration)
+    var paths: [String] = []
+    SessionProtocol.handler = { request in
+      paths.append(request.url!.path)
+      return request.url!.path == "/api/my-search"
+        ? (200, Data("{}".utf8))
+        : (503, Data("{\"error\":\"Unavailable\"}".utf8))
+    }
+    defer { SessionProtocol.handler = nil }
+    let cleaned = try await api.publishHousingSearch(["status": "active"], draftRevision: 3)
+    XCTAssertFalse(cleaned)
+    XCTAssertEqual(paths, ["/api/my-search", "/api/drafts/search/delete"])
+    paths = []
+    SessionProtocol.handler = { request in
+      paths.append(request.url!.path)
+      return (400, Data("{\"error\":\"Invalid search\"}".utf8))
+    }
+    do {
+      _ = try await api.publishHousingSearch([:], draftRevision: 3)
+      XCTFail("Failed publication must remain a failure")
+    } catch {}
+    XCTAssertEqual(paths, ["/api/my-search"])
+  }
   @MainActor func testExpiredCredentialEndsSessionBeforeSendingPrivateRequest() async throws {
     let base = URL(string: "https://expired-\(UUID().uuidString).example.test")!
     let vault = KeychainSession(account: base.absoluteString)

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0DA6FA5D7CAB5AB1019F8DBB /* DeviceCaptureCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18FD04B5F43DF812CC9DCB52 /* DeviceCaptureCheckView.swift */; };
 		199CBEC7ECCA3954327BCF30 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C527909B5A83F43E0B1E6D77 /* Assets.xcassets */; };
 		1D2AFD1879687C5D25A58B1A /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B69E76AE94A17151C123A2E /* AccountView.swift */; };
 		1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DD0C534B5E075195EA6D1E /* BrowseView.swift */; };
@@ -59,6 +60,7 @@
 		0B463D33EF6D54BE3740FC3A /* SessionLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLifecycleTests.swift; sourceTree = "<group>"; };
 		0F28E263F666B07179A50C62 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryTests.swift; sourceTree = "<group>"; };
+		18FD04B5F43DF812CC9DCB52 /* DeviceCaptureCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCaptureCheckView.swift; sourceTree = "<group>"; };
 		1B69E76AE94A17151C123A2E /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		1BCAC3541DB6579F298187E4 /* CuseSubletsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2598614F789BB2443591BACE /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 				F2DD0C534B5E075195EA6D1E /* BrowseView.swift */,
 				9486DB6DDDFCB3C5924CAD58 /* CuseSublets.entitlements */,
 				DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */,
+				18FD04B5F43DF812CC9DCB52 /* DeviceCaptureCheckView.swift */,
 				2598614F789BB2443591BACE /* Discovery.swift */,
 				3FD685FF874F61D99FC41025 /* Editors.swift */,
 				FA5A5003EB90A1CA8A36386B /* InboxView.swift */,
@@ -303,6 +306,7 @@
 				901A50D0ED3FE9D4C56E78A1 /* AppleLoginView.swift in Sources */,
 				1D6F9EE9E3EF1F3C27C044C8 /* BrowseView.swift in Sources */,
 				3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */,
+				0DA6FA5D7CAB5AB1019F8DBB /* DeviceCaptureCheckView.swift in Sources */,
 				40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */,
 				2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */,
 				EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */,
@@ -355,7 +359,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.cusesublets;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -563,7 +567,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.ichen27.cusesublets;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};

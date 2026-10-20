@@ -221,11 +221,21 @@ struct KeychainSession {
         status: response.statusCode)
     }
   }
+  // Publishing succeeded even if deleting the now-redundant draft fails.
+  func publishHousingSearch(_ body: [String: Any], draftRevision: Int) async throws -> Bool {
+    try await act("/api/my-search", body)
+    do {
+      try await act("/api/drafts/search/delete", ["revision": draftRevision])
+      return true
+    } catch { return false }
+  }
   func webSessionCookie() -> HTTPCookie? {
     guard let credential, credential.expires > currentTime(), let host = baseURL.host,
       let separator = credential.cookie.firstIndex(of: "=")
     else { return nil }
     return HTTPCookie(properties: [
+      HTTPCookiePropertyKey("HttpOnly"): "TRUE",
+      .sameSitePolicy: HTTPCookieStringPolicy.sameSiteLax.rawValue,
       .domain: host, .path: "/",
       .name: String(credential.cookie[..<separator]),
       .value: String(credential.cookie[credential.cookie.index(after: separator)...]),

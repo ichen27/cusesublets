@@ -1,3 +1,4 @@
+import Security
 import XCTest
 
 @testable import CuseSublets
@@ -10,7 +11,7 @@ final class AccountDeletionTests: XCTestCase {
     let other = "other-\(UUID().uuidString)"
     let fm = FileManager.default
     let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    let room = base.appendingPathComponent("room-drafts/\(owner).json")
+    let room = base.appendingPathComponent("room-drafts/\(owner)-listing.json")
     let photo = PhotoCaptureDraft.folder(owner: owner, listing: "test")
     let otherPhoto = PhotoCaptureDraft.folder(owner: other, listing: "test")
     try fm.createDirectory(at: room.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -39,6 +40,42 @@ final class AccountDeletionTests: XCTestCase {
     try state.finishAccountDeletion(
       DeletionReceipt(receipt: String(repeating: "a", count: 64), ownerId: owner))
     XCTAssertEqual(state.user?.id, other)
+  }
+  func testReceiptsPreserveBothOwnersAndSurviveRelaunch() throws {
+    let account = "receipt-test-\(UUID().uuidString)"
+    let store = DeletionReceiptStore(account: account)
+    defer { clearReceipt(account) }
+    try store.save(.init(receipt: "first", ownerId: "A"))
+    try store.save(.init(receipt: "second", ownerId: "B"))
+    let reopened = DeletionReceiptStore(account: account)
+    XCTAssertEqual(try reopened.read(ownerId: "A")?.receipt, "first")
+    XCTAssertEqual(try reopened.read(ownerId: "B")?.receipt, "second")
+    try reopened.save(.init(receipt: "first-retry", ownerId: "A"))
+    XCTAssertEqual(try reopened.receipts().count, 2)
+    XCTAssertEqual(try reopened.read(ownerId: "B")?.receipt, "second")
+  }
+  func testLegacyReceiptIsPreservedWhenAnotherOwnerRequestsDeletion() throws {
+    let account = "legacy-\(UUID().uuidString)"
+    defer { clearReceipt(account) }
+    let data = try JSONEncoder().encode(DeletionReceipt(receipt: "legacy", ownerId: "A"))
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "com.ichen27.cusesublets.deletion",
+      kSecAttrAccount as String: account, kSecValueData as String: data,
+    ]
+    XCTAssertEqual(SecItemAdd(query as CFDictionary, nil), errSecSuccess)
+    let store = DeletionReceiptStore(account: account)
+    try store.save(.init(receipt: "new", ownerId: "B"))
+    XCTAssertEqual(try store.read(ownerId: "A")?.receipt, "legacy")
+    XCTAssertEqual(try store.receipts().count, 2)
+  }
+  private func clearReceipt(_ account: String) {
+    SecItemDelete(
+      [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "com.ichen27.cusesublets.deletion",
+        kSecAttrAccount as String: account,
+      ] as CFDictionary)
   }
   func testDeletedListingPlaceholderStillDecodesForSharedConversation() throws {
     let data = Data(

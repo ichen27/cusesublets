@@ -74,3 +74,5 @@ You includes blocked members, private reporting, the bundled data notice and del
 The app icon is in `Assets.xcassets`, with editable source and a renderer in `Brand/`. `PrivacyInfo.xcprivacy` declares collected data, including home pin coordinates and room/environment scanning; verify the final archive and provider behavior before submitting App Store privacy answers. Camera permission text is included. No signing team or secrets are stored in the project.
 
 Follow [release preparation and physical test matrix](../docs/mobile/release-checklist.md) for build configuration, archive commands and remaining device evidence.
+
+For an iPhone 17, start with the [physical test guide](../docs/mobile/iphone-17-test-guide.md). Debug builds include **You → Device capture check**, which captures and exports locally without a backend or account. Release builds omit this screen. Full upload, reconstruction and account testing still require the designated staging rollout.
