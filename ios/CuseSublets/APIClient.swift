@@ -66,6 +66,18 @@ struct KeychainSession {
     self.baseURL = baseURL ?? configured
     vault = KeychainSession(account: self.baseURL.absoluteString)
     credential = vault.read()
+    #if DEBUG
+      // UI tests against the isolated local API start from a session created over HTTP, so
+      // each test drives only the feature it checks. Ignored unless the API is local.
+      if let cookie = ProcessInfo.processInfo.environment["CUSE_UI_SESSION_COOKIE"],
+        cookie.hasPrefix("cuse_password_session="),
+        ["127.0.0.1", "localhost"].contains(self.baseURL.host ?? "")
+      {
+        let seeded = SessionCredential(cookie: cookie, expires: now().addingTimeInterval(3600))
+        try? vault.save(seeded)
+        credential = seeded
+      }
+    #endif
     configuration.httpShouldSetCookies = false
     configuration.httpCookieStorage = nil
     configuration.urlCache = nil

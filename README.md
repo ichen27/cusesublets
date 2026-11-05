@@ -60,7 +60,7 @@ API_BASE=http://127.0.0.1:8936 python3 tests/account-deletion-runtime.py
 API_BASE=http://127.0.0.1:8936 python3 tests/member-blocks-runtime.py
 ```
 
-The [iPhone workflow](.github/workflows/iphone.yml) creates fresh local state, tests scan/auth/tour/deletion/blocking APIs, and runs native units and interaction tests. The web workflow runs type checks, units and a production build. Browser engine chunks remain large; photographic playback is loaded separately. Simulator success does not establish camera quality or VoiceOver usability.
+The [iPhone workflow](.github/workflows/iphone.yml) creates fresh local state, tests scan/auth/tour/deletion/blocking APIs, and runs native units and focused interaction tests. The full end-to-end journey runs locally with `npm run ios:journey` (see [ios/README.md](ios/README.md)). The web workflow runs type checks, units and a production build. Browser engine chunks remain large; photographic playback is loaded separately. Simulator success does not establish camera quality or VoiceOver usability.
 
 ## Release limits
 

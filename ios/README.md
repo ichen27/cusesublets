@@ -42,7 +42,18 @@ Simulator builds and interaction tests use local ad-hoc signing so Keychain sess
 
 The UI test sets `CUSE_UI_MANUAL_PASSWORD=1` in Debug to type its synthetic password without the system's new-password generator sheet. Normal builds retain new-password AutoFill, and Release ignores this switch. Password-manager interaction needs a separate device check; the automated test exercises manual credential entry.
 
-The UI test creates synthetic accounts, saves/resumes a private draft, and publishes a synthetic listing only on port 8936. Never point tests at operational data. Apply every checked-in migration to fresh isolated state; the native account, room and reporting features need the full schema. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
+The UI tests are split by feature: signed-out browsing, signup and logout, private draft resume and publication, listing comments, and the room-capture capability screen. Except for the signup test, each test creates its synthetic member and listing directly on the isolated API and starts the app with that session through the Debug-only `CUSE_UI_SESSION_COOKIE` launch variable. The app accepts it only when `CUSE_API_URL` points at localhost, and Release builds ignore it. Each test then drives only the feature it checks.
+
+The complete journey (browse → signup → draft → publish → comment → capture → logout) is one long test that hosted CI simulators are too slow to run reliably. Hosted CI skips it. Run it on a local Mac before merging iPhone changes or preparing a release:
+
+```sh
+npm run ios:journey            # first available iPhone simulator
+npm run ios:journey -- <udid>  # a specific simulator
+```
+
+The script starts a throwaway API on port 8936 under `work/`, runs only `testFullMarketplaceJourney`, then stops the API and simulator. Hosted CI boots the simulator and lets it settle before testing, and retries a failed test once. The result bundle still records first-attempt failures, so check it when a retry passes.
+
+The UI tests create synthetic accounts and publish synthetic listings only on port 8936. Never point tests at operational data. Apply every checked-in migration to fresh isolated state; the native account, room and reporting features need the full schema. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
 
 ## Try it
 
