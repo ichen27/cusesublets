@@ -66,7 +66,12 @@ import SwiftUI
         try api.clearSession()
       } else {
         user = r.user
-        if user != nil { await refreshBlocks() }
+        if user != nil {
+          // Any refresh may be the one that observes sign-in; signup's own refresh can be
+          // superseded by the periodic or foreground refresh, so close the sheet here.
+          showLogin = false
+          await refreshBlocks()
+        }
       }
     } catch {
       guard refreshID == requestID else { return }

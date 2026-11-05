@@ -173,6 +173,39 @@ final class SessionLifecycleTests: XCTestCase {
     XCTAssertEqual(providerCalls, 1)
     XCTAssertFalse(api.hasStoredSession)
   }
+  /// Signup's own refresh can be superseded by the periodic or foreground refresh. Whichever
+  /// refresh observes the signed-in member must close the login sheet.
+  @MainActor func testSupersededSignInRefreshStillClosesLoginSheet() async throws {
+    let base = URL(string: "https://login-race-\(UUID().uuidString).example.test")!
+    let vault = KeychainSession(account: base.absoluteString)
+    try vault.save(
+      SessionCredential(
+        cookie: "cuse_password_session=synthetic", expires: Date().addingTimeInterval(60)))
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [SessionProtocol.self]
+    let api = APIClient(baseURL: base, configuration: configuration)
+    let state = AppState(api: api)
+    SessionProtocol.handler = { request in
+      if request.url?.path == "/api/blocked-members" {
+        return (200, Data("{\"members\":[],\"hiddenMemberIDs\":[]}".utf8))
+      }
+      return (
+        200,
+        Data(
+          "{\"user\":{\"id\":\"one\",\"name\":\"Synthetic\",\"email\":\"one@example.test\",\"role\":\"member\",\"identity\":\"pending\"},\"demo\":false}"
+            .utf8)
+      )
+    }
+    defer {
+      try? api.clearSession()
+      SessionProtocol.handler = nil
+    }
+    state.showLogin = true
+    // Only the periodic refresh completes here, as when it supersedes signup's own refresh.
+    await state.refreshSession(reportErrors: false)
+    XCTAssertEqual(state.user?.id, "one")
+    XCTAssertFalse(state.showLogin, "Signed-in member left behind an open login sheet")
+  }
   @MainActor func testOfflineLogoutStillClearsLocalIdentity() async throws {
     let base = URL(string: "https://logout-\(UUID().uuidString).example.test")!
     let vault = KeychainSession(account: base.absoluteString)
