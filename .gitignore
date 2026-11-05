@@ -13,5 +13,3 @@ playwright-report/
 __pycache__/
 
 prototype-dist/
-
-ai-review-output/
