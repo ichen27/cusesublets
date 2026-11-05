@@ -27,7 +27,10 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published var saved = false
   @Published var packaging = false
   @Published var requestingPermission = false
+  /// Share of seen surfaces covered from enough angles; nil when the depth model is unavailable.
+  @Published var coverage: Double? = 0
   let view = ARSCNView(frame: .zero)
+  private let coverageEngine = CaptureCoverageEngine()
   let draft: PhotoCaptureDraft
   let folder: URL
   private let context = CIContext()
@@ -42,6 +45,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     super.init()
     view.session.delegate = self
     view.session.delegateQueue = .main
+    coverageEngine.onUpdate = { [weak self] in self?.coverage = $0 }
     observer = NotificationCenter.default.addObserver(
       forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
     ) { [weak self] _ in self?.stop() }
@@ -94,6 +98,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
             config.videoFormat = format
           }
           self.view.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+          self.coverageEngine.reset(view: self.view)
           self.running = true
           UIApplication.shared.isIdleTimerDisabled = true
         } catch { self.message = error.localizedDescription }
@@ -102,6 +107,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   }
   func session(_ session: ARSession, didUpdate frame: ARFrame) {
     guard running else { return }
+    coverageEngine.frameDidUpdate(view: view)
     if startTime == nil { startTime = frame.timestamp }
     let elapsed = frame.timestamp - (startTime ?? frame.timestamp)
     if elapsed >= 178 || count >= 180 {
@@ -151,6 +157,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
       ])
       try Self.writeManifest(frames, to: folder)
       count = frames.count
+      coverageEngine.submit(frame)
     } catch {
       message = error.localizedDescription
       stop()
@@ -239,6 +246,7 @@ struct PhotoCaptureScreen: View {
       PhotoCameraSurface(recorder: recorder).ignoresSafeArea(edges: .top)
       Text(recorder.message).padding(.horizontal).accessibilityIdentifier("capture-guidance")
       Text("\(recorder.count) views · minimum 30 · aim for 60 or more").font(.caption)
+      CoverageLegend(coverage: recorder.coverage)
       HStack {
         if recorder.running {
           Button("Finish capture") { recorder.stop() }.buttonStyle(.borderedProminent).tint(
@@ -254,5 +262,34 @@ struct PhotoCaptureScreen: View {
       }.padding(.bottom)
     }.task { recorder.start() }.onDisappear { recorder.stop() }.interactiveDismissDisabled(
       recorder.packaging)
+  }
+}
+
+/// Explains the overlay colours and reports coverage in text, so it does not rely on colour alone.
+struct CoverageLegend: View {
+  let coverage: Double?
+  var body: some View {
+    if let coverage {
+      VStack(spacing: 4) {
+        HStack(spacing: 12) {
+          swatch(Color(red: 0.2, green: 0.32, blue: 0.95), "Not seen")
+          swatch(Color(red: 1, green: 0.6, blue: 0.1), "Needs more angles")
+          swatch(Color.white, "Covered")
+        }
+        Text("Covered from enough angles: \(Int((coverage * 100).rounded()))% of seen surfaces")
+          .accessibilityIdentifier("capture-coverage")
+      }.font(.caption2).padding(.horizontal)
+    } else {
+      Text("Coverage map unavailable on this device. Use the view count instead.")
+        .font(.caption2).padding(.horizontal).accessibilityIdentifier("capture-coverage")
+    }
+  }
+  private func swatch(_ color: Color, _ label: String) -> some View {
+    HStack(spacing: 4) {
+      RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 10, height: 10)
+        .overlay(RoundedRectangle(cornerRadius: 2).stroke(.secondary, lineWidth: 0.5))
+        .accessibilityHidden(true)
+      Text(label)
+    }
   }
 }
