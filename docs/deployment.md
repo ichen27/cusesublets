@@ -159,3 +159,14 @@ Rollback source:57e2a39. The new schema is additive; stop service before source/
 The hosted launcher runs Wrangler in watch mode from the canonical checkout. Editing that checkout or rebuilding its `dist/` changes the hosted preview without a separate deploy command. Feature work must use an isolated worktree with a separate persistence directory and port. The iPhone worktree is `/Volumes/SamsungSSD1/code/cusesublets-iphone`, branch `feat/iphone-app`, local test port 8936, state under `/Volumes/SamsungSSD1/tools/cusesublets/iphone-test-state`.
 
 During initial iPhone intake the canonical checkout was used, and the watcher picked up development source/assets. This was corrected by restoring canonical `main` at `2e6d7b4` and rebuilding it. Public root asset `index-B-K9E7JA.js` and anonymous session HTTP 200 were verified afterward. No migration or seed was applied to either operational datastore; migration0012 was applied only to isolated test state. New room scans and native Google sign-in must not be claimed deployed until a deliberate, backed-up migration and deployment occurs.
+
+### Merged is not deployed — iPhone backend
+
+Merging the iPhone work into `main` does not deploy it. The hosted preview serves whatever the canonical checkout contains, so **do not fast-forward or pull the canonical checkout** after this merge. Updating it would run worker code that needs migrations `0012`–`0018` (room scans, tours, tour deletions, Apple sign-in, account deletion, member blocks, deletion progress) against hosted state that has only been migrated through `0011`.
+
+Deploy deliberately, as a separate step:
+
+1. Stop the hosted service and back up its persistence directory next to the existing state backups.
+2. Apply the pending migrations, one at a time, to the hosted state only. Never use seed data or isolated test state.
+3. Fast-forward the canonical checkout to the intended `main` revision and rebuild `dist/`.
+4. Restart the service, then run `tests/hosted-guards.py` and check anonymous browsing and sign-in before claiming the deployment.
