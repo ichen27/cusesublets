@@ -27,21 +27,18 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(create.waitForExistence(timeout: 15))
     create.tap()
     XCTAssertTrue(app.textFields["Your name"].waitForExistence(timeout: 15))
-    app.textFields["Your name"].tap()
-    app.textFields["Your name"].typeText("iPhone UI Test")
-    app.textFields["Email"].tap()
-    app.textFields["Email"].typeText("iphone-\(UUID().uuidString)@example.test")
+    enter("iPhone UI Test", into: app.textFields["Your name"], in: app)
+    enter("iphone-\(UUID().uuidString)@example.test", into: app.textFields["Email"], in: app)
     reveal(app.secureTextFields["Password"], in: app)
-    app.secureTextFields["Password"].tap()
-    app.secureTextFields["Password"].typeText("isolated-test-password-2026")
+    enter(
+      "isolated-test-password-2026", into: app.secureTextFields["Password"], in: app, secure: true)
     reveal(app.buttons["Create account"], in: app)
     app.buttons["Create account"].tap()
     XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 20))
     attach(app, "Account")
     app.buttons["List your place"].tap()
     XCTAssertTrue(app.textFields["Listing title"].waitForExistence(timeout: 10))
-    app.textFields["Listing title"].tap()
-    app.textFields["Listing title"].typeText("Private iPhone draft")
+    enter("Private iPhone draft", into: app.textFields["Listing title"], in: app)
     let save = app.buttons["Save private draft & finish later"]
     reveal(save, in: app)
     save.tap()
@@ -53,17 +50,18 @@ final class MarketplaceTests: XCTestCase {
     resume.tap()
     let neighborhood = app.textFields["Neighborhood"]
     XCTAssertTrue(neighborhood.waitForExistence(timeout: 10))
-    neighborhood.tap()
-    neighborhood.typeText("Westcott")
+    enter("Westcott", into: neighborhood, in: app)
     reveal(app.textFields["Approximate public address"], in: app)
-    app.textFields["Approximate public address"].tap()
-    app.textFields["Approximate public address"].typeText("Near Westcott — synthetic UI test")
+    enter(
+      "Near Westcott — synthetic UI test", into: app.textFields["Approximate public address"],
+      in: app)
     app.swipeUp()
     let description = app.descendants(matching: .any).matching(identifier: "listing-description")
       .firstMatch
     reveal(description, in: app)
-    description.tap()
-    description.typeText("Synthetic simulator listing only. This is not an available property.")
+    enter(
+      "Synthetic simulator listing only. This is not an available property.", into: description,
+      in: app)
     reveal(app.buttons["Publish listing"], in: app)
     app.buttons["Publish listing"].tap()
     XCTAssertTrue(
@@ -74,17 +72,18 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["View listing"].tap()
     let comment = app.descendants(matching: .any).matching(identifier: "comment-draft").firstMatch
     reveal(comment, in: app)
-    comment.tap()
     let initialComment = "Synthetic public comment"
-    comment.typeText(initialComment)
+    enter(initialComment, into: comment, in: app)
     reveal(app.buttons["Post"], in: app)
     app.buttons["Post"].tap()
     XCTAssertTrue(app.staticTexts[initialComment].waitForExistence(timeout: 10))
     app.buttons["Edit"].tap()
     reveal(comment, in: app)
     comment.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 60), "Keyboard never appeared")
     // Focusing this multiline field places the caret at the start. Test an explicit insertion.
     comment.typeText("Edited ")
+    XCTAssertEqual(comment.value as? String, "Edited " + initialComment)
     reveal(app.buttons["Save comment"], in: app)
     app.buttons["Save comment"].tap()
     XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 10))
@@ -168,6 +167,32 @@ final class MarketplaceTests: XCTestCase {
       start.press(forDuration: 0.05, thenDragTo: end)
     }
     XCTAssertTrue(safelyVisible(), "Expected a form control clear of navigation and tab bars")
+  }
+  /// Hosted simulators can show the software keyboard many seconds after a field gains focus,
+  /// and keystrokes sent before it appears are silently dropped. Wait for the keyboard, then
+  /// confirm the field holds exactly the text instead of trusting typeText.
+  @MainActor private func enter(
+    _ text: String, into field: XCUIElement, in app: XCUIApplication, secure: Bool = false
+  ) {
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    func current() -> String {
+      let value = field.value as? String ?? ""
+      return value == field.placeholderValue ? "" : value
+    }
+    func holdsText() -> Bool { secure ? current().count == text.count : current() == text }
+    for _ in 0..<3 {
+      // Tap near the trailing edge so the caret lands after any partial text.
+      field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+      guard app.keyboards.firstMatch.waitForExistence(timeout: 60) else { continue }
+      let partial = current().count
+      if partial > 0 {
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: partial))
+      }
+      field.typeText(text)
+      if holdsText() { return }
+    }
+    XCTFail(
+      "\(field.identifier.isEmpty ? field.label : field.identifier) did not accept the typed text")
   }
   @MainActor private func signOutIfNeeded(_ app: XCUIApplication) {
     app.tabBars.buttons["You"].tap()
