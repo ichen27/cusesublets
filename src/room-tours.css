@@ -1,0 +1,6 @@
+.room-tour { min-width: 0; margin: 1rem 0; }
+.room-tour h3 { font-size: 1.35rem; margin-bottom: .7rem; }
+.room-tour p { line-height: 1.5; margin: .75rem 0; }
+.room-tour button, .room-tour > a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: .6rem .9rem; border: 1px solid var(--line); border-radius: .7rem; background: white; font-weight: 600; }
+.room-tour > a { margin-top: 1rem; }
+.room-tour canvas { max-width: 100%; }

@@ -1,0 +1,22 @@
+{
+  "method": "ARKit tracked cameras + Brush Gaussian training (no pose refinement)",
+  "views": 30,
+  "gaussians": 566,
+  "camera": {
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "target": [
+      0,
+      0,
+      -1
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  }
+}

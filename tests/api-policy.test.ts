@@ -47,6 +47,7 @@ describe("API trust boundaries", () => {
         body: "{}",
       }),
       { APP_ENV: "production" } as never,
+      { waitUntil: () => {} },
     );
     expect(response.status).toBe(401);
   });
@@ -58,6 +59,7 @@ describe("API trust boundaries", () => {
         body: "{}",
       }),
       { APP_ENV: "development" } as never,
+      { waitUntil: () => {} },
     );
     expect(response.status).toBe(403);
   });
