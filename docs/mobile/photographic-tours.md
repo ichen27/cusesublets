@@ -6,6 +6,14 @@ The iPhone app captures overlapping, calibrated ARKit camera views. The server s
 
 Photographic capture uses AR world tracking on supported iPhones; LiDAR is not required. The simulator cannot validate capture. Move slowly around one room with good light and overlapping views, including movement sideways. At least 30 stable views are required; aim for 60 or more. Capture stops at three minutes or 180 views. Poorly textured walls, mirrors, motion, occlusions and camera drift can still make reconstruction unusable.
 
+### Coverage overlay
+
+While capturing, the camera view shows which surfaces have been captured well enough for reconstruction. Unseen areas have a blue tint. Seen surfaces appear as small squares: amber when seen from one direction, light yellow from two, and nearly clear once seen from three directions at least 15° apart. A caption reports the covered share of seen surfaces as text, so the overlay does not rely on colour alone.
+
+The overlay works without LiDAR. For each saved view, a bundled Core ML model ([Depth Anything V2 Small](../../THIRD_PARTY_NOTICES.md)) estimates relative depth from the camera image. ARKit's tracked feature points convert it to metres by fitting inverse depth `1/z ≈ a·p + b`, and the result is added to a 10 cm voxel map. Views whose tracked points cannot fit the depth map are skipped for the overlay but still saved. The model runs on a background queue; a view arriving while the previous estimate is still running is not added to the overlay.
+
+Depth maps and the coverage map stay in memory and are not written to the take or uploaded. Limits: depth from one image is approximate, so the overlay is guidance, not a measurement. Mirrors, glass and blank walls with few tracked points may stay blue or show stray squares. The map is not saved, so a recovered take shows no overlay.
+
 Camera JPEGs, poses and feature points are saved under an owner/listing-specific directory with device file protection and excluded from backup. Each accepted view updates the manifest atomically. An interruption ends the coordinate system; it never silently resumes a new tracking origin. Reopening recovers the saved take. Fewer than 30 views requires a new take. Review source images for personal papers, faces and other private details before upload.
 
 Archives and trained models are limited to 64 MiB. Upload streams from disk and checks size plus SHA-256 on the server. Keep the app open during upload. An interrupted upload retries the whole bounded file with the same capture ID, not individual byte ranges. Retrying cannot create duplicate jobs or replace an already accepted archive. After the server accepts the upload, the app removes its local source copy. Owners can delete server captures and models; downloaded copies cannot be recalled.
