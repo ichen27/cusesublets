@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateTourResult } from "../shared/room-tour";
+import { validateTourMesh, validateTourResult } from "../shared/room-tour";
 const result = {
   method: "ARKit + Brush",
   views: 60,
@@ -23,6 +23,60 @@ describe("tour metadata", () => {
     expect(
       validateTourResult({ ...result, privatePath: "/private/job/log" }),
     ).toEqual(result);
+  });
+});
+
+const mesh = {
+  method: "Depth Anything 3 Base depth with ARKit poses + TSDF fusion",
+  views: 60,
+  vertices: 165252,
+  triangles: 300000,
+  voxel: 0.02,
+  bounds: [
+    [-1.5, -1.4, -3.9],
+    [4.8, 1.7, 3],
+  ],
+};
+describe("tour mesh metadata", () => {
+  it("accepts a bounded mesh and drops extra fields", () => {
+    expect(validateTourMesh({ ...mesh, privatePath: "/job/mesh.ply" })).toEqual(
+      mesh,
+    );
+  });
+  it("rejects counts, voxel sizes and bounds outside the contract", () => {
+    for (const bad of [
+      null,
+      { ...mesh, method: "" },
+      { ...mesh, views: 0 },
+      { ...mesh, views: 181 },
+      { ...mesh, vertices: 2_000_001 },
+      { ...mesh, triangles: 1.5 },
+      { ...mesh, voxel: 0.001 },
+      { ...mesh, voxel: Infinity },
+      { ...mesh, bounds: [[0, 0, 0]] },
+      {
+        ...mesh,
+        bounds: [
+          [1, 0, 0],
+          [0, 1, 1],
+        ],
+      },
+      {
+        ...mesh,
+        bounds: [
+          [0, 0, NaN],
+          [1, 1, 1],
+        ],
+      },
+      {
+        ...mesh,
+        bounds: [
+          [0, 0, 0],
+          [1, 1, 1e6],
+        ],
+      },
+    ])
+      expect(() => validateTourMesh(bad)).toThrow();
   });
 });
 
@@ -60,13 +114,11 @@ it("a retained deletion record sweeps a late upload after its immediate cleanup 
     storageClass: "Standard",
     writeHttpMetadata: () => {},
   });
-  const list = vi
-    .fn<R2Bucket["list"]>()
-    .mockImplementation(async () => ({
-      objects: [...objects].map(object),
-      truncated: false,
-      delimitedPrefixes: [],
-    }));
+  const list = vi.fn<R2Bucket["list"]>().mockImplementation(async () => ({
+    objects: [...objects].map(object),
+    truncated: false,
+    delimitedPrefixes: [],
+  }));
   const remove = vi
     .fn<R2Bucket["delete"]>()
     .mockImplementation(async (keys) => {

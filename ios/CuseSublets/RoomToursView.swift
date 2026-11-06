@@ -15,6 +15,12 @@ struct TourResult: Decodable {
   let gaussians: Int
   let camera: TourCamera
 }
+struct TourMesh: Decodable {
+  let method: String
+  let views: Int
+  let vertices: Int
+  let triangles: Int
+}
 struct RoomTour: Decodable, Identifiable {
   let id: String
   let listingId: String
@@ -22,6 +28,8 @@ struct RoomTour: Decodable, Identifiable {
   let status: String
   let published: Bool
   let result: TourResult?
+  /// A coloured room mesh, when processing built one alongside the Gaussian model.
+  let mesh: TourMesh?
   let error: String?
 }
 struct ToursResponse: Decodable {
@@ -43,6 +51,7 @@ struct RoomToursView: View {
   @State private var discard = false
   @State private var deleting: RoomTour?
   @State private var export: URL?
+  @State private var exportIsMesh = false
   var owner: Bool { state.user?.id == listing.ownerId }
   var folder: URL { PhotoCaptureDraft.folder(owner: listing.ownerId, listing: listing.id) }
   var body: some View {
@@ -98,6 +107,10 @@ struct RoomToursView: View {
                 ).navigationBarTitleDisplayMode(.inline)
               }
               Button("Export Gaussian PLY") { Task { await download(tour) } }.disabled(busy)
+              if tour.mesh != nil {
+                Button("Export room mesh (PLY)") { Task { await download(tour, mesh: true) } }
+                  .disabled(busy).accessibilityIdentifier("export-room-mesh")
+              }
               if owner {
                 Button(tour.published ? "Hide from listing" : "Publish to listing") {
                   Task { await action(tour, "visibility", ["published": !tour.published]) }
@@ -131,7 +144,9 @@ struct RoomToursView: View {
         if let export {
           ShareLink("Share exported PLY", item: export)
           Text(
-            "Use a Gaussian-compatible viewer or Blender importer. This is not an editable wall mesh."
+            exportIsMesh
+              ? "A coloured triangle mesh in metres, Y up. It opens in Blender, MeshLab and most 3D tools. It is reconstructed from photographs, so expect holes and soft edges."
+              : "Use a Gaussian-compatible viewer or Blender importer. This is not an editable wall mesh."
           ).font(.caption)
         }
       }.padding()
@@ -260,12 +275,14 @@ struct RoomToursView: View {
       await load()
     } catch { self.error = error.localizedDescription }
   }
-  func download(_ tour: RoomTour) async {
+  func download(_ tour: RoomTour, mesh: Bool = false) async {
     busy = true
     defer { busy = false }
     do {
       export = try await state.api.download(
-        "/api/listings/\(listing.id)/tours/\(tour.id)/model", name: "room.ply")
+        "/api/listings/\(listing.id)/tours/\(tour.id)/\(mesh ? "mesh" : "model")",
+        name: mesh ? "room-mesh.ply" : "room.ply")
+      exportIsMesh = mesh
     } catch { self.error = error.localizedDescription }
   }
 }

@@ -162,7 +162,7 @@ During initial iPhone intake the canonical checkout was used, and the watcher pi
 
 ### Merged is not deployed — iPhone backend
 
-Merging the iPhone work into `main` does not deploy it. The hosted preview serves whatever the canonical checkout contains, so **do not fast-forward or pull the canonical checkout** after this merge. Updating it would run worker code that needs migrations `0012`–`0018` (room scans, tours, tour deletions, Apple sign-in, account deletion, member blocks, deletion progress) against hosted state that has only been migrated through `0011`.
+Merging the iPhone work into `main` does not deploy it. The hosted preview serves whatever the canonical checkout contains, so **do not fast-forward or pull the canonical checkout** after this merge. Updating it would run worker code that needs migrations `0012`–`0019` (room scans, tours, tour deletions, Apple sign-in, account deletion, member blocks, deletion progress, tour meshes) against hosted state that has only been migrated through `0011`.
 
 Deploy deliberately, as a separate step:
 
