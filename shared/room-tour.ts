@@ -7,6 +7,15 @@ export interface TourResult {
   gaussians: number;
   camera: { position: number[]; target: number[]; up: number[] };
 }
+export interface TourMesh {
+  method: string;
+  views: number;
+  vertices: number;
+  triangles: number;
+  voxel: number;
+  bounds: [number[], number[]];
+}
+export const MESH_LIMITS = { vertices: 2_000_000, triangles: 1_000_000 };
 export interface RoomTour {
   id: string;
   listingId: string;
@@ -15,6 +24,8 @@ export interface RoomTour {
   published: boolean;
   createdAt: string;
   result: TourResult | null;
+  /** Coloured PLY mesh in ARKit world coordinates, when processing built one. */
+  mesh: TourMesh | null;
   error: string | null;
 }
 // The processor validates the PLY itself; this is the bounded display metadata contract.
@@ -59,5 +70,44 @@ export function validateTourResult(value: unknown): TourResult {
     views: r.views!,
     gaussians: r.gaussians!,
     camera: c,
+  };
+}
+
+const finite = (n: unknown): n is number =>
+  typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 10000;
+const count = (n: unknown, max: number): n is number =>
+  Number.isInteger(n) && (n as number) >= 1 && (n as number) <= max;
+
+// The processor writes and checks the PLY; this is the bounded display metadata contract.
+export function validateTourMesh(value: unknown): TourMesh {
+  const m = value as Partial<TourMesh> | null;
+  if (
+    !m ||
+    typeof m.method !== "string" ||
+    m.method.length < 1 ||
+    m.method.length > 180 ||
+    !count(m.views, 180) ||
+    !count(m.vertices, MESH_LIMITS.vertices) ||
+    !count(m.triangles, MESH_LIMITS.triangles) ||
+    !finite(m.voxel) ||
+    m.voxel < 0.005 ||
+    m.voxel > 0.2
+  )
+    throw new Error("Invalid mesh result");
+  const b = m.bounds;
+  if (
+    !Array.isArray(b) ||
+    b.length !== 2 ||
+    !b.every((c) => Array.isArray(c) && c.length === 3 && c.every(finite)) ||
+    b[0].some((n, i) => n > b[1][i])
+  )
+    throw new Error("Invalid mesh bounds");
+  return {
+    method: m.method,
+    views: m.views,
+    vertices: m.vertices,
+    triangles: m.triangles,
+    voxel: m.voxel,
+    bounds: [[...b[0]], [...b[1]]],
   };
 }

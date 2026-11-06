@@ -1,6 +1,7 @@
 import type { User } from "../shared/types";
 import {
   TOUR_LIMIT,
+  validateTourMesh,
   validateTourResult,
   type RoomTour,
 } from "../shared/room-tour";
@@ -16,6 +17,8 @@ type Row = Omit<RoomTour, "published" | "result"> & {
   inputSize: number;
   inputKey: string | null;
   modelKey: string | null;
+  meshKey: string | null;
+  mesh: string | null;
   claim: string | null;
   leaseUntil: number | null;
   attempts: number;
@@ -37,6 +40,7 @@ const view = (r: Row): RoomTour => ({
   published: !!r.published,
   createdAt: r.createdAt,
   result: r.result ? JSON.parse(r.result) : null,
+  mesh: r.status === "ready" && r.meshKey && r.mesh ? JSON.parse(r.mesh) : null,
   error: r.error,
 });
 const active =
@@ -125,7 +129,7 @@ export async function roomTourRoute(
   user: User | null,
 ): Promise<Response | null> {
   const match = new URL(req.url).pathname.match(
-    /^\/api\/listings\/([^/]+)\/tours(?:\/([^/]+)(?:\/(upload|visibility|retry|delete|model))?)?$/,
+    /^\/api\/listings\/([^/]+)\/tours(?:\/([^/]+)(?:\/(upload|visibility|retry|delete|model|mesh))?)?$/,
   );
   if (!match) return null;
   const [, listingId, tourId, action] = match;
@@ -166,6 +170,14 @@ export async function roomTourRoute(
         "Tour is not ready",
       );
       return asset(env, row.modelKey, "room.ply");
+    }
+    if (action === "mesh") {
+      requireThat(
+        !row.deleting && row.status === "ready" && row.meshKey,
+        404,
+        "Tour mesh is not available",
+      );
+      return asset(env, row.meshKey, "room-mesh.ply");
     }
     requireThat(!action, 404, "Not found");
     return json({ tour: view(row) });
@@ -352,7 +364,7 @@ export async function tourProcessorRoute(
   env: TourEnv,
 ): Promise<Response | null> {
   const match = new URL(req.url).pathname.match(
-    /^\/api\/tour-processor\/(claim|([a-f0-9-]+)\/(input|heartbeat|complete|fail))$/i,
+    /^\/api\/tour-processor\/(claim|([a-f0-9-]+)\/(input|heartbeat|mesh|complete|fail))$/i,
   );
   if (!match) return null;
   await processorAuthorized(req, env.TOUR_PROCESSOR_TOKEN);
@@ -410,6 +422,41 @@ export async function tourProcessorRoute(
   }
   requireThat(req.method === "POST", 405, "Method not allowed");
   const guard = `id=? AND claim=? AND deleting=0 AND status='processing' AND leaseUntil>? AND ${active}`;
+  // Meshes are named by the claim that uploaded them; completion keeps only the current claim's.
+  const meshPrefix = `tours/${row.id}/mesh-${claim}-`;
+  if (action === "mesh") {
+    let metadata;
+    try {
+      metadata = validateTourMesh(
+        JSON.parse(req.headers.get("X-Tour-Result") || "null"),
+      );
+    } catch {
+      throw new HttpError(400, "Invalid mesh result");
+    }
+    const key = `${meshPrefix}${crypto.randomUUID()}.ply`;
+    await streamUpload(
+      req,
+      env,
+      key,
+      Number(req.headers.get("X-File-Size")),
+      req.headers.get("X-File-SHA256") || "",
+    );
+    const saved = await env.DB.prepare(
+      `UPDATE room_tours SET meshKey=?,mesh=? WHERE ${guard}`,
+    )
+      .bind(key, JSON.stringify(metadata), id, claim, Date.now())
+      .run();
+    if (saved.meta.changes !== 1) {
+      await env.UPLOADS.delete(key);
+      throw new HttpError(
+        409,
+        "Processing lease expired or capture unavailable",
+      );
+    }
+    if (row.meshKey && row.meshKey !== key)
+      await env.UPLOADS.delete(row.meshKey);
+    return json({ ok: true });
+  }
   if (action === "complete") {
     let metadata;
     try {
@@ -427,10 +474,21 @@ export async function tourProcessorRoute(
       Number(req.headers.get("X-File-Size")),
       req.headers.get("X-File-SHA256") || "",
     );
+    // SQLite evaluates every SET expression against the row before the update.
     const saved = await env.DB.prepare(
-      `UPDATE room_tours SET status='ready',modelKey=?,result=?,claim=NULL,leaseUntil=NULL WHERE ${guard}`,
+      `UPDATE room_tours SET status='ready',modelKey=?,result=?,claim=NULL,leaseUntil=NULL,meshKey=CASE WHEN substr(meshKey,1,?)=? THEN meshKey END,mesh=CASE WHEN substr(meshKey,1,?)=? THEN mesh END WHERE ${guard}`,
     )
-      .bind(key, JSON.stringify(metadata), id, claim, Date.now())
+      .bind(
+        key,
+        JSON.stringify(metadata),
+        meshPrefix.length,
+        meshPrefix,
+        meshPrefix.length,
+        meshPrefix,
+        id,
+        claim,
+        Date.now(),
+      )
       .run();
     if (saved.meta.changes !== 1) {
       await env.UPLOADS.delete(key);
@@ -439,6 +497,14 @@ export async function tourProcessorRoute(
         "Processing lease expired or capture unavailable",
       );
     }
+    // A mesh left by an earlier, failed attempt no longer belongs to this tour's result.
+    const current = await env.DB.prepare(
+      "SELECT meshKey FROM room_tours WHERE id=?",
+    )
+      .bind(id)
+      .first<{ meshKey: string | null }>();
+    if (row.meshKey && row.meshKey !== current?.meshKey)
+      await env.UPLOADS.delete(row.meshKey);
     return json({ ok: true });
   }
   let result: D1Result;
