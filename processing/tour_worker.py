@@ -97,6 +97,35 @@ def reconstruct(capture, work):
     camera = json.loads((cameras.model_dir.parent / 'view.json').read_text())
     (result / 'display.json').write_text(json.dumps({'method': cameras.method, 'views': cameras.registered,
                                                   'gaussians': validated['count'], 'camera': camera}))
+    if os.environ.get('CUSE_ROOM_MESH') == '1':
+        build_optional_mesh(work / 'frames', result / 'mesh')
+
+
+def build_optional_mesh(frames, out):
+    """The mesh is an addition to the Gaussian model: if it fails, the tour still completes."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from room_mesh import MODEL, build_mesh
+        build_mesh(frames, out, os.environ.get('CUSE_DA3_MODEL', MODEL), log=lambda line: print(line, flush=True))
+    except Exception as error:
+        # Only the error type is logged; messages can include private paths.
+        print('Room mesh skipped:', type(error).__name__, flush=True)
+        for name in ('room-mesh.ply', 'mesh.json'):
+            (out / name).unlink(missing_ok=True)
+
+
+def upload_mesh(api, job, result):
+    """Uploads the mesh if one was built. A rejected mesh is dropped; a lost lease stops the job."""
+    mesh = result / 'mesh/room-mesh.ply'
+    if not mesh.exists():
+        return
+    try:
+        api.json(job['id'] + '/mesh', job=job, file=mesh,
+                 metadata=json.loads((result / 'mesh/mesh.json').read_text()))
+    except urllib.error.HTTPError as error:
+        if error.code == 409:
+            raise
+        print('Room mesh rejected by the API:', error.code, flush=True)
 
 
 def stop_process(process):
@@ -153,6 +182,7 @@ def process_job(api, job, root):
                         raise ValueError('processing_failed')
                 result = work / 'training/result'
                 metadata = json.loads((result / 'display.json').read_text())
+                upload_mesh(api, job, result)
                 api.json(job['id'] + '/complete', job=job, file=result / 'export_3000.ply', metadata=metadata)
                 print('Tour reconstruction completed', flush=True)
             finally:
