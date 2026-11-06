@@ -30,15 +30,19 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   let view = ARSCNView(frame: .zero)
   let draft: PhotoCaptureDraft
   let folder: URL
-  private let context = CIContext()
+  /// Per-view records, appended as views are saved; `manifest.json` is built from it at the end.
+  static let recordsName = "frames.jsonl"
+  /// Saved views keep the camera's full 1920-pixel width.
+  static let savedWidth: CGFloat = 1920
+  private let writer: CaptureWriter
   private var policy = CapturePolicy()
-  private var frames = [[String: Any]]()
   private var startTime: TimeInterval?
   private var permissionGeneration = UUID()
   private var observer: NSObjectProtocol?
   init(draft: PhotoCaptureDraft) {
     self.draft = draft
     folder = PhotoCaptureDraft.folder(owner: draft.ownerId, listing: draft.listingId)
+    writer = CaptureWriter(folder: folder)
     super.init()
     view.session.delegate = self
     view.session.delegateQueue = .main
@@ -88,9 +92,12 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
           try directory.setResourceValues(values)
           let config = ARWorldTrackingConfiguration()
           config.worldAlignment = .gravity
+          // The largest 4:3 format up to 1920 wide: 4:3 sees more floor and ceiling than 16:9.
           if let format = ARWorldTrackingConfiguration.supportedVideoFormats.filter({
-            $0.imageResolution.width <= 1920 && $0.framesPerSecond == 30
-          }).first {
+            let size = $0.imageResolution
+            return size.width <= Self.savedWidth && $0.framesPerSecond == 30
+              && abs(size.width * 3 - size.height * 4) < 1
+          }).max(by: { $0.imageResolution.width < $1.imageResolution.width }) {
             config.videoFormat = format
           }
           self.view.session.run(config, options: [.resetTracking, .removeExistingAnchors])
@@ -104,84 +111,92 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     guard running else { return }
     if startTime == nil { startTime = frame.timestamp }
     let elapsed = frame.timestamp - (startTime ?? frame.timestamp)
-    if elapsed >= 178 || count >= 180 {
+    if elapsed >= CapturePolicy.maximumDuration || policy.count >= CapturePolicy.maximumViews {
       stop()
       return
     }
     var tracked = false
     if case .normal = frame.camera.trackingState { tracked = true }
     if let light = frame.lightEstimate, light.ambientIntensity < 150 {
-      message = "Add more light before continuing."
+      show("Add more light before continuing.")
       return
     }
     let pose = frame.camera.transform
-    let decision = policy.evaluate(
+    let points = frame.rawFeaturePoints?.points ?? []
+    let source = CIImage(cvPixelBuffer: frame.capturedImage)
+    let scale = min(1, Self.savedWidth / source.extent.width)
+    let k = frame.camera.intrinsics
+    let sample = CaptureSample(
       time: elapsed, position: SIMD3(pose.columns.3.x, pose.columns.3.y, pose.columns.3.z),
-      forward: -SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z), tracking: tracked)
-    message = decision.message
+      forward: -SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z), tracking: tracked,
+      exposure: frame.camera.exposureDuration, focalLength: k[0][0] * Float(scale),
+      sceneDepth: CaptureSample.medianDepth(points, camera: pose), featureCount: points.count)
+    let decision = policy.evaluate(sample, canSave: !writer.busy)
+    show(decision.message)
     guard decision.save else { return }
-    do {
-      let source = CIImage(cvPixelBuffer: frame.capturedImage)
-      let scale = min(1, 1280 / source.extent.width)
-      let image = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-      guard
-        let jpeg = context.jpegRepresentation(
-          of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
-          options: [
-            CIImageRepresentationOption(
-              rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.75
-          ]), jpeg.count < 1_000_000
-      else { throw CaptureFailure.message("Camera frame could not be saved. Start a new take.") }
-      let name = String(format: "images/%05d.jpg", frames.count)
-      try jpeg.write(
-        to: folder.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
-      let k = frame.camera.intrinsics
-      let matrix = (0..<4).map { row in (0..<4).map { column in Double(pose[column][row]) } }
-      let sourcePoints = frame.rawFeaturePoints?.points ?? []
-      let points = Swift.stride(
-        from: 0, to: sourcePoints.count, by: max(1, sourcePoints.count / 250)
-      ).prefix(250).map { i in
-        [Double(sourcePoints[i].x), Double(sourcePoints[i].y), Double(sourcePoints[i].z)]
+    let image = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    let record = CaptureFrameRecord(
+      filePath: "", timestamp: elapsed, width: Int(image.extent.width.rounded()),
+      height: Int(image.extent.height.rounded()), fx: Double(k[0][0]) * Double(scale),
+      fy: Double(k[1][1]) * Double(scale), cx: Double(k[2][0]) * Double(scale),
+      cy: Double(k[2][1]) * Double(scale),
+      transformMatrix: (0..<4).map { row in (0..<4).map { column in Double(pose[column][row]) } },
+      points: CaptureFrameRecord.points(points))
+    writer.save(image, record: record) { [weak self] outcome in
+      guard let self else { return }
+      switch outcome {
+      case .saved(let count): self.count = count
+      case .full:
+        self.message = "This take has reached the 64 MB upload limit."
+        self.stop()
+      case .failed(let reason):
+        self.message = reason
+        self.stop()
       }
-      frames.append([
-        "file_path": name, "timestamp": elapsed, "width": Int(image.extent.width.rounded()),
-        "height": Int(image.extent.height.rounded()), "fx": Double(k[0][0]) * scale,
-        "fy": Double(k[1][1]) * scale, "cx": Double(k[2][0]) * scale, "cy": Double(k[2][1]) * scale,
-        "transform_matrix": matrix, "tracking": "normal", "points": points,
-      ])
-      try Self.writeManifest(frames, to: folder)
-      count = frames.count
-    } catch {
-      message = error.localizedDescription
-      stop()
     }
   }
-  static func writeManifest(_ frames: [[String: Any]], to folder: URL) throws {
-    let manifest: [String: Any] = [
-      "schema_version": 1, "source": "arkit", "coordinate_system": "arkit-camera-to-world",
-      "capability": "camera", "frames": frames,
-    ]
-    try JSONSerialization.data(withJSONObject: manifest).write(
+  /// Publishing the same text every frame would redraw the screen 60 times a second.
+  private func show(_ text: String) { if message != text { message = text } }
+  static func writeManifest(_ frames: [CaptureFrameRecord], to folder: URL) throws {
+    try JSONEncoder().encode(CaptureManifest(frames: frames)).write(
       to: folder.appendingPathComponent("manifest.json"),
       options: [.atomic, .completeFileProtection])
   }
-  static func package(folder: URL) throws -> URL {
+  /// The complete views of a take, in order. Reading stops at the first record that was cut off
+  /// or whose image is missing, because processing requires consecutive image names.
+  static func savedFrames(in folder: URL) throws -> [CaptureFrameRecord] {
+    let records = folder.appendingPathComponent(recordsName)
     let manifest = folder.appendingPathComponent("manifest.json")
+    if FileManager.default.fileExists(atPath: records.path) {
+      var frames = [CaptureFrameRecord]()
+      for line in try Data(contentsOf: records).split(separator: UInt8(ascii: "\n")) {
+        let expected = String(format: "images/%05d.jpg", frames.count)
+        guard let frame = try? JSONDecoder().decode(CaptureFrameRecord.self, from: Data(line)),
+          frame.filePath == expected,
+          FileManager.default.fileExists(atPath: folder.appendingPathComponent(expected).path)
+        else { break }
+        frames.append(frame)
+      }
+      return frames
+    }
+    // Takes saved before per-view records existed.
     guard FileManager.default.fileExists(atPath: manifest.path) else {
       throw CaptureFailure.message("This take has no stable views. Discard it and capture again.")
     }
-    let json = try JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any]
-    guard let frames = json?["frames"] as? [[String: Any]], frames.count >= 30 else {
+    do {
+      return try JSONDecoder().decode(CaptureManifest.self, from: Data(contentsOf: manifest)).frames
+    } catch { throw CaptureFailure.message("The saved take is incomplete.") }
+  }
+  static func package(folder: URL) throws -> URL {
+    let frames = try savedFrames(in: folder)
+    guard frames.count >= 30 else {
       throw CaptureFailure.message(
         "This take has fewer than 30 stable views. Discard it and capture again.")
     }
-    var entries = [("manifest.json", manifest)]
-    for frame in frames {
-      guard let name = frame["file_path"] as? String else {
-        throw CaptureFailure.message("The saved take is incomplete.")
-      }
-      entries.append((name, folder.appendingPathComponent(name)))
-    }
+    try writeManifest(frames, to: folder)
+    let entries =
+      [("manifest.json", folder.appendingPathComponent("manifest.json"))]
+      + frames.map { ($0.filePath, folder.appendingPathComponent($0.filePath)) }
     let target = folder.appendingPathComponent("room.roomcapture")
     try CaptureArchive.write(entries: entries, to: target)
     return target
@@ -196,26 +211,22 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     running = false
     view.session.pause()
     UIApplication.shared.isIdleTimerDisabled = false
-    guard count >= 30 else {
-      message =
-        "Saved \(count) views. This take needs at least 30; close and discard it to try again."
-      return
-    }
     packaging = true
     let folder = self.folder
-    Task {
-      do {
-        _ = try await Task.detached(priority: .userInitiated) { try Self.package(folder: folder) }
-          .value
-        await MainActor.run {
+    // Package only after the last view has finished writing.
+    writer.afterPendingWrites { saved in
+      let outcome = saved < 30 ? nil : Result { _ = try Self.package(folder: folder) }
+      DispatchQueue.main.async {
+        self.packaging = false
+        self.count = saved
+        switch outcome {
+        case nil:
+          self.message =
+            "Saved \(saved) views. This take needs at least 30; close and discard it to try again."
+        case .success:
           self.saved = true
-          self.packaging = false
           self.message = "Saved privately on this iPhone. Review the images before uploading."
-        }
-      } catch {
-        await MainActor.run {
-          self.packaging = false
-          self.message = error.localizedDescription
+        case .failure(let error): self.message = error.localizedDescription
         }
       }
     }

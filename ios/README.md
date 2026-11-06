@@ -74,7 +74,7 @@ Build logs, runtime databases, account cookies and private room captures stay ou
 
 ## Photographic reconstruction
 
-`PhotoCapture.swift` captures calibrated camera views using ARKit on supported iPhones, including devices without LiDAR. This is separate from RoomPlan layouts. `RoomToursView.swift` manages private source recovery/upload, processing, review, publication and Gaussian PLY export. The viewer uses the same PlayCanvas code as public web pages, with an ephemeral same-origin cookie store. See [photographic tours](../docs/mobile/photographic-tours.md) for the separate processor setup and current validation limits. All migrations are required; photographic capture reports unavailable until a processor secret is configured.
+`PhotoCapture.swift` captures calibrated camera views using ARKit on supported iPhones, including devices without LiDAR. `PhotoCapturePolicy.swift` decides which frames become views, and `CaptureStorage.swift` writes them off the camera thread within the upload size budget. This is separate from RoomPlan layouts. `RoomToursView.swift` manages private source recovery/upload, processing, review, publication and Gaussian PLY export. The viewer uses the same PlayCanvas code as public web pages, with an ephemeral same-origin cookie store. See [photographic tours](../docs/mobile/photographic-tours.md) for the separate processor setup and current validation limits. All migrations are required; photographic capture reports unavailable until a processor secret is configured.
 
 ## Accounts and release preparation
 
