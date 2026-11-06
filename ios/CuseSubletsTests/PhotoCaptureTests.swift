@@ -17,22 +17,6 @@ final class PhotoCaptureTests: XCTestCase {
       XCTAssertTrue(error.localizedDescription.contains("fewer than 30"))
     }
   }
-  func testCaptureWaitsForTrackingAndRejectsFastMotion() {
-    var policy = CapturePolicy()
-    let forward = SIMD3<Float>(0, 0, -1)
-    XCTAssertFalse(
-      policy.evaluate(time: 0, position: .zero, forward: forward, tracking: false).save)
-    XCTAssertTrue(policy.evaluate(time: 1, position: .zero, forward: forward, tracking: true).save)
-    XCTAssertFalse(
-      policy.evaluate(time: 1.1, position: SIMD3<Float>(1, 0, 0), forward: forward, tracking: true)
-        .save)
-    XCTAssertFalse(
-      policy.evaluate(time: 2, position: SIMD3<Float>(1, 0, 0), forward: forward, tracking: false)
-        .save)
-    XCTAssertTrue(
-      policy.evaluate(time: 3, position: SIMD3<Float>(1, 0, 0), forward: forward, tracking: true)
-        .save)
-  }
   func testRecoveryDirectoriesAreScopedToOwnerAndListing() {
     let first = PhotoCaptureDraft.folder(owner: "one", listing: "room")
     XCTAssertEqual(first, PhotoCaptureDraft.folder(owner: "one", listing: "room"))

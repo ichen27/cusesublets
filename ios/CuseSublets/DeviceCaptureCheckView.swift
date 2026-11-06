@@ -8,6 +8,8 @@
     @State private var capture = false
     @State private var hasTake = false
     @State private var archive: URL?
+    @State private var streamArchive: URL?
+    @State private var hasStream = false
     @State private var error = ""
     @State private var busy = false
     @State private var confirmDiscard = false
@@ -46,6 +48,16 @@
             if let archive {
               ShareLink("Export private capture archive", item: archive)
             }
+            if hasStream {
+              Text(
+                "This take also recorded a camera stream: a small frame every 0.2 s with camera motion, exposure and why each frame was or was not saved. It is for offline testing and is never uploaded."
+              )
+              Button("Prepare camera stream recording") { Task { await prepareStream() } }
+                .disabled(busy)
+              if let streamArchive {
+                ShareLink("Export camera stream recording", item: streamArchive)
+              }
+            }
             Button("Discard local take", role: .destructive) { confirmDiscard = true }
               .disabled(busy)
           } else {
@@ -59,26 +71,40 @@
       .navigationTitle("Device capture check")
       .task { recover() }
       .fullScreenCover(isPresented: $capture, onDismiss: recover) {
-        PhotoCaptureScreen(recorder: PhotoRecorder(draft: draft))
+        PhotoCaptureScreen(recorder: PhotoRecorder(draft: draft, recordStream: true))
       }
       .confirmationDialog("Discard this private test take?", isPresented: $confirmDiscard) {
         Button("Discard", role: .destructive) {
           do {
             try FileManager.default.removeItem(at: folder)
             archive = nil
+            streamArchive = nil
             error = ""
             recover()
           } catch { self.error = error.localizedDescription }
         }
       } message: {
         Text(
-          "This removes the local source images and archive. Exported copies remain where you saved them."
+          "This removes the local source images, camera stream and archives. Exported copies remain where you saved them."
         )
       }
     }
     private func recover() {
       hasTake = FileManager.default.fileExists(
         atPath: folder.appendingPathComponent("draft.json").path)
+      hasStream = hasTake && StreamRecorder.exists(in: folder)
+    }
+    private func prepareStream() async {
+      guard !busy else { return }
+      busy = true
+      error = ""
+      defer { busy = false }
+      do {
+        let folder = self.folder
+        streamArchive = try await Task.detached(priority: .userInitiated) {
+          try StreamRecorder.package(take: folder)
+        }.value
+      } catch { self.error = error.localizedDescription }
     }
     private func prepareArchive() async {
       guard !busy else { return }

@@ -1,22 +1,29 @@
 import Foundation
 
 enum CaptureArchive {
+  static let captureLimit = 64 * 1024 * 1024
+
+  /// The only names the processing engine accepts in a capture archive.
+  static func isCaptureName(_ name: String) -> Bool {
+    name == "manifest.json" || name == "mesh.json"
+      || name.range(of: "^images/[0-9]{5}\\.jpg$", options: .regularExpression) != nil
+  }
+
   // Uncompressed USTAR keeps the server's size limits meaningful.
-  static func write(entries: [(String, URL)], to target: URL) throws {
+  static func write(
+    entries: [(String, URL)], to target: URL, allowed: (String) -> Bool = isCaptureName,
+    limit: Int = captureLimit,
+    limitMessage: String = "Capture exceeds 64 MB. Record a smaller room."
+  ) throws {
     var names = Set<String>()
     var total = 1024
     for (name, file) in entries {
-      guard
-        name == "manifest.json" || name == "mesh.json"
-          || name.range(of: "^images/[0-9]{5}\\.jpg$", options: .regularExpression) != nil,
-        names.insert(name).inserted
+      guard name.utf8.count < 100, allowed(name), names.insert(name).inserted
       else { throw CaptureFailure.message("Invalid capture file name.") }
       let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
       total += size + 512 + (512 - size % 512) % 512
     }
-    guard total <= 64 * 1024 * 1024 else {
-      throw CaptureFailure.message("Capture exceeds 64 MB. Record a smaller room.")
-    }
+    guard total <= limit else { throw CaptureFailure.message(limitMessage) }
     let temporary = target.appendingPathExtension("partial")
     FileManager.default.createFile(atPath: temporary.path, contents: nil)
     let output = try FileHandle(forWritingTo: temporary)
