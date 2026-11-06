@@ -28,14 +28,14 @@ struct CaptureFrameRecord: Codable, Equatable {
 
   /// Evenly thins tracked points to the engine's limit and rounds them to 0.1 mm, which keeps a
   /// full take's manifest to a few megabytes.
-  static func points(_ source: [SIMD3<Float>]) -> [[Double]] {
-    let count = min(source.count, maximumPoints)
+  static func points(_ source: [SIMD3<Float>], limit: Int = maximumPoints) -> [[Double]] {
+    let count = min(source.count, limit)
     return (0..<count).map { index in
       let point = source[index * source.count / count]
       return [rounded(point.x), rounded(point.y), rounded(point.z)]
     }
   }
-  private static func rounded(_ value: Float) -> Double {
+  static func rounded(_ value: Float) -> Double {
     (Double(value) * 10_000).rounded() / 10_000
   }
 }

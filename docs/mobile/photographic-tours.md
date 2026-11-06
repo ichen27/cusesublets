@@ -29,6 +29,12 @@ Depth maps and the coverage map stay in memory and are not written to the take o
 
 Normal capture shows no changing instructions; the overlay is the guidance. A short hint appears over the camera only when a problem lasts: 0.6 s for moving too fast, blur, lost tracking, low light or a view with too few features, and 1.5 s for turning in place without stepping sideways. A hint stays up 0.6 s after the problem clears, so it does not flicker.
 
+### Camera stream recording (development only)
+
+The development-only **Device capture check** screen also records a camera stream alongside the take (`CaptureStream.swift`). Marketplace captures never record one. Every 0.2 s it saves a 640 × 480 JPEG with that frame's calibration, pose, tracking state, shutter time, light estimate and up to 300 tracked points. It also saves what the view rules decided for that frame: the reason it was saved or skipped (for example `blurred`, `fewFeatures` or `noNewViewpoint`), the measured speed, turn rate, distance and predicted blur, and any hint shown. `summary.json` totals the seconds spent in each reason over every camera frame and lists the thresholds in force.
+
+The frame is shrunk on the camera thread so ARKit's buffer is released at once; encoding and writing run on a background queue, and a frame due while the previous one is still being written is dropped and counted. Recording stops at 200 MB while capture continues; a three-minute take is typically 40–50 MB. **Prepare camera stream recording** packages it as `room.roomstream`, an uncompressed USTAR archive of `summary.json`, `stream.jsonl` and `frames/NNNNN.jpg`. It is not a capture archive and cannot be uploaded for processing. It contains room photographs: keep it private, and discard the take to delete the local copy.
+
 Archives and trained models are limited to 64 MiB. Upload streams from disk and checks size plus SHA-256 on the server. Keep the app open during upload. An interrupted upload retries the whole bounded file with the same capture ID, not individual byte ranges. Retrying cannot create duplicate jobs or replace an already accepted archive. After the server accepts the upload, the app removes its local source copy. Owners can delete server captures and models; downloaded copies cannot be recalled.
 
 ## Processor setup

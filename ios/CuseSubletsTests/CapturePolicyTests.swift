@@ -91,13 +91,13 @@ final class CapturePolicyTests: XCTestCase {
     var policy = CapturePolicy()
     XCTAssertTrue(settle(&policy, sample(1)).save)
     let decision = settle(&policy, sample(2, at: SIMD3(0.03, 0, 0), facing: facing(yaw: 0.1)))
-    XCTAssertEqual(decision, CaptureDecision(save: false, usable: true, hint: nil))
+    XCTAssertEqual(decision, CaptureDecision(reason: .noNewViewpoint))
   }
 
   func testFeaturelessViewsAreRejectedWithGuidance() {
     var blank = CapturePolicy()
     let wall = settle(&blank, sample(1, features: 20))
-    XCTAssertEqual(wall, CaptureDecision(save: false, usable: false, hint: .findDetail))
+    XCTAssertEqual(wall, CaptureDecision(reason: .fewFeatures))
   }
 
   func testOrdinaryCaptureShowsNoText() {

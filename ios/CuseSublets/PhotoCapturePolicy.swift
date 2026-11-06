@@ -34,12 +34,61 @@ public enum CaptureHint: Equatable {
   }
 }
 
-public struct CaptureDecision: Equatable {
-  /// Save this frame as a view.
-  public let save: Bool
+/// Why the policy saved or skipped a frame. Development streams record it to tune the rules.
+public enum CaptureReason: String, Codable, CaseIterable {
+  case saved
+  case warmingUp
+  case notTracking
+  case dark
+  case tooFast
+  case limitReached
+  case fewFeatures
+  case blurred
+  case tooSoon
+  case noNewViewpoint
+  case turnLimit
+  case writerBusy
+
   /// Sharp and tracked enough to paint the coverage overlay, even if not saved.
-  public let usable: Bool
-  public let hint: CaptureHint?
+  public var usable: Bool {
+    switch self {
+    case .saved, .tooSoon, .noNewViewpoint, .turnLimit, .writerBusy: true
+    default: false
+    }
+  }
+
+  public var hint: CaptureHint? {
+    switch self {
+    case .notTracking: .establishTracking
+    case .dark: .addLight
+    case .tooFast: .slowDown
+    case .limitReached: .limitReached
+    case .fewFeatures: .findDetail
+    case .blurred: .holdSteadier
+    case .turnLimit: .stepSideways
+    default: nil
+    }
+  }
+}
+
+public struct CaptureDecision: Equatable {
+  public let reason: CaptureReason
+  /// Save this frame as a view.
+  public var save: Bool { reason == .saved }
+  public var usable: Bool { reason.usable }
+  public var hint: CaptureHint? { reason.hint }
+}
+
+/// Motion measured between this frame and the previous one.
+public struct CaptureMotion: Equatable {
+  /// Metres per second.
+  public let speed: Float
+  /// Radians per second.
+  public let turnRate: Float
+  /// Distance to the room used for the blur and step estimates, in metres.
+  public let depth: Float
+  /// Expected smear from motion during the exposure, in saved-image pixels.
+  public let blur: Float
 }
 
 /// Shows a hint only once it has lasted its delay, and keeps it up briefly after it clears.
@@ -118,6 +167,8 @@ public struct CapturePolicy {
   static let assumedDepth: Float = 1.5
 
   public private(set) var count = 0
+  /// Motion of the last evaluated frame, when it could be measured.
+  public private(set) var motion: CaptureMotion?
   private var lastTime: Double?
   private var lastPosition = SIMD3<Float>.zero
   private var lastForward = SIMD3<Float>(0, 0, -1)
@@ -129,55 +180,57 @@ public struct CapturePolicy {
   /// `canSave` is false while the previous view is still being written; the frame is then
   /// skipped without being counted.
   public mutating func evaluate(_ sample: CaptureSample, canSave: Bool = true) -> CaptureDecision {
+    motion = nil
     guard sample.tracking else {
       observation = nil
-      return .init(save: false, usable: false, hint: .establishTracking)
+      return .init(reason: .notTracking)
     }
     let previous = observation
     observation = (sample.time, sample.position, sample.forward)
     guard let previous, sample.time > previous.time else {
-      return .init(save: false, usable: false, hint: nil)
+      return .init(reason: .warmingUp)
     }
     let dt = Float(sample.time - previous.time)
     let speed = simd_distance(sample.position, previous.position) / dt
     let turnRate = Self.angle(sample.forward, previous.forward) / dt
-    if speed > Self.maximumSpeed || turnRate > Self.maximumTurnRate {
-      return .init(save: false, usable: false, hint: .slowDown)
-    }
-    if count >= Self.maximumViews || sample.time >= Self.maximumDuration {
-      return .init(save: false, usable: false, hint: .limitReached)
-    }
-    if sample.featureCount < Self.minimumFeatures {
-      return .init(save: false, usable: false, hint: .findDetail)
-    }
     let depth = sample.sceneDepth ?? Self.assumedDepth
     let blur = (turnRate + speed / max(depth, 0.3)) * Float(sample.exposure) * sample.focalLength
+    motion = CaptureMotion(speed: speed, turnRate: turnRate, depth: depth, blur: blur)
+    if speed > Self.maximumSpeed || turnRate > Self.maximumTurnRate {
+      return .init(reason: .tooFast)
+    }
+    if count >= Self.maximumViews || sample.time >= Self.maximumDuration {
+      return .init(reason: .limitReached)
+    }
+    if sample.featureCount < Self.minimumFeatures {
+      return .init(reason: .fewFeatures)
+    }
     if blur > Self.maximumBlur {
-      return .init(save: false, usable: false, hint: .holdSteadier)
+      return .init(reason: .blurred)
     }
     var turnedInPlace = false
     if let lastTime {
       if sample.time - lastTime < Self.minimumInterval {
-        return .init(save: false, usable: true, hint: nil)
+        return .init(reason: .tooSoon)
       }
       let step = min(max(Self.parallax * depth, Self.minimumStep), Self.maximumStep)
       if simd_distance(sample.position, lastPosition) < step {
         guard Self.angle(sample.forward, lastForward) >= Self.turnAngle else {
-          return .init(save: false, usable: true, hint: nil)
+          return .init(reason: .noNewViewpoint)
         }
         guard turnsInPlace < Self.maximumTurnsInPlace else {
-          return .init(save: false, usable: true, hint: .stepSideways)
+          return .init(reason: .turnLimit)
         }
         turnedInPlace = true
       }
     }
-    guard canSave else { return .init(save: false, usable: true, hint: nil) }
+    guard canSave else { return .init(reason: .writerBusy) }
     count += 1
     turnsInPlace = turnedInPlace ? turnsInPlace + 1 : 0
     lastTime = sample.time
     lastPosition = sample.position
     lastForward = sample.forward
-    return .init(save: true, usable: true, hint: nil)
+    return .init(reason: .saved)
   }
 
   private static func angle(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Float {

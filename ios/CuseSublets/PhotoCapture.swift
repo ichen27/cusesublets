@@ -46,13 +46,17 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private var policy = CapturePolicy()
   private var hints = CaptureHintFilter()
   private var lastPaint = -Double.infinity
+  /// Development captures also record a small camera stream for offline testing.
+  private let stream: StreamRecorder?
+  private var lastElapsed = 0.0
   private var startTime: TimeInterval?
   private var permissionGeneration = UUID()
   private var observer: NSObjectProtocol?
-  init(draft: PhotoCaptureDraft) {
+  init(draft: PhotoCaptureDraft, recordStream: Bool = false) {
     self.draft = draft
     folder = PhotoCaptureDraft.folder(owner: draft.ownerId, listing: draft.listingId)
     writer = CaptureWriter(folder: folder)
+    stream = recordStream ? StreamRecorder(folder: folder) : nil
     super.init()
     view.session.delegate = self
     view.session.delegateQueue = .main
@@ -94,6 +98,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
           try FileManager.default.createDirectory(
             at: self.folder.appendingPathComponent("images"), withIntermediateDirectories: true,
             attributes: [.protectionKey: FileProtectionType.complete])
+          try self.stream?.prepare()
           try JSONEncoder().encode(self.draft).write(
             to: self.folder.appendingPathComponent("draft.json"),
             options: [.atomic, .completeFileProtection])
@@ -130,10 +135,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     }
     var tracked = false
     if case .normal = frame.camera.trackingState { tracked = true }
-    if let light = frame.lightEstimate, light.ambientIntensity < 150 {
-      show(.addLight, at: elapsed)
-      return
-    }
+    lastElapsed = elapsed
     let pose = frame.camera.transform
     let points = frame.rawFeaturePoints?.points ?? []
     let source = CIImage(cvPixelBuffer: frame.capturedImage)
@@ -144,8 +146,13 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
       forward: -SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z), tracking: tracked,
       exposure: frame.camera.exposureDuration, focalLength: k[0][0] * Float(scale),
       sceneDepth: CaptureSample.medianDepth(points, camera: pose), featureCount: points.count)
-    let decision = policy.evaluate(sample, canSave: !writer.busy)
+    let dark = (frame.lightEstimate?.ambientIntensity ?? 1000) < 150
+    let decision =
+      dark ? CaptureDecision(reason: .dark) : policy.evaluate(sample, canSave: !writer.busy)
     show(decision.hint, at: elapsed)
+    stream?.observe(
+      frame, elapsed: elapsed, decision: decision, motion: dark ? nil : policy.motion, hint: hint,
+      views: policy.count)
     if decision.usable && (decision.save || elapsed - lastPaint >= Self.paintInterval) {
       lastPaint = elapsed
       coverageEngine.submit(frame)
@@ -233,6 +240,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     view.session.pause()
     UIApplication.shared.isIdleTimerDisabled = false
     packaging = true
+    stream?.finish(duration: lastElapsed)
     let folder = self.folder
     // Package only after the last view has finished writing.
     writer.afterPendingWrites { saved in
