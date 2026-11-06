@@ -101,11 +101,23 @@ def read_ply_header(path):
 
 
 def load_frames(frames_dir):
-    frames_dir = Path(frames_dir)
+    """Frames whose images are exactly images/NNNNN.jpg inside frames_dir, as the engine requires.
+
+    The worker reads the engine's validated manifest; this check also protects offline runs on an
+    unvalidated manifest.json from paths that escape the folder.
+    """
+    frames_dir = Path(frames_dir).resolve()
     manifest = frames_dir / 'native-manifest.json'
     if not manifest.exists():
         manifest = frames_dir / 'manifest.json'
-    return json.loads(manifest.read_text())['frames']
+    frames = json.loads(manifest.read_text())['frames']
+    for index, frame in enumerate(frames):
+        name = frame.get('file_path')
+        path = frames_dir / str(name)
+        if (name != f'images/{index:05d}.jpg' or path.is_symlink()
+                or not path.resolve().is_relative_to(frames_dir)):
+            raise ValueError('capture_invalid')
+    return frames
 
 
 def estimate_depth(frames, frames_dir, model_name=MODEL, log=print):

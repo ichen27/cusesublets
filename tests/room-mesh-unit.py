@@ -70,6 +70,36 @@ class PlyOutput(unittest.TestCase):
                 rm.write_ply(Path(folder) / 'bad.ply', np.zeros((3, 3)), np.zeros((2, 3)), [[0, 1, 2]])
 
 
+class ManifestPaths(unittest.TestCase):
+    def write(self, folder, names, link=None):
+        (folder / 'images').mkdir()
+        for name in names:
+            if name.startswith('images/'):
+                (folder / name).write_bytes(b'jpeg')
+        if link:
+            (folder / 'images/00000.jpg').unlink()
+            (folder / 'images/00000.jpg').symlink_to(link)
+        (folder / 'manifest.json').write_text(json.dumps({'frames': [{'file_path': n} for n in names]}))
+
+    def test_accepts_engine_image_names(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.write(Path(folder), ['images/00000.jpg', 'images/00001.jpg'])
+            self.assertEqual(len(rm.load_frames(folder)), 2)
+
+    def test_rejects_paths_that_could_leave_the_capture_folder(self):
+        for names in (['../outside.jpg'], ['/etc/hosts'], ['images/../../x.jpg'], ['images/00001.jpg']):
+            with tempfile.TemporaryDirectory() as folder, self.subTest(names=names):
+                self.write(Path(folder), names)
+                with self.assertRaises(ValueError):
+                    rm.load_frames(folder)
+
+    def test_rejects_a_symlinked_image(self):
+        with tempfile.TemporaryDirectory() as folder, tempfile.NamedTemporaryFile() as target:
+            self.write(Path(folder), ['images/00000.jpg'], link=target.name)
+            with self.assertRaises(ValueError):
+                rm.load_frames(folder)
+
+
 @unittest.skipUnless(importlib.util.find_spec('open3d') and importlib.util.find_spec('PIL'), 'needs Open3D')
 class Fusion(unittest.TestCase):
     def test_views_of_a_wall_fuse_into_a_flat_surface_at_the_right_distance(self):
