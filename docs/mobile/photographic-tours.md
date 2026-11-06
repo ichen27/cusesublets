@@ -4,9 +4,18 @@ The iPhone app captures overlapping, calibrated ARKit camera views. The server s
 
 ## Capture and recovery
 
-Photographic capture uses AR world tracking on supported iPhones; LiDAR is not required. The simulator cannot validate capture. Move slowly around one room with good light and overlapping views, including movement sideways. At least 30 stable views are required; aim for 60 or more. Capture stops at three minutes or 180 views. Poorly textured walls, mirrors, motion, occlusions and camera drift can still make reconstruction unusable.
+Photographic capture uses AR world tracking on supported iPhones; LiDAR is not required. The simulator cannot validate capture. Move slowly around one room with good light and overlapping views, stepping sideways between views. At least 30 stable views are required; aim for 60 or more. Capture stops at three minutes or 180 views, the limits of the processing engine.
 
-Camera JPEGs, poses and feature points are saved under an owner/listing-specific directory with device file protection and excluded from backup. Each accepted view updates the manifest atomically. An interruption ends the coordinate system; it never silently resumes a new tracking origin. Reopening recovers the saved take. Fewer than 30 views requires a new take. Review source images for personal papers, faces and other private details before upload.
+The app saves a camera frame as a view only when it is likely to help reconstruction (`PhotoCapturePolicy.swift`):
+
+- **Sharp.** The expected smear from camera motion during the exposure, `(turn rate + speed / distance) × exposure × focal length`, must stay under 4 pixels. Dim rooms need slower movement.
+- **Parallax.** A new view needs a sideways step of about 6% of the distance to the room (6–20 cm). Turning in place counts as a new view only twice in a row; after that, the app asks for a step, because rotation alone gives reconstruction no depth.
+- **Trackable.** At least 40 tracked features in view, and not tilted more than 45° toward the ceiling.
+- At least 0.4 s apart, under 0.6 m/s and 0.9 rad/s, with normal tracking and enough light.
+
+Views keep the camera's full 1920 × 1440 resolution. JPEG quality adapts to the 64 MiB upload limit: each view gets an equal share of the remaining space after reserving manifest space for every view still possible, so a busy room gets lower quality instead of a take refused at the end. Encoding and file writes run off the camera thread. Poorly textured walls, mirrors, occlusions and camera drift can still make reconstruction unusable.
+
+Camera JPEGs, poses and feature points are saved under an owner/listing-specific directory with device file protection and excluded from backup. Each view's image is written before its record is appended to `frames.jsonl`; recovery keeps the complete views up to the first incomplete one, and packaging builds `manifest.json` from them. Takes saved by earlier builds, which have only `manifest.json`, still package. An interruption ends the coordinate system; it never silently resumes a new tracking origin. Reopening recovers the saved take. Fewer than 30 views requires a new take. Review source images for personal papers, faces and other private details before upload.
 
 Archives and trained models are limited to 64 MiB. Upload streams from disk and checks size plus SHA-256 on the server. Keep the app open during upload. An interrupted upload retries the whole bounded file with the same capture ID, not individual byte ranges. Retrying cannot create duplicate jobs or replace an already accepted archive. After the server accepts the upload, the app removes its local source copy. Owners can delete server captures and models; downloaded copies cannot be recalled.
 
