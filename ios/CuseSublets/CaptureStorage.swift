@@ -35,7 +35,9 @@ struct CaptureFrameRecord: Codable, Equatable {
       return [rounded(point.x), rounded(point.y), rounded(point.z)]
     }
   }
-  private static func rounded(_ value: Float) -> Double { (Double(value) * 10_000).rounded() / 10_000 }
+  private static func rounded(_ value: Float) -> Double {
+    (Double(value) * 10_000).rounded() / 10_000
+  }
 }
 
 struct CaptureManifest: Codable {
@@ -124,7 +126,8 @@ final class CaptureWriter {
   let folder: URL
   /// Main thread only. True while a view is being written.
   private(set) var busy = false
-  private let queue = DispatchQueue(label: "com.ichen27.cusesublets.capture-writer", qos: .userInitiated)
+  private let queue = DispatchQueue(
+    label: "com.ichen27.cusesublets.capture-writer", qos: .userInitiated)
   private let context = CIContext()
   private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
   // Writer queue only.

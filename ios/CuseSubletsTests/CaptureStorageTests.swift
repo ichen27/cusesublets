@@ -51,7 +51,8 @@ final class CaptureStorageTests: XCTestCase {
     XCTAssertEqual(points.count, CaptureFrameRecord.maximumPoints)
     XCTAssertEqual(points[1][1], -1.2346)
     let line = String(decoding: try JSONEncoder().encode(points), as: UTF8.self)
-    XCTAssertFalse(line.contains("99999"), "points should not carry float noise: \(line.prefix(80))")
+    XCTAssertFalse(
+      line.contains("99999"), "points should not carry float noise: \(line.prefix(80))")
   }
 
   func testWriterSavesFullResolutionImagesAndOneRecordPerView() throws {
@@ -61,7 +62,9 @@ final class CaptureStorageTests: XCTestCase {
     for index in 0..<2 {
       let done = expectation(description: "saved \(index)")
       writer.save(image, record: record(index, path: "")) { outcome in
-        if case .saved(let count) = outcome { XCTAssertEqual(count, index + 1) } else {
+        if case .saved(let count) = outcome {
+          XCTAssertEqual(count, index + 1)
+        } else {
           XCTFail("unexpected \(outcome)")
         }
         done.fulfill()
@@ -116,7 +119,9 @@ final class CaptureStorageTests: XCTestCase {
     CaptureFrameRecord(
       filePath: path, timestamp: Double(index) + 1, width: 1920, height: 1440, fx: 1450,
       fy: 1450, cx: 960, cy: 720,
-      transformMatrix: [[1, 0, 0, Double(index) * 0.1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+      transformMatrix: [
+        [1, 0, 0, Double(index) * 0.1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1],
+      ],
       points: CaptureFrameRecord.points([SIMD3(0, 0, -2), SIMD3(1, 0, -2)]))
   }
 }

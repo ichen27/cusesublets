@@ -29,7 +29,7 @@ Record the build commit, iOS version, date, room lighting and result of each ste
 
 1. Confirm photographic capture is available and LiDAR layouts are unavailable.
 2. Tap **Start camera test**. On a fresh installation, allow camera access. If the permission prompt interrupts the start, tap **Start capture** once the app is active.
-3. Walk slowly around the room, keeping adjacent views overlapping. Step sideways between views rather than turning in place; after two turns in place the app asks for a step. Follow the on-screen guidance about blur, blank walls and ceiling views. Aim for at least 60 stable views; the minimum is 30. Finish capture and return to the local test screen.
+3. Walk slowly around the room and sweep the camera over every surface until the blue tint is gone and the squares turn clear; amber squares need views from more angles, so step sideways rather than turning in place. A hint appears over the camera only if you move too fast, the image blurs, the view has too little detail or you keep turning in place. Aim for at least 60 views; the minimum is 30. Finish capture and return to the local test screen.
 4. Force-close and reopen the app. The local take should still be recoverable.
 5. Tap **Prepare private capture archive**, then **Export private capture archive**. Save it in a private location or transfer it directly to your Mac. It contains actual room photographs and camera metadata; never attach it to the public GitHub PR.
 6. Discard the local take, reopen the app, and confirm it is gone. Exported copies must be deleted separately.

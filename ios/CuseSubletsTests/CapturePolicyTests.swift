@@ -41,7 +41,8 @@ final class CapturePolicyTests: XCTestCase {
     settle(&policy, sample(1))
     let decision = policy.evaluate(sample(1.1, at: SIMD3(0.1, 0, 0)))
     XCTAssertFalse(decision.save)
-    XCTAssertEqual(decision.message, "Slow down")
+    XCTAssertEqual(decision.hint, .slowDown)
+    XCTAssertFalse(decision.usable, "fast frames are blurred, so they must not paint coverage")
   }
 
   func testRejectsMotionBlurThatTheSpeedLimitAllows() {
@@ -53,7 +54,7 @@ final class CapturePolicyTests: XCTestCase {
     let blurred = policy.evaluate(
       sample(1 + 1.0 / 30, facing: facing(yaw: step), exposure: 1.0 / 30))
     XCTAssertFalse(blurred.save)
-    XCTAssertEqual(blurred.message, "Hold the phone steadier — this view is blurred")
+    XCTAssertEqual(blurred.hint, .holdSteadier)
     // The same turn in bright light (1/250 s) smears it by about 2 pixels.
     var bright = CapturePolicy()
     _ = bright.evaluate(sample(1, facing: facing(yaw: 0), exposure: 1.0 / 250))
@@ -79,7 +80,8 @@ final class CapturePolicyTests: XCTestCase {
     XCTAssertTrue(settle(&policy, sample(3, facing: facing(yaw: 0.6))).save)
     let third = settle(&policy, sample(4, facing: facing(yaw: 0.9)))
     XCTAssertFalse(third.save)
-    XCTAssertEqual(third.message, "Take a step sideways — turning in place adds no depth")
+    XCTAssertEqual(third.hint, .stepSideways)
+    XCTAssertTrue(third.usable, "the view still paints the overlay; it just is not saved")
     // A real step clears the limit.
     XCTAssertTrue(settle(&policy, sample(5, at: SIMD3(0.2, 0, 0), facing: facing(yaw: 0.9))).save)
     XCTAssertTrue(settle(&policy, sample(6, at: SIMD3(0.2, 0, 0), facing: facing(yaw: 1.2))).save)
@@ -89,19 +91,42 @@ final class CapturePolicyTests: XCTestCase {
     var policy = CapturePolicy()
     XCTAssertTrue(settle(&policy, sample(1)).save)
     let decision = settle(&policy, sample(2, at: SIMD3(0.03, 0, 0), facing: facing(yaw: 0.1)))
-    XCTAssertFalse(decision.save)
-    XCTAssertEqual(decision.message, "Move sideways for another view")
+    XCTAssertEqual(decision, CaptureDecision(save: false, usable: true, hint: nil))
   }
 
-  func testCeilingAndFeaturelessViewsAreRejectedWithGuidance() {
-    var policy = CapturePolicy()
-    let ceiling = settle(&policy, sample(1, facing: simd_normalize(SIMD3(0, 1.2, -1))))
-    XCTAssertFalse(ceiling.save)
-    XCTAssertEqual(ceiling.message, "Aim lower — capture walls and furniture, not the ceiling")
+  func testFeaturelessViewsAreRejectedWithGuidance() {
     var blank = CapturePolicy()
     let wall = settle(&blank, sample(1, features: 20))
-    XCTAssertFalse(wall.save)
-    XCTAssertEqual(wall.message, "Include furniture or edges — a blank wall cannot be tracked")
+    XCTAssertEqual(wall, CaptureDecision(save: false, usable: false, hint: .findDetail))
+  }
+
+  func testOrdinaryCaptureShowsNoText() {
+    // Moving slowly, holding still and saving are all normal; the overlay is the guidance.
+    var policy = CapturePolicy()
+    XCTAssertNil(settle(&policy, sample(1)).hint)
+    XCTAssertNil(policy.evaluate(sample(1.1)).hint)
+    XCTAssertNil(settle(&policy, sample(2, at: SIMD3(0.2, 0, 0))).hint)
+  }
+
+  func testHintsAppearOnlyOnceAProblemLasts() {
+    var filter = CaptureHintFilter()
+    XCTAssertNil(filter.update(.slowDown, at: 0))
+    XCTAssertNil(filter.update(.slowDown, at: 0.4))
+    XCTAssertEqual(filter.update(.slowDown, at: 0.7), .slowDown)
+    // A good frame does not make the hint flicker off at once.
+    XCTAssertEqual(filter.update(nil, at: 0.8), .slowDown)
+    XCTAssertNil(filter.update(nil, at: 1.4))
+    // A brief blip never shows.
+    XCTAssertNil(filter.update(.holdSteadier, at: 2))
+    XCTAssertNil(filter.update(nil, at: 2.1))
+    XCTAssertNil(filter.update(.holdSteadier, at: 2.2))
+  }
+
+  func testStepHintWaitsLongerThanMotionHints() {
+    var filter = CaptureHintFilter()
+    XCTAssertNil(filter.update(.stepSideways, at: 0))
+    XCTAssertNil(filter.update(.stepSideways, at: 1))
+    XCTAssertEqual(filter.update(.stepSideways, at: 1.5), .stepSideways)
   }
 
   func testWaitsWhileThePreviousViewIsStillSaving() {

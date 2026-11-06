@@ -27,7 +27,15 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published var saved = false
   @Published var packaging = false
   @Published var requestingPermission = false
+  /// A capture problem that has lasted long enough to show; nil while capture is going well.
+  @Published var hint: CaptureHint?
+  /// Share of seen surfaces covered from enough angles; nil when the depth model is unavailable.
+  @Published var coverage: Double? = 0
   let view = ARSCNView(frame: .zero)
+  private let coverageEngine = CaptureCoverageEngine()
+  /// Unsaved but sharp frames still paint the overlay, at most this often, so it fills in as the
+  /// camera sweeps rather than only when a view is saved.
+  static let paintInterval = 0.25
   let draft: PhotoCaptureDraft
   let folder: URL
   /// Per-view records, appended as views are saved; `manifest.json` is built from it at the end.
@@ -36,6 +44,8 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   static let savedWidth: CGFloat = 1920
   private let writer: CaptureWriter
   private var policy = CapturePolicy()
+  private var hints = CaptureHintFilter()
+  private var lastPaint = -Double.infinity
   private var startTime: TimeInterval?
   private var permissionGeneration = UUID()
   private var observer: NSObjectProtocol?
@@ -46,6 +56,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     super.init()
     view.session.delegate = self
     view.session.delegateQueue = .main
+    coverageEngine.onUpdate = { [weak self] in self?.coverage = $0 }
     observer = NotificationCenter.default.addObserver(
       forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
     ) { [weak self] _ in self?.stop() }
@@ -101,6 +112,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
             config.videoFormat = format
           }
           self.view.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+          self.coverageEngine.reset(view: self.view)
           self.running = true
           UIApplication.shared.isIdleTimerDisabled = true
         } catch { self.message = error.localizedDescription }
@@ -109,6 +121,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
   }
   func session(_ session: ARSession, didUpdate frame: ARFrame) {
     guard running else { return }
+    coverageEngine.frameDidUpdate(view: view)
     if startTime == nil { startTime = frame.timestamp }
     let elapsed = frame.timestamp - (startTime ?? frame.timestamp)
     if elapsed >= CapturePolicy.maximumDuration || policy.count >= CapturePolicy.maximumViews {
@@ -118,7 +131,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     var tracked = false
     if case .normal = frame.camera.trackingState { tracked = true }
     if let light = frame.lightEstimate, light.ambientIntensity < 150 {
-      show("Add more light before continuing.")
+      show(.addLight, at: elapsed)
       return
     }
     let pose = frame.camera.transform
@@ -132,7 +145,11 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
       exposure: frame.camera.exposureDuration, focalLength: k[0][0] * Float(scale),
       sceneDepth: CaptureSample.medianDepth(points, camera: pose), featureCount: points.count)
     let decision = policy.evaluate(sample, canSave: !writer.busy)
-    show(decision.message)
+    show(decision.hint, at: elapsed)
+    if decision.usable && (decision.save || elapsed - lastPaint >= Self.paintInterval) {
+      lastPaint = elapsed
+      coverageEngine.submit(frame)
+    }
     guard decision.save else { return }
     let image = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
     let record = CaptureFrameRecord(
@@ -155,8 +172,11 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
       }
     }
   }
-  /// Publishing the same text every frame would redraw the screen 60 times a second.
-  private func show(_ text: String) { if message != text { message = text } }
+  /// Publishing the same hint every frame would redraw the screen 60 times a second.
+  private func show(_ problem: CaptureHint?, at time: Double) {
+    let shown = hints.update(problem, at: time)
+    if hint != shown { hint = shown }
+  }
   static func writeManifest(_ frames: [CaptureFrameRecord], to folder: URL) throws {
     try JSONEncoder().encode(CaptureManifest(frames: frames)).write(
       to: folder.appendingPathComponent("manifest.json"),
@@ -209,6 +229,7 @@ final class PhotoRecorder: NSObject, ObservableObject, ARSessionDelegate {
     }
     guard running else { return }
     running = false
+    hint = nil
     view.session.pause()
     UIApplication.shared.isIdleTimerDisabled = false
     packaging = true
@@ -248,8 +269,21 @@ struct PhotoCaptureScreen: View {
   var body: some View {
     VStack(spacing: 16) {
       PhotoCameraSurface(recorder: recorder).ignoresSafeArea(edges: .top)
-      Text(recorder.message).padding(.horizontal).accessibilityIdentifier("capture-guidance")
+        .overlay(alignment: .top) {
+          if recorder.running, let hint = recorder.hint {
+            Text(hint.message).font(.callout.weight(.semibold)).multilineTextAlignment(.center)
+              .padding(.horizontal, 14).padding(.vertical, 8)
+              .background(.ultraThinMaterial, in: Capsule()).padding(.top, 12)
+              .padding(.horizontal).accessibilityIdentifier("capture-hint")
+          }
+        }.animation(.easeInOut(duration: 0.2), value: recorder.hint)
+      Text(
+        recorder.running
+          ? "Sweep slowly over the room until the blue tint is gone, stepping sideways as you go."
+          : recorder.message
+      ).padding(.horizontal).accessibilityIdentifier("capture-guidance")
       Text("\(recorder.count) views · minimum 30 · aim for 60 or more").font(.caption)
+      if recorder.running { CoverageLegend(coverage: recorder.coverage) }
       HStack {
         if recorder.running {
           Button("Finish capture") { recorder.stop() }.buttonStyle(.borderedProminent).tint(
@@ -265,5 +299,34 @@ struct PhotoCaptureScreen: View {
       }.padding(.bottom)
     }.task { recorder.start() }.onDisappear { recorder.stop() }.interactiveDismissDisabled(
       recorder.packaging)
+  }
+}
+
+/// Explains the overlay colours and reports coverage in text, so it does not rely on colour alone.
+struct CoverageLegend: View {
+  let coverage: Double?
+  var body: some View {
+    if let coverage {
+      VStack(spacing: 4) {
+        HStack(spacing: 12) {
+          swatch(Color(red: 0.2, green: 0.32, blue: 0.95), "Not seen")
+          swatch(Color(red: 1, green: 0.6, blue: 0.1), "Needs more angles")
+          swatch(Color.white, "Covered")
+        }
+        Text("Covered from enough angles: \(Int((coverage * 100).rounded()))% of seen surfaces")
+          .accessibilityIdentifier("capture-coverage")
+      }.font(.caption2).padding(.horizontal)
+    } else {
+      Text("Coverage map unavailable on this device. Use the view count instead.")
+        .font(.caption2).padding(.horizontal).accessibilityIdentifier("capture-coverage")
+    }
+  }
+  private func swatch(_ color: Color, _ label: String) -> some View {
+    HStack(spacing: 4) {
+      RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 10, height: 10)
+        .overlay(RoundedRectangle(cornerRadius: 2).stroke(.secondary, lineWidth: 0.5))
+        .accessibilityHidden(true)
+      Text(label)
+    }
   }
 }
