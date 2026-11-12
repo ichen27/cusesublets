@@ -13,7 +13,7 @@ import re
 import numpy as np
 
 # Bounds on what a manifest may ask for, so a crafted capture cannot amplify the work. The app
-# saves 29 slices per spot at 1440 × 1080 (walk frames are 1920 wide); 64 slices and the pixel
+# saves 8 slices per spot at 1920 × 1440 (walk frames are 1920 wide); 64 slices and the pixel
 # budget leave room to tune the layout. The decoder enforces the per-image cap itself, so a
 # header that lies to jpeg_size cannot reach a larger decode. Set before OpenCV is imported.
 MAX_SPOTS = 8
@@ -165,25 +165,52 @@ def refine_rotations(slices, max_correction_deg=3.0, images=None):
     from scipy.sparse import lil_matrix
     images = _images(slices) if images is None else images
     # A low corner threshold finds features on plain walls and soft furniture.
-    orb = cv2.ORB_create(2000, fastThreshold=7)
-    features = []
-    for s, image in zip(slices, images):
-        points, descriptors = orb.detectAndCompute(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), None)
-        if descriptors is None:
-            features.append((np.zeros((0, 3)), None))
-            continue
-        pixels = np.array([p.pt for p in points]) + 0.5
-        rays = np.c_[pixels, np.ones(len(pixels))] @ np.linalg.inv(s.K).T
-        rays /= np.linalg.norm(rays, axis=1, keepdims=True)
-        features.append((rays @ s.R.T, descriptors))
+    orb = cv2.ORB_create(1500, fastThreshold=7)
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    grays = [cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) for image in images]
+    # Half the view along each slice's longer side, in degrees.
+    half_views = [np.degrees(np.arctan(max(s.width / s.K[0, 0], s.height / s.K[1, 1]) / 2))
+                  for s in slices]
     limit = np.cos(np.radians(max(8.0, 2.5 * max_correction_deg)))
+    # Wide slices stretch the same wall differently at their edges, so features are not compared
+    # in the slices themselves. Each overlapping pair is redrawn through one shared pinhole view
+    # aimed between them; there the two look alike apart from the pose error being solved.
+    side, view_focal = 720, 360 / np.tan(np.radians(35))
+    grid = (np.arange(side) + 0.5 - side / 2) / view_focal
+    view_rays = np.stack([*np.meshgrid(grid, grid), np.ones((side, side))], -1)
+    view_rays /= np.linalg.norm(view_rays, axis=-1, keepdims=True)
+
+    def redraw(index, view):
+        s = slices[index]
+        u, v, inside = _project(view_rays @ view.T, s.K, s.R, s.width, s.height)
+        patch = cv2.remap(grays[index], (u - 0.5).astype(np.float32), (v - 0.5).astype(np.float32),
+                          cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        # Keep features away from the slice's edge, where the redraw has no neighbours.
+        mask = cv2.erode(inside.astype(np.uint8) * 255, np.ones((15, 15), np.uint8))
+        points, descriptors = orb.detectAndCompute(patch, mask)
+        if descriptors is None:
+            return np.zeros((0, 3)), None
+        pixels = np.array([p.pt for p in points])
+        rays = np.c_[(pixels + 0.5 - side / 2) / view_focal, np.ones(len(pixels))]
+        rays /= np.linalg.norm(rays, axis=1, keepdims=True)
+        return rays @ view.T, descriptors
+
     pairs, left, right = [], [], []
     for i in range(len(slices)):
         for j in range(i + 1, len(slices)):
-            if slices[i].R[:, 2] @ slices[j].R[:, 2] < np.cos(np.radians(70)):
+            fi, fj = slices[i].R[:, 2], slices[j].R[:, 2]
+            # Only slices that can overlap: optical axes closer than their views reach.
+            reach = np.radians(min(160.0, half_views[i] + half_views[j] - 10.0))
+            if fi @ fj < np.cos(reach):
                 continue
-            (wi, di), (wj, dj) = features[i], features[j]
+            forward = fi + fj
+            forward /= np.linalg.norm(forward)
+            x = np.cross(fi, fj)
+            if np.linalg.norm(x) < 1e-6:
+                x = slices[i].R[:, 0]
+            x /= np.linalg.norm(x)
+            view = np.stack([x, np.cross(forward, x), forward], 1)
+            (wi, di), (wj, dj) = redraw(i, view), redraw(j, view)
             if di is None or dj is None:
                 continue
             for m in matcher.match(di, dj):
@@ -222,12 +249,17 @@ def refine_rotations(slices, max_correction_deg=3.0, images=None):
     if fit.status < 0 or not np.all(np.isfinite(fit.x)):
         return rotations
     largest = np.radians(max_correction_deg)
+    # The matches only fix the slices relative to each other; turning them all together fits
+    # just as well. Undo that shared turn, so on average the set stays where the sensors put it.
+    shared = _rotation(fit.x.reshape(n, 3).mean(0)).T
     corrected = []
     for vector, s in zip(fit.x.reshape(n, 3), slices):
-        angle = np.linalg.norm(vector)
+        turn = shared @ _rotation(vector)
+        angle = np.arccos(np.clip((np.trace(turn) - 1) / 2, -1, 1))
         if angle > largest:
-            vector = vector * (largest / angle)
-        corrected.append(_rotation(vector) @ s.R)
+            axis = np.array([turn[2, 1] - turn[1, 2], turn[0, 2] - turn[2, 0], turn[1, 0] - turn[0, 1]])
+            turn = _rotation(axis / np.linalg.norm(axis) * largest)
+        corrected.append(turn @ s.R)
     return corrected
 
 

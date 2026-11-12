@@ -43,7 +43,7 @@ class Capture:
         true = [syn.arkit_rotation(y, p, roll) for y, p in targets]
         self.frames = []
         for index, rotation in enumerate(true):
-            ring = 0 if index < 12 else 1 if index < 20 else 2 if index < 28 else 3
+            ring = 0 if index < 6 else index - 5  # level ring, then ceiling (1), floor (2)
             if ring == drop_ring:
                 continue
             path = f'images/{len(self.frames):05d}.jpg'
@@ -82,7 +82,7 @@ class Stitching(unittest.TestCase):
         np.testing.assert_allclose(bottom, ss.NADIR_BGR, atol=3)
 
     def test_refinement_fixes_pose_noise(self):
-        noise = syn.rotation_noise(np.random.default_rng(3), 29, 1.5)
+        noise = syn.rotation_noise(np.random.default_rng(3), len(syn.layout()), 1.5)
         slices = Capture(self.root, noise=noise).slices()
         raw, _ = ss.stitch(slices, width=WIDTH, refine=False)
         refined, _ = ss.stitch(slices, width=WIDTH, refine=True)
@@ -132,7 +132,7 @@ class Loading(unittest.TestCase):
             s = ss.load_spot_slices(self.manifest(), Path(root))[1][0]
         # ARKit identity looks along −Z; in OpenCV axes the optical axis (+Z) must map to −Z.
         np.testing.assert_allclose(s.R @ [0, 0, 1], [0, 0, -1], atol=1e-9)
-        np.testing.assert_allclose(s.K, [[1100, 0, 720], [0, 1100, 540], [0, 0, 1]])
+        np.testing.assert_allclose(s.K, [[700, 0, 960], [0, 700, 720], [0, 0, 1]])
 
     def test_rejects_escaping_paths(self):
         for bad in ['../secret.jpg', 'images/../../x.jpg', '/etc/passwd', 'images/1.jpg']:
