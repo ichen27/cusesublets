@@ -39,16 +39,16 @@ The archive is reconstruction input, not a finished Gaussian model. It can be ev
 
 ## Spot capture test — no backend required
 
-Use the **Spot capture** section of the same Device capture check screen. Record the build commit, iOS version, room and lighting, and write the results in [spot-capture-device-results.md](spot-capture-device-results.md).
+Open the **Cuse Capture Test** app. It starts on **Properties**: add a property, read the guide and tap **Start scan**. Each spot is 8 photos on the 0.5× camera. (The older checks are under Settings → Device capture check.) Record the build commit, iOS version, room and lighting, and write the results in [spot-capture-device-results.md](spot-capture-device-results.md).
 
-1. Tap **Start spot capture** and allow camera access. The capture map appears. Read the reminder to put away personal papers.
-2. Stand in the middle of the room and tap the shutter. Line the circle up with each dot and hold until the ring fills. Note any dot that is hard to reach or hold, and how long the whole spot takes.
+1. Tap **Start scan** and allow camera access. The capture map appears.
+2. Stand in the middle of the room and tap the shutter. The view switches to the 0.5× camera. Line the circle up with each dot and hold until the ring fills: six around you, then the ceiling, then the floor. Note any dot that is hard to reach or hold, and how long the whole spot takes.
 3. Try **Undo** once. Try **Cancel spot** (×) once on a later spot.
-4. Walk to 3–5 more spots, capturing each. Watch the percentage and the map. Write down the final percentage and your own judgement of how much of the room was covered.
-5. Mid-turn, cover the camera or move very fast until tracking is lost. That spot must be discarded, and the next must wait for tracking. Background the app once during capture: the finished spots must remain.
+4. After each spot the map returns. Check that the green dot (you) is where you are standing and that it follows you as you walk; if it jumps or freezes, note it, because that means ARKit did not find its place after the turn. Walk to 3–5 more spots, capturing each. Write down the final percentage and your own judgement of how much of the room was covered.
+5. Background the app once during capture: the finished spots must remain.
 6. Tap **Done**, then **Preview 360** for each spot. Check the ceiling, the floor and the area under your feet. Delete one spot and redo another.
-7. Tap **Generate tour**, then **Prepare spot capture archive** and **Export spot capture archive**. Note the archive size. Keep it private: it contains real room photographs.
-8. On the Mac mini, process the archive against the isolated API (see [photographic tours](photographic-tours.md#spot-tours)) and record each spot's hole fraction, the stitch time and visible seams.
+7. Tap **Generate tour**. With a Tour Studio address set under Settings, the scan uploads and **View 360° tour** appears when stitching ends. Check each spot for seams and that tapping a floor circle moves to the right spot. Without Tour Studio, export the archive from Settings → Device capture check instead. Keep it private: it contains real room photographs.
+8. Record each spot's hole fraction (in Tour Studio's `process.log`, or by running `tour_worker.py --reconstruct-spots` on an exported archive), the stitch time and visible seams.
 
 ## Full marketplace and upload test — staging required
 
