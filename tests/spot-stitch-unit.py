@@ -185,9 +185,32 @@ class Bounds(unittest.TestCase):
             cv2.imwrite(str(root / 'images/00000.jpg'), np.zeros((1200, 1600, 3), np.uint8))
             m = self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], frames=1)
             slices = ss.load_spot_slices(m, root)[1]
-            with patch.object(ss.cv2 if hasattr(ss, 'cv2') else cv2, 'imread', side_effect=AssertionError('decoded')):
+            with patch.object(cv2, 'imdecode', side_effect=AssertionError('decoded')), \
+                    patch.object(cv2, 'imread', side_effect=AssertionError('decoded')):
                 with self.assertRaisesRegex(ValueError, 'capture_invalid'):
                     ss._images(slices)
+
+    def test_rejects_images_wider_than_the_app_saves(self):
+        self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], width=2400, height=1800))
+
+    def test_rejects_a_spot_over_the_pixel_budget(self):
+        # Each slice is within bounds, but together they exceed what one spot may decode.
+        count = ss.MAX_SPOT_PIXELS // (1920 * 1440) + 1
+        names = [f'images/{i:05d}.jpg' for i in range(count)]
+        self.check(self.manifest([{'spot': 1, 'slices': names}], frames=count, width=1920, height=1440))
+
+    def test_header_reader_skips_fill_bytes_like_libjpeg(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'x.jpg'
+            ok, jpeg = cv2.imencode('.jpg', np.zeros((108, 144, 3), np.uint8))
+            data = jpeg.tobytes()
+            path.write_bytes(data[:2] + b'\xff\xff\xff' + data[2:])  # fill bytes before the next marker
+            self.assertEqual(ss.jpeg_size(path), (144, 108))
+            self.assertEqual(ss.jpeg_size_bytes(path.read_bytes()), (144, 108))
+
+    def test_decoder_refuses_images_over_the_pixel_cap(self):
+        import os
+        self.assertEqual(int(os.environ['OPENCV_IO_MAX_IMAGE_PIXELS']), ss.MAX_SIDE * ss.MAX_SIDE)
 
     def test_reads_jpeg_dimensions_from_the_header(self):
         with tempfile.TemporaryDirectory() as root:

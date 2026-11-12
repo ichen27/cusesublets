@@ -206,9 +206,10 @@ def mesh_candidates(manifest):
 def reconstruct_spots(capture, work):
     """Stitches every finished spot, optionally builds the mesh, and writes the bundle and its
     display metadata under WORK/result."""
-    import cv2
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    # spot_stitch sets OpenCV's decode pixel cap, so it is imported before OpenCV.
     from spot_stitch import MAX_HOLES, load_spot_slices, stitch
+    import cv2
     work = Path(work)
     frames = work / 'frames'
     manifest = extract_capture(capture, frames)

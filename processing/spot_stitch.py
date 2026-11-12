@@ -6,10 +6,21 @@ is ARKit world −Z, +Y is up, and columns grow clockwise seen from above. No cu
 logged here.
 """
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 
 import numpy as np
+
+# Bounds on what a manifest may ask for, so a crafted capture cannot amplify the work. The app
+# saves 29 slices per spot at 1440 × 1080 (walk frames are 1920 wide); 64 slices and the pixel
+# budget leave room to tune the layout. The decoder enforces the per-image cap itself, so a
+# header that lies to jpeg_size cannot reach a larger decode. Set before OpenCV is imported.
+MAX_SPOTS = 8
+MAX_SLICES = 64
+MAX_SIDE = 1920
+MAX_SPOT_PIXELS = 48 * 1440 * 1080
+os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'] = str(MAX_SIDE * MAX_SIDE)
 
 FLIP = np.diag([1.0, -1.0, -1.0])  # ARKit camera (+Y up, −Z forward) <-> OpenCV camera
 NADIR_BGR = (43, 43, 43)
@@ -18,11 +29,6 @@ NADIR_FEATHER = np.radians(2)
 MAX_HOLES = 0.02
 BLOCK_ROWS = 256
 SLICE_NAME = re.compile(r'^images/\d{5}\.jpg$')
-# Bounds on what a manifest may ask for, so a crafted capture cannot amplify the work: the app
-# saves 29 slices per spot (64 leaves room to tune the layout), at most 8 spots, 1440 px wide.
-MAX_SPOTS = 8
-MAX_SLICES = 64
-MAX_SIDE = 4096
 
 
 @dataclass
@@ -63,7 +69,7 @@ def load_spot_slices(manifest, root):
                          np.float64)
             slices.append(Slice(path, K, transform[:3, :3] @ FLIP, int(frame['width']),
                                 int(frame['height'])))
-        if not slices:
+        if not slices or sum(s.width * s.height for s in slices) > MAX_SPOT_PIXELS:
             raise ValueError('capture_invalid')
         spots[number] = slices
     return spots
@@ -95,35 +101,50 @@ def _feather(u, v, width, height):
     return np.clip(edge / (min(width, height) / 2), 0, 1) ** 2
 
 
-def jpeg_size(path):
-    """(width, height) from a JPEG's frame header without decoding it, or None."""
-    with open(path, 'rb') as source:
-        data = source.read(1 << 20)
+def jpeg_size_bytes(data):
+    """(width, height) from a JPEG's frame header without decoding it, or None. Like libjpeg, runs
+    of 0xFF fill bytes before a marker are skipped; anything else unexpected gives None."""
     if data[:2] != b'\xff\xd8':
         return None
     i = 2
-    while i + 9 < len(data):
+    while i < len(data):
         if data[i] != 0xFF:
             return None
-        marker = data[i + 1]
-        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
-            i += 2
+        while i < len(data) and data[i] == 0xFF:
+            i += 1
+        if i >= len(data):
+            return None
+        marker = data[i]
+        i += 1
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
             continue
-        length = int.from_bytes(data[i + 2:i + 4], 'big')
+        if marker in (0x00, 0xD8, 0xD9, 0xDA) or i + 2 > len(data):
+            return None  # no frame header before data or end of image
+        length = int.from_bytes(data[i:i + 2], 'big')
+        if length < 2:
+            return None
         if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
-            return int.from_bytes(data[i + 7:i + 9], 'big'), int.from_bytes(data[i + 5:i + 7], 'big')
-        i += 2 + length
+            if length < 7 or i + 7 > len(data):
+                return None
+            return int.from_bytes(data[i + 5:i + 7], 'big'), int.from_bytes(data[i + 3:i + 5], 'big')
+        i += length
     return None
+
+
+def jpeg_size(path):
+    with open(path, 'rb') as source:
+        return jpeg_size_bytes(source.read(1 << 20))
 
 
 def _images(slices):
     import cv2
     images = []
     for s in slices:
-        # Check the header first: the decoder must never see an image bigger than declared.
-        if jpeg_size(s.path) != (s.width, s.height):
+        # Read once and decode those same bytes; check the header before the decoder sees them.
+        data = s.path.read_bytes()
+        if jpeg_size_bytes(data) != (s.width, s.height):
             raise ValueError('capture_invalid')
-        image = cv2.imread(str(s.path), cv2.IMREAD_COLOR)
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         if image is None or image.shape[:2] != (s.height, s.width):
             raise ValueError('capture_invalid')
         images.append(image)
@@ -259,7 +280,6 @@ def stitch(slices, width=4096, refine=True):
     images = _images(slices)
     rotations = refine_rotations(slices, images=images) if refine else [s.R for s in slices]
     gains = exposure_gains(slices, rotations, images=images)
-    floats = [image.astype(np.float32) for image in images]
     out = np.zeros((height, width, 3), np.float32)
     covered = np.zeros((height, width), bool)
     for top in range(0, height, BLOCK_ROWS):
@@ -267,14 +287,16 @@ def stitch(slices, width=4096, refine=True):
         d = directions(width, height, rows)
         acc = np.zeros(d.shape, np.float32)
         weight = np.zeros(d.shape[:2], np.float32)
-        for s, image, R, gain in zip(slices, floats, rotations, gains):
+        for s, image, R, gain in zip(slices, images, rotations, gains):
             u, v, inside = _project(d, s.K, R, s.width, s.height)
             if not inside.any():
                 continue
             w = np.where(inside, _feather(u, v, s.width, s.height), 0).astype(np.float32)
+            # Sample the 8-bit slice and widen only this block, so peak memory stays near the
+            # decoded slices themselves rather than float copies of every one.
             sample = cv2.remap(image, (u - 0.5).astype(np.float32), (v - 0.5).astype(np.float32),
                                cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-            acc += sample * (w * gain)[..., None]
+            acc += sample.astype(np.float32) * (w * gain)[..., None]
             weight += w
         has = weight > 1e-6
         out[rows] = np.where(has[..., None], acc / np.maximum(weight, 1e-6)[..., None], 0)
