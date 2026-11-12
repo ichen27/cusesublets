@@ -153,4 +153,19 @@ final class SpotTakeTests: XCTestCase {
       SpotTake.folder(owner: "a", listing: "b").lastPathComponent,
       PhotoCaptureDraft.folder(owner: "a", listing: "b").lastPathComponent)
   }
+
+  func testTakeWithoutFinishedSpotIsDiscarded() throws {
+    // Walk frames and half a turn, but no finished spot: nothing worth keeping on the phone.
+    try write([record(0), record(1, role: "slice", spot: 1)])
+    try Data("{}".utf8).write(to: folder.appendingPathComponent("draft.json"))
+    XCTAssertTrue(try SpotTake.discardIfEmpty(folder: folder))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+  }
+
+  func testTakeWithAFinishedSpotIsKept() throws {
+    try write([record(0, role: "slice", spot: 1)])
+    try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
+    XCTAssertFalse(try SpotTake.discardIfEmpty(folder: folder))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+  }
 }

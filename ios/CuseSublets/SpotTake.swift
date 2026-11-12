@@ -79,6 +79,17 @@ enum SpotTake {
       .sorted { $0.spot < $1.spot }
   }
 
+  /// Removes a take that ended without a finished spot, so it neither blocks the next capture
+  /// nor leaves room photos on the phone. Returns whether it was removed.
+  @discardableResult
+  static func discardIfEmpty(folder: URL) throws -> Bool {
+    guard FileManager.default.fileExists(atPath: folder.path) else { return false }
+    let frames = (try? PhotoRecorder.savedFrames(in: folder)) ?? []
+    guard savedSpots(in: folder, frames: frames).isEmpty else { return false }
+    try FileManager.default.removeItem(at: folder)
+    return true
+  }
+
   /// Writes manifest version 2 and the upload archive. Frames of unfinished or deleted spots
   /// stay in it: they cannot reach a panorama, but still help the mesh.
   static func package(folder: URL) throws -> URL {

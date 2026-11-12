@@ -221,6 +221,14 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     session.interrupted()
     phase = session.phase
     hint = nil
+    // Writes may still be in flight; discard only after they finish.
+    let folder = self.folder
+    writer.afterPendingWrites { _ in
+      let removed = (try? SpotTake.discardIfEmpty(folder: folder)) ?? false
+      if removed {
+        DispatchQueue.main.async { self.message = "No spot was finished, so nothing was kept." }
+      }
+    }
   }
 
   // MARK: ARSessionDelegate
