@@ -5,6 +5,13 @@ import {
   validateTourResult,
   type RoomTour,
 } from "../shared/room-tour";
+import {
+  SPOT_TOUR_LIMIT,
+  TOUR_KINDS,
+  validateSpotTourResult,
+  type SpotTourResult,
+  type TourKind,
+} from "../shared/spot-tour";
 import { HttpError, requireThat, text } from "./policy";
 export type TourEnv = Pick<Cloudflare.Env, "DB" | "UPLOADS"> & {
   TOUR_PROCESSOR_TOKEN?: string;
@@ -37,6 +44,7 @@ const view = (r: Row): RoomTour => ({
   listingId: r.listingId,
   name: r.name,
   status: r.deleting ? "deleting" : r.status,
+  kind: r.kind,
   published: !!r.published,
   createdAt: r.createdAt,
   result: r.result ? JSON.parse(r.result) : null,
@@ -87,11 +95,12 @@ async function streamUpload(
   key: string,
   size: number,
   hash: string,
+  limit = TOUR_LIMIT,
 ) {
   requireThat(
-    req.body && Number.isInteger(size) && size > 0 && size <= TOUR_LIMIT,
+    req.body && Number.isInteger(size) && size > 0 && size <= limit,
     413,
-    "Choose a capture under 64 MB",
+    limitMessage(limit),
   );
   requireThat(/^[a-f0-9]{64}$/.test(hash), 400, "Invalid file checksum");
   // FixedLengthStream bounds memory and rejects both truncated and oversized bodies.
@@ -110,6 +119,9 @@ async function streamUpload(
     );
   }
 }
+const limitMessage = (limit: number) =>
+  `Choose a capture under ${Math.round(limit / 1024 / 1024)} MB`;
+const kindLimit = (kind: TourKind) => (kind === "spots" ? SPOT_TOUR_LIMIT : TOUR_LIMIT);
 async function asset(env: TourEnv, key: string, name: string) {
   const object = await env.UPLOADS.get(key);
   requireThat(object, 404, "File unavailable");
@@ -129,10 +141,11 @@ export async function roomTourRoute(
   user: User | null,
 ): Promise<Response | null> {
   const match = new URL(req.url).pathname.match(
-    /^\/api\/listings\/([^/]+)\/tours(?:\/([^/]+)(?:\/(upload|visibility|retry|delete|model|mesh))?)?$/,
+    /^\/api\/listings\/([^/]+)\/tours(?:\/([^/]+)(?:\/(upload|visibility|retry|delete|model|mesh|panorama\/(\d{1,2})))?)?$/,
   );
   if (!match) return null;
-  const [, listingId, tourId, action] = match;
+  const [, listingId, tourId, fullAction, panorama] = match;
+  const action = panorama === undefined ? fullAction : "panorama";
   const listing = await env.DB.prepare(
     "SELECT l.ownerId,l.status,u.suspended FROM listings l JOIN users u ON u.id=l.ownerId WHERE l.id=?",
   )
@@ -179,6 +192,29 @@ export async function roomTourRoute(
       );
       return asset(env, row.meshKey, "room-mesh.ply");
     }
+    if (action === "panorama") {
+      requireThat(
+        !row.deleting && row.status === "ready" && row.kind === "spots" && row.modelKey,
+        404,
+        "Tour panorama is not available",
+      );
+      const spot = (JSON.parse(row.result || "null") as SpotTourResult | null)?.spots.find(
+        (s) => s.spot === Number(panorama),
+      );
+      requireThat(spot, 404, "Spot not found");
+      const object = await env.UPLOADS.get(row.modelKey, {
+        range: { offset: spot.panorama.offset, length: spot.panorama.length },
+      });
+      requireThat(object, 404, "File unavailable");
+      return new Response(object.body, {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Content-Length": String(spot.panorama.length),
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     requireThat(!action, 404, "Not found");
     return json({ tour: view(row) });
   }
@@ -199,15 +235,17 @@ export async function roomTourRoute(
       400,
       "Invalid capture checksum",
     );
+    const kind = (b.kind ?? "splat") as TourKind;
+    requireThat(TOUR_KINDS.includes(kind), 400, "Unknown tour kind");
     requireThat(
       Number.isInteger(b.size) &&
         Number(b.size) > 0 &&
-        Number(b.size) <= TOUR_LIMIT,
+        Number(b.size) <= kindLimit(kind),
       413,
-      "Choose a capture under 64 MB",
+      limitMessage(kindLimit(kind)),
     );
     await env.DB.prepare(
-      `INSERT INTO room_tours(id,listingId,ownerId,name,status,inputHash,inputSize,createdAt) SELECT ?,?,?,?,'uploading',?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (SELECT COUNT(*) FROM room_tours WHERE listingId=?)<6 AND NOT EXISTS(SELECT 1 FROM tour_deletions WHERE id=?) ON CONFLICT(id) DO NOTHING`,
+      `INSERT INTO room_tours(id,listingId,ownerId,name,status,inputHash,inputSize,createdAt,kind) SELECT ?,?,?,?,'uploading',?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (SELECT COUNT(*) FROM room_tours WHERE listingId=?)<6 AND NOT EXISTS(SELECT 1 FROM tour_deletions WHERE id=?) ON CONFLICT(id) DO NOTHING`,
     )
       .bind(
         b.id,
@@ -217,6 +255,7 @@ export async function roomTourRoute(
         b.sha256,
         b.size,
         new Date().toISOString(),
+        kind,
         user.id,
         listingId,
         b.id,
@@ -228,7 +267,7 @@ export async function roomTourRoute(
       .bind(b.id, listingId, user.id)
       .first<Row>();
     requireThat(
-      r && r.inputHash === b.sha256 && r.inputSize === b.size,
+      r && r.inputHash === b.sha256 && r.inputSize === b.size && r.kind === kind,
       409,
       "Capture changed, account unavailable, or six-tour limit reached",
     );
@@ -263,7 +302,7 @@ export async function roomTourRoute(
       "Capture cannot be uploaded in this state",
     );
     const key = `tours/${row.id}/input-${crypto.randomUUID()}.roomcapture`;
-    await streamUpload(req, env, key, row.inputSize, row.inputHash);
+    await streamUpload(req, env, key, row.inputSize, row.inputHash, kindLimit(row.kind));
     const saved = await env.DB.prepare(
       `UPDATE room_tours SET inputKey=?,status='queued' WHERE id=? AND deleting=0 AND status='uploading' AND inputKey IS NULL AND ${active}`,
     )
@@ -404,6 +443,7 @@ export async function tourProcessorRoute(
             claim,
             inputSize: row.inputSize,
             inputHash: row.inputHash,
+            kind: row.kind,
           }
         : null,
     });
@@ -460,9 +500,11 @@ export async function tourProcessorRoute(
   if (action === "complete") {
     let metadata;
     try {
-      metadata = validateTourResult(
-        JSON.parse(req.headers.get("X-Tour-Result") || "null"),
-      );
+      const reported: unknown = JSON.parse(req.headers.get("X-Tour-Result") || "null");
+      metadata =
+        row.kind === "spots"
+          ? validateSpotTourResult(reported, Number(req.headers.get("X-File-Size")))
+          : validateTourResult(reported);
     } catch {
       throw new HttpError(400, "Invalid reconstruction result");
     }

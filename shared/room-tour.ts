@@ -1,3 +1,4 @@
+import type { SpotTourResult, TourKind } from "./spot-tour";
 export const TOUR_LIMIT = 64 * 1024 * 1024;
 export type TourStatus =
   "uploading" | "queued" | "processing" | "ready" | "failed" | "deleting";
@@ -21,9 +22,11 @@ export interface RoomTour {
   listingId: string;
   name: string;
   status: TourStatus;
+  kind: TourKind;
   published: boolean;
   createdAt: string;
-  result: TourResult | null;
+  /** Gaussian display metadata for splat tours; spots and panorama ranges for spot tours. */
+  result: TourResult | SpotTourResult | null;
   /** Coloured PLY mesh in ARKit world coordinates, when processing built one. */
   mesh: TourMesh | null;
   error: string | null;
