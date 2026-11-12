@@ -59,6 +59,15 @@ struct SpotCaptureScreen: View {
   }
 }
 
+/// The 0.5× camera, shown while turning at a spot.
+struct WideCameraSurface: UIViewRepresentable {
+  let recorder: SpotRecorder
+  func makeUIView(context: Context) -> WideCameraView {
+    WideCameraView(layer: recorder.wide.previewLayer)
+  }
+  func updateUIView(_ uiView: WideCameraView, context: Context) {}
+}
+
 struct SpotCameraSurface: UIViewRepresentable {
   let recorder: SpotRecorder
   func makeUIView(context: Context) -> ARSCNView { recorder.view }
@@ -74,7 +83,7 @@ struct SpotTurnView: View {
 
   var body: some View {
     ZStack {
-      SpotCameraSurface(recorder: recorder).ignoresSafeArea()
+      WideCameraSurface(recorder: recorder).ignoresSafeArea()
       TimelineView(.animation) { context in
         GeometryReader { geometry in
           let target = projectedTarget(in: geometry.size)
@@ -131,7 +140,13 @@ struct SpotTurnView: View {
 
   private func caption(now: Date) -> some View {
     let away = offScreenSince.map { now.timeIntervalSince($0) >= 1.5 } ?? false
-    return Text(away ? "Turn to the dot" : "Point the camera at the dot")
+    let taken = recorder.turn?.captured.count ?? 0
+    let total = recorder.turn?.layout.count ?? 0
+    let ring = recorder.turn?.current?.ring ?? 0
+    let aim =
+      ring == 1 ? "Point straight up at the ceiling" : ring == 2
+      ? "Point straight down at the floor" : (away ? "Turn to the dot" : "Point the camera at the dot")
+    return Text("\(aim) · \(min(taken + 1, total)) of \(total)")
       .font(.title3.weight(.semibold)).foregroundStyle(.black).padding(.horizontal, 24)
       .padding(.vertical, 14).background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 10))
       .accessibilityIdentifier("spot-caption")
@@ -141,21 +156,14 @@ struct SpotTurnView: View {
   /// the direction to it meets the screen edge.
   private func projectedTarget(in size: CGSize) -> (point: CGPoint, onScreen: Bool)? {
     guard let turn = recorder.turn, let target = turn.current,
-      let camera = recorder.view.pointOfView
+      let projected = recorder.screenPoint(of: turn.direction(of: target), in: size)
     else { return nil }
-    let direction = turn.direction(of: target)
-    let origin = camera.simdWorldPosition
-    let forward = camera.simdWorldFront
     let center = CGPoint(x: size.width / 2, y: size.height / 2)
-    let world = origin + direction * 2
-    let projected = recorder.view.projectPoint(SCNVector3(world))
-    var point = CGPoint(x: CGFloat(projected.x), y: CGFloat(projected.y))
-    let ahead = simd_dot(direction, forward) > 0.2
+    let point = projected.point
+    let ahead = projected.ahead
     let inside = point.x >= 20 && point.x <= size.width - 20 && point.y >= 20
       && point.y <= size.height - 20
     if ahead && inside { return (point, true) }
-    // Behind the camera the projection mirrors; flip it so the line points the way to turn.
-    if !ahead { point = CGPoint(x: 2 * center.x - point.x, y: 2 * center.y - point.y) }
     var dx = point.x - center.x
     var dy = point.y - center.y
     if abs(dx) < 1 && abs(dy) < 1 { dx = 1 }

@@ -14,12 +14,17 @@ struct SpotRecord: Codable, Equatable {
   /// The locked exposure for every slice of this spot.
   var exposureDuration: Double
   var iso: Double
+  /// `"ultrawide"` when the slices came from the 0.5× camera with motion-sensor rotations.
+  var lens: String? = nil
+  /// Degrees between ARKit's and the motion sensors' idea of "up" when the spot started.
+  var gravityMismatch: Double? = nil
 
   enum CodingKeys: String, CodingKey {
     case floorY = "floor_y"
     case startYaw = "start_yaw"
     case exposureDuration = "exposure_duration"
-    case spot, slices, position, iso
+    case gravityMismatch = "gravity_mismatch"
+    case spot, slices, position, iso, lens
   }
 }
 
@@ -31,7 +36,7 @@ enum SpotTake {
   static let maximumWalkFrames = 90
   /// Below the Workers request-body limit.
   static let archiveLimit = 96 * 1024 * 1024
-  static let sliceWidth: CGFloat = 1440
+  static let sliceWidth: CGFloat = 1920
   static let spotsName = "spots.jsonl"
   static let archiveName = "spots.roomcapture"
   static var maximumViews: Int { maximumSpots * SpotLayout.standard.count + maximumWalkFrames }

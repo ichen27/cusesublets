@@ -11,12 +11,13 @@ struct SpotTarget: Equatable {
 }
 
 enum SpotLayout {
-  /// A level ring, rings tilted up and down, and the ceiling straight above, so the stitched
-  /// sphere has no holes except the floor under the person's feet. Starting values, tuned on
-  /// the iPhone 17.
+  /// Six level shots on the 0.5× camera, then the ceiling and the floor. In portrait that
+  /// lens sees about 90° across and 105° up and down, so neighbouring level shots overlap by
+  /// about 30° and the two end shots close the sphere. Starting values, tuned on the iPhone 17.
   static let standard: [SpotTarget] =
-    ring(0, count: 12, pitchDegrees: 0) + ring(1, count: 8, pitchDegrees: 50)
-    + ring(2, count: 8, pitchDegrees: -50) + [SpotTarget(ring: 3, yaw: 0, pitch: .pi / 2)]
+    ring(0, count: 6, pitchDegrees: 0) + [
+      SpotTarget(ring: 1, yaw: 0, pitch: .pi / 2), SpotTarget(ring: 2, yaw: 0, pitch: -.pi / 2),
+    ]
 
   private static func ring(_ ring: Int, count: Int, pitchDegrees: Float) -> [SpotTarget] {
     (0..<count).map { index in

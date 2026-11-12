@@ -1,14 +1,18 @@
 import ARKit
 import AVFoundation
 import CoreImage
+import CoreMotion
 import SwiftUI
 
 /// Records a spot tour in one ARKit session: walk frames on the capture map, guided slices
-/// while turning at a spot. Rules live in `SpotSession`, `SpotTurn` and `SpotTake`; this class
+/// while turning at a spot. ARKit only offers the 1× camera, so during a turn it is paused and
+/// the 0.5× camera takes the slices, with the motion sensors supplying each slice's rotation. Rules live in `SpotSession`, `SpotTurn` and `SpotTake`; this class
 /// connects them to the camera.
 final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
-  /// Conservative size of one 1440 × 1080 slice, for deciding whether a whole spot still fits.
-  static let estimatedSliceBytes = 350_000
+  /// Conservative size of one 1920 × 1440 slice, for deciding whether a whole spot still fits.
+  static let estimatedSliceBytes = 900_000
+  /// Radians per second; faster than this, a slice would blur.
+  static let steadyRotation = 0.35
   static let walkWidth: CGFloat = 1920
   /// Used when no floor has been seen yet: typical phone height above the floor.
   static let assumedEyeHeight = 1.45
@@ -25,6 +29,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published var message = ""
 
   let view = ARSCNView(frame: .zero)
+  let wide = WideCamera()
   let draft: PhotoCaptureDraft
   let folder: URL
   var canGenerate: Bool { session.canGenerate }
@@ -35,8 +40,6 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private let coverageEngine = CaptureCoverageEngine()
   private var walkPolicy = CapturePolicy(
     maximumViews: SpotTake.maximumWalkFrames, maximumDuration: .infinity)
-  /// Measures motion while turning; its save decisions are ignored.
-  private var steadiness = CapturePolicy(maximumViews: .max, maximumDuration: .infinity)
   private var hints = CaptureHintFilter()
   private var lastPaint = -Double.infinity
   private var startTime: TimeInterval?
@@ -46,7 +49,14 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private var observer: NSObjectProtocol?
   // The spot being turned.
   private var slicePaths = [String]()
-  private var slicePositions = [SIMD3<Float>]()
+  private let motion = CMMotionManager()
+  private var arConfiguration: ARWorldTrackingConfiguration?
+  /// ARKit is paused while the 0.5× camera turns at a spot.
+  private var trackingPaused = false
+  private var orientation: SpotOrientation?
+  private var spotOrigin = SIMD3<Float>.zero
+  private var exposureLocked = false
+  private var lens: (focal: Float, image: CGSize)?
   private var pendingSlices = 0
   private var finishing = false
   private var lockedExposure: (duration: Double, iso: Double) = (0, 0)
@@ -135,6 +145,10 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       config.videoFormat = format
     }
     view.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+    arConfiguration = config
+    motion.deviceMotionUpdateInterval = 1.0 / 60
+    motion.startDeviceMotionUpdates(using: .xArbitraryZVertical)
+    wide.onFrame = { [weak self] frame in self?.turnFrame(frame) }
     coverageEngine.reset(view: view)
     running = true
     UIApplication.shared.isIdleTimerDisabled = true
@@ -146,13 +160,22 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     guard running, phase == .map else { return }
     var tracked = false
     if case .normal = view.session.currentFrame?.camera.trackingState { tracked = true }
-    guard tracked, let frame = view.session.currentFrame else {
+    guard tracked, let frame = view.session.currentFrame, let sample = motion.deviceMotion else {
       message = "Hold still for a moment so the camera can find its place."
       return
     }
-    let forward = -SIMD3(
-      frame.camera.transform.columns.2.x, frame.camera.transform.columns.2.y,
-      frame.camera.transform.columns.2.z)
+    guard WideCamera.isAvailable else {
+      message = "Spot capture needs an iPhone with a 0.5× camera."
+      return
+    }
+    let pose = frame.camera.transform
+    let forward = -SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z)
+    let cameraToWorld = simd_float3x3(
+      SIMD3(pose.columns.0.x, pose.columns.0.y, pose.columns.0.z),
+      SIMD3(pose.columns.1.x, pose.columns.1.y, pose.columns.1.z),
+      SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z))
+    let origin = SIMD3(pose.columns.3.x, pose.columns.3.y, pose.columns.3.z)
+    let attitude = SpotOrientation.deviceToReference(sample)
     writer.withBudget({
       $0.canFit(views: SpotLayout.standard.count, averageImage: Self.estimatedSliceBytes)
     }) { [weak self] fits in
@@ -165,14 +188,25 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
         return
       }
       self.slicePaths = []
-      self.slicePositions = []
       self.pendingSlices = 0
       self.finishing = false
-      self.lockCamera()
+      self.exposureLocked = false
+      self.lens = nil
+      self.spotOrigin = origin
+      self.orientation = SpotOrientation(cameraToWorld: cameraToWorld, deviceToReference: attitude)
       self.turn = SpotTurn(startYaw: atan2(-forward.x, -forward.z))
       self.coverageEngine.setOverlayHidden(true)
       self.message = ""
       self.phase = self.session.phase
+      // Hand the camera from ARKit to the 0.5× lens for the turn.
+      self.trackingPaused = true
+      self.view.session.pause()
+      self.wide.start { [weak self] problem in
+        guard let self, let problem, case .turning = self.phase else { return }
+        self.abandonTurn(message: problem)
+        self.session.abandonSpot()
+        self.phase = self.session.phase
+      }
     }
   }
 
@@ -182,7 +216,6 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     else { return }
     // The frame stays on disk for the mesh; it no longer belongs to this spot's panorama.
     slicePaths.removeLast()
-    slicePositions.removeLast()
     objectWillChange.send()
   }
 
@@ -216,6 +249,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     if case .turning = phase { abandonTurn(message: SpotSession.endedMessage) }
     guard running else { return }
     running = false
+    wide.stop()
+    motion.stopDeviceMotionUpdates()
     view.session.pause()
     UIApplication.shared.isIdleTimerDisabled = false
     session.interrupted()
@@ -234,7 +269,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   // MARK: ARSessionDelegate
 
   func session(_ session: ARSession, didUpdate frame: ARFrame) {
-    guard running else { return }
+    guard running, !trackingPaused else { return }
     coverageEngine.frameDidUpdate(view: view)
     if startTime == nil { startTime = frame.timestamp }
     let elapsed = frame.timestamp - (startTime ?? frame.timestamp)
@@ -272,24 +307,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
         : walkPolicy.evaluate(sample(width: Self.walkWidth), canSave: !writer.busy)
       show(decision.reason == .limitReached ? nil : decision.hint, at: elapsed)
       paint(frame, usable: decision.usable, saved: decision.save, at: elapsed)
-      if decision.save { save(frame, source: source, width: Self.walkWidth, spot: nil) }
-    case .turning(let spot):
-      let decision = steadiness.evaluate(sample(width: SpotTake.sliceWidth))
-      let steady =
-        tracked && !dark && !writer.busy && !finishing
-        && (steadiness.motion.map { $0.blur <= CapturePolicy.maximumBlur } ?? false)
-      show(dark ? .addLight : (decision.reason == .blurred ? .holdSteadier : nil), at: elapsed)
-      paint(frame, usable: decision.usable, saved: false, at: elapsed)
-      guard var current = turn else { return }
-      let event = current.update(forward: forward, time: elapsed, steady: steady)
-      turn = current
-      switch event {
-      case .capture, .complete:
-        slicePositions.append(position)
-        if event == .complete { finishing = true }
-        save(frame, source: source, width: SpotTake.sliceWidth, spot: spot)
-      case .none, .aligning: break
-      }
+      if decision.save { saveWalk(frame, source: source) }
+    case .turning: break
     case .relocating:
       show(.establishTracking, at: elapsed)
     case .ended: break
@@ -323,23 +342,75 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     coverageEngine.submit(frame)
   }
 
-  private func save(_ frame: ARFrame, source: CIImage, width: CGFloat, spot: Int?) {
-    let scale = min(1, width / source.extent.width)
+  private func saveWalk(_ frame: ARFrame, source: CIImage) {
+    let scale = min(1, Self.walkWidth / source.extent.width)
     let image = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
     let k = frame.camera.intrinsics
     let pose = frame.camera.transform
-    var record = CaptureFrameRecord(
+    let record = CaptureFrameRecord(
       filePath: "", timestamp: frame.timestamp - (startTime ?? frame.timestamp),
       width: Int(image.extent.width.rounded()), height: Int(image.extent.height.rounded()),
       fx: Double(k[0][0]) * Double(scale), fy: Double(k[1][1]) * Double(scale),
       cx: Double(k[2][0]) * Double(scale), cy: Double(k[2][1]) * Double(scale),
       transformMatrix: (0..<4).map { row in (0..<4).map { column in Double(pose[column][row]) } },
       points: CaptureFrameRecord.points(frame.rawFeaturePoints?.points ?? []))
-    if let spot {
+    save(image, record: record, spot: nil)
+  }
+
+  /// One 0.5× frame while turning: advances the turn and saves the frame when a dot is held.
+  private func turnFrame(_ frame: WideFrame) {
+    guard running, case .turning(let spot) = phase, var current = turn, let orientation,
+      let sample = motion.deviceMotion
+    else { return }
+    lens = (frame.fx, CGSize(width: frame.width, height: frame.height))
+    let attitude = SpotOrientation.deviceToReference(sample)
+    let rate = sample.rotationRate
+    let speed = (rate.x * rate.x + rate.y * rate.y + rate.z * rate.z).squareRoot()
+    let steady = speed < Self.steadyRotation && !writer.busy && !finishing
+    let time = frame.timestamp - (startTime ?? frame.timestamp)
+    let event = current.update(forward: orientation.forward(attitude), time: time, steady: steady)
+    turn = current
+    switch event {
+    case .aligning:
+      // Lock once the first dot is lined up, so every slice of the spot shares one exposure.
+      if !exposureLocked {
+        lockedExposure = wide.lockExposure()
+        exposureLocked = true
+      }
+    case .capture, .complete:
+      if event == .complete { finishing = true }
+      let source = CIImage(cvPixelBuffer: frame.image)
+      let scale = min(1, SpotTake.sliceWidth / source.extent.width)
+      let image = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+      let r = orientation.cameraToWorld(attitude)
+      let transform: [[Double]] = [
+        [Double(r[0][0]), Double(r[1][0]), Double(r[2][0]), Double(spotOrigin.x)],
+        [Double(r[0][1]), Double(r[1][1]), Double(r[2][1]), Double(spotOrigin.y)],
+        [Double(r[0][2]), Double(r[1][2]), Double(r[2][2]), Double(spotOrigin.z)],
+        [0, 0, 0, 1],
+      ]
+      var record = CaptureFrameRecord(
+        filePath: "", timestamp: time, width: Int(image.extent.width.rounded()),
+        height: Int(image.extent.height.rounded()), fx: Double(frame.fx) * Double(scale),
+        fy: Double(frame.fy) * Double(scale), cx: Double(frame.cx) * Double(scale),
+        cy: Double(frame.cy) * Double(scale), transformMatrix: transform, points: [])
       record.role = "slice"
       record.spot = spot
       pendingSlices += 1
+      save(image, record: record, spot: spot)
+    case .none: break
     }
+  }
+
+  /// Where a world direction is on the 0.5× camera preview, for drawing the dots.
+  func screenPoint(of direction: SIMD3<Float>, in screen: CGSize) -> (point: CGPoint, ahead: Bool)? {
+    guard let orientation, let lens, let sample = motion.deviceMotion else { return nil }
+    return orientation.screenPoint(
+      of: direction, deviceToReference: SpotOrientation.deviceToReference(sample),
+      focal: lens.focal, image: lens.image, screen: screen)
+  }
+
+  private func save(_ image: CIImage, record: CaptureFrameRecord, spot: Int?) {
     let turnSpot = spot
     writer.save(image, record: record) { [weak self] outcome in
       guard let self else { return }
@@ -367,13 +438,14 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   }
 
   private func finishSpot(_ number: Int) {
-    let count = Float(max(slicePositions.count, 1))
-    let mean = slicePositions.reduce(SIMD3<Float>.zero, +) / count
-    let floor = floorY.map(Double.init) ?? Double(mean.y) - Self.assumedEyeHeight
+    let origin = spotOrigin
+    let floor = floorY.map(Double.init) ?? Double(origin.y) - Self.assumedEyeHeight
     let record = SpotRecord(
-      spot: number, slices: slicePaths, position: [Double(mean.x), Double(mean.y), Double(mean.z)],
+      spot: number, slices: slicePaths,
+      position: [Double(origin.x), Double(origin.y), Double(origin.z)],
       floorY: floor, startYaw: Double(turn?.startYaw ?? 0),
-      exposureDuration: lockedExposure.duration, iso: lockedExposure.iso)
+      exposureDuration: lockedExposure.duration, iso: lockedExposure.iso, lens: "ultrawide",
+      gravityMismatch: orientation.map { Double($0.gravityMismatchDegrees) })
     do {
       try SpotTake.appendSpot(record, to: folder)
       spots.append(record)
@@ -382,7 +454,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       message = error.localizedDescription
       session.abandonSpot()
     }
-    unlockCamera()
+    resumeTracking()
     turn = nil
     finishing = false
     coverageEngine.setOverlayHidden(false)
@@ -390,13 +462,12 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     refreshCoverage()
   }
 
-  /// Leaves a turn: unlocks the camera and forgets its slices (they remain walk-only data).
+  /// Leaves a turn: returns the camera to ARKit and forgets its slices (they remain walk-only data).
   private func abandonTurn(message text: String) {
-    unlockCamera()
+    resumeTracking()
     turn = nil
     finishing = false
     slicePaths = []
-    slicePositions = []
     coverageEngine.setOverlayHidden(false)
     message = text
   }
@@ -412,28 +483,15 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     if hint != shown { hint = shown }
   }
 
-  /// Every slice of a spot shares one exposure and white balance, so slices blend without
-  /// banding.
-  private func lockCamera() {
-    guard let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera,
-      (try? device.lockForConfiguration()) != nil
-    else { return }
-    if device.isExposureModeSupported(.locked) { device.exposureMode = .locked }
-    if device.isWhiteBalanceModeSupported(.locked) { device.whiteBalanceMode = .locked }
-    lockedExposure = (CMTimeGetSeconds(device.exposureDuration), Double(device.iso))
-    device.unlockForConfiguration()
-  }
-
-  private func unlockCamera() {
-    guard let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera,
-      (try? device.lockForConfiguration()) != nil
-    else { return }
-    if device.isExposureModeSupported(.continuousAutoExposure) {
-      device.exposureMode = .continuousAutoExposure
+  /// Returns the camera from the 0.5× lens to ARKit. ARKit keeps its map across the pause and
+  /// finds its place again, so later spots share the first spot's coordinates.
+  private func resumeTracking() {
+    guard trackingPaused else { return }
+    orientation = nil
+    wide.stop { [weak self] in
+      guard let self, self.running, let configuration = self.arConfiguration else { return }
+      self.view.session.run(configuration)
+      self.trackingPaused = false
     }
-    if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
-      device.whiteBalanceMode = .continuousAutoWhiteBalance
-    }
-    device.unlockForConfiguration()
   }
 }

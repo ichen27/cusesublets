@@ -137,7 +137,7 @@ final class SpotTakeTests: XCTestCase {
     XCTAssertEqual(SpotTake.maximumSpots, 8)
     XCTAssertEqual(SpotTake.maximumWalkFrames, 90)
     XCTAssertEqual(SpotTake.archiveLimit, 96 * 1024 * 1024)
-    XCTAssertEqual(SpotTake.maximumViews, 8 * 29 + 90)
+    XCTAssertEqual(SpotTake.maximumViews, 8 * 8 + 90)
   }
 
   func testSplatBudgetUnchanged() {
