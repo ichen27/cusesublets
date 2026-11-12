@@ -166,6 +166,10 @@ public struct CapturePolicy {
   static let maximumTurnsInPlace = 2
   static let assumedDepth: Float = 1.5
 
+  /// This policy's view and time limits: the walk-around engine limits by default; spot takes
+  /// allow fewer walk frames over a longer capture.
+  public let viewLimit: Int
+  public let durationLimit: Double
   public private(set) var count = 0
   /// Motion of the last evaluated frame, when it could be measured.
   public private(set) var motion: CaptureMotion?
@@ -175,7 +179,10 @@ public struct CapturePolicy {
   private var turnsInPlace = 0
   private var observation: (time: Double, position: SIMD3<Float>, forward: SIMD3<Float>)?
 
-  public init() {}
+  public init(maximumViews: Int = Self.maximumViews, maximumDuration: Double = Self.maximumDuration) {
+    viewLimit = maximumViews
+    durationLimit = maximumDuration
+  }
 
   /// `canSave` is false while the previous view is still being written; the frame is then
   /// skipped without being counted.
@@ -199,7 +206,7 @@ public struct CapturePolicy {
     if speed > Self.maximumSpeed || turnRate > Self.maximumTurnRate {
       return .init(reason: .tooFast)
     }
-    if count >= Self.maximumViews || sample.time >= Self.maximumDuration {
+    if count >= viewLimit || sample.time >= durationLimit {
       return .init(reason: .limitReached)
     }
     if sample.featureCount < Self.minimumFeatures {

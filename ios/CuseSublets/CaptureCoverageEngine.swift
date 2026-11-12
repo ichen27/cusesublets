@@ -47,6 +47,9 @@ final class CaptureCoverageEngine {
     }
   }
 
+  /// Hides the live overlay without clearing the map, e.g. while turning at a spot.
+  func setOverlayHidden(_ hidden: Bool) { overlay.setHidden(hidden) }
+
   /// Call once per frame while capturing; the camera-attached tint needs the AR camera node.
   func frameDidUpdate(view: ARSCNView) { overlay.attach(to: view) }
 
@@ -217,6 +220,11 @@ final class CoverageOverlay {
   }
 
   func clear() { surfaces.geometry = nil }
+
+  func setHidden(_ hidden: Bool) {
+    surfaces.isHidden = hidden
+    tint.isHidden = hidden
+  }
 
   func update(_ points: [CoveragePoint]) {
     guard !points.isEmpty else {
