@@ -14,6 +14,9 @@ final class CaptureCoverageEngine {
   /// Main-thread callback with the share of seen surfaces that are covered (0...1),
   /// or nil when the depth model is unavailable on this device.
   var onUpdate: ((Double?) -> Void)?
+  /// Main-thread callback with the top-down capture map and the floor height it was built for,
+  /// after each view that updated the map.
+  var onMap: (([TopDownCell], Float) -> Void)?
 
   private let queue = DispatchQueue(label: "com.ichen27.cusesublets.coverage", qos: .utility)
   private let context = CIContext()
@@ -25,6 +28,12 @@ final class CaptureCoverageEngine {
   // Coverage queue only.
   private var model: MLModel?
   private var map = CoverageMap()
+  private var floorPlanes = [Float]()
+
+  /// Heights of horizontal ARKit planes; the lowest is taken as the floor.
+  func setFloorPlanes(_ heights: [Float]) {
+    queue.async { self.floorPlanes = heights }
+  }
 
   func reset(view: ARSCNView) {
     generation += 1
@@ -33,6 +42,7 @@ final class CaptureCoverageEngine {
     overlay.attach(to: view)
     queue.async {
       self.map = CoverageMap()
+      self.floorPlanes = []
       _ = self.loadModel()
     }
   }
@@ -66,9 +76,10 @@ final class CaptureCoverageEngine {
           self.overlay.clear()
           self.onUpdate?(nil)
         case .skipped: break
-        case .updated(let points, let fraction):
+        case .updated(let points, let fraction, let top):
           self.overlay.update(points)
           self.onUpdate?(fraction)
+          if let top { self.onMap?(top.cells, top.floorY) }
         }
       }
     }
@@ -77,7 +88,7 @@ final class CaptureCoverageEngine {
   private enum Estimate {
     case unavailable
     case skipped
-    case updated([CoveragePoint], Double)
+    case updated([CoveragePoint], Double, (cells: [TopDownCell], floorY: Float)?)
   }
 
   private func estimate(input: CVPixelBuffer, camera: CoverageCamera, points: [SIMD3<Float>])
@@ -90,11 +101,16 @@ final class CaptureCoverageEngine {
       ), let buffer = output.featureValue(for: "depth")?.imageBufferValue,
       let depth = Self.relativeDepth(buffer)
     else { return .skipped }
-    guard map.integrate(depth: depth, camera: camera, trackedPoints: points) else {
+    let colors = Self.colorSampler(input, depthWidth: depth.width, depthHeight: depth.height)
+    guard map.integrate(depth: depth, camera: camera, trackedPoints: points, colors: colors) else {
       return .skipped
     }
     let snapshot = map.snapshot()
-    return .updated(snapshot.points, snapshot.coveredFraction)
+    let centers = map.cells.keys.map { (SIMD3<Float>($0) + 0.5) * CoverageMap.voxelSize }
+    let top = FloorCoverage.estimateFloorY(planes: floorPlanes, cells: centers).map {
+      (cells: map.topDown(floorY: $0), floorY: $0)
+    }
+    return .updated(snapshot.points, snapshot.coveredFraction, top)
   }
 
   private func loadModel() -> MLModel? {
@@ -119,6 +135,27 @@ final class CaptureCoverageEngine {
     let scaled = CIImage(cvPixelBuffer: image).transformed(by: CGAffineTransform(scaleX: sx, y: sy))
     context.render(scaled, to: buffer)
     return buffer
+  }
+
+  /// Reads the model's BGRA input once and returns colours (0...1) at depth-map pixels.
+  static func colorSampler(_ buffer: CVPixelBuffer, depthWidth: Int, depthHeight: Int)
+    -> ((Int, Int) -> SIMD3<Float>)?
+  {
+    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+    guard let base = CVPixelBufferGetBaseAddress(buffer), depthWidth > 0, depthHeight > 0 else {
+      return nil
+    }
+    let width = CVPixelBufferGetWidth(buffer)
+    let height = CVPixelBufferGetHeight(buffer)
+    let row = CVPixelBufferGetBytesPerRow(buffer)
+    let bytes = [UInt8](UnsafeBufferPointer(start: base.assumingMemoryBound(to: UInt8.self), count: row * height))
+    return { x, y in
+      let px = min(width - 1, x * width / depthWidth)
+      let py = min(height - 1, y * height / depthHeight)
+      let offset = py * row + px * 4
+      return SIMD3(Float(bytes[offset + 2]), Float(bytes[offset + 1]), Float(bytes[offset])) / 255
+    }
   }
 
   /// Converts the model's half-float grayscale image (with any row padding) to floats.

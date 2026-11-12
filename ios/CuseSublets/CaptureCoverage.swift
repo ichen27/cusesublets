@@ -107,6 +107,8 @@ struct CoverageMap {
   private static let edgeTolerance: Float = 0.06
 
   private(set) var cells = [SIMD3<Int32>: [SIMD3<Float>]]()
+  /// Sum of sampled colours (rgb) and their count (w) per cell, for the top-down capture map.
+  private(set) var colors = [SIMD3<Int32>: SIMD4<Float>]()
 
   /// Coverage for display. Monocular depth is noisy by roughly a voxel, so separate views of one
   /// surface often land in adjacent cells; each cell's level counts the distinct directions in
@@ -138,7 +140,7 @@ struct CoverageMap {
   @discardableResult
   mutating func integrate(
     depth: RelativeDepthMap, camera: CoverageCamera, trackedPoints: [SIMD3<Float>],
-    stride step: Int = 6
+    colors color: ((Int, Int) -> SIMD3<Float>)? = nil, stride step: Int = 6
   ) -> Bool {
     let pairs = trackedPoints.compactMap { point -> (prediction: Float, depth: Float)? in
       guard let pixel = camera.project(point),
@@ -164,6 +166,7 @@ struct CoverageMap {
         let key = SIMD3<Int32>(floor(world / Self.voxelSize))
         var directions = cells[key] ?? []
         guard cells[key] != nil || cells.count < Self.maximumCells else { continue }
+        if let color { colors[key, default: .zero] += SIMD4(color(x, y), 1) }
         guard directions.count < Self.coveredLevel else { continue }
         let direction = simd_normalize(world - camera.position)
         if directions.allSatisfy({ simd_dot($0, direction) < Self.distinctCosine }) {
@@ -173,5 +176,44 @@ struct CoverageMap {
       }
     }
     return true
+  }
+}
+
+/// One 10 cm column of the capture map seen from above.
+struct TopDownCell: Equatable {
+  let x: Int32
+  let z: Int32
+  /// The column's lowest surface is the floor.
+  let floor: Bool
+  /// Something between knee and head height (furniture, a wall) blocks sight across the column.
+  let obstacle: Bool
+  /// Height of the highest surface below the ceiling band, in metres.
+  let top: Float
+  /// Average colour of that surface, 0...1.
+  let color: SIMD3<Float>
+}
+
+extension CoverageMap {
+  static let floorTolerance: Float = 0.15
+  static let obstacleLow: Float = 0.3
+  /// Surfaces above this height are treated as ceiling and ignored by the map.
+  static let obstacleHigh: Float = 1.8
+
+  /// Columns of the map seen from above, relative to the given floor height.
+  func topDown(floorY: Float) -> [TopDownCell] {
+    var columns = [SIMD2<Int32>: [Int32]]()
+    for key in cells.keys { columns[SIMD2(key.x, key.z), default: []].append(key.y) }
+    func center(_ y: Int32) -> Float { (Float(y) + 0.5) * Self.voxelSize }
+    return columns.compactMap { column, heights in
+      let below = heights.filter { center($0) <= floorY + Self.obstacleHigh }
+      guard let lowest = below.min(), let highest = below.max() else { return nil }
+      let sum = colors[SIMD3(column.x, highest, column.y)] ?? .zero
+      return TopDownCell(
+        x: column.x, z: column.y,
+        floor: abs(center(lowest) - floorY) <= Self.floorTolerance,
+        obstacle: below.contains { center($0) > floorY + Self.obstacleLow },
+        top: center(highest),
+        color: sum.w > 0 ? SIMD3(sum.x, sum.y, sum.z) / sum.w : SIMD3(repeating: 0.6))
+    }
   }
 }

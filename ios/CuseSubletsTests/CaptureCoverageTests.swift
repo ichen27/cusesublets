@@ -104,6 +104,30 @@ final class CaptureCoverageTests: XCTestCase {
     XCTAssertFalse(map.snapshot().points.contains { $0.center.z < -1.2 && $0.center.z > -2.8 })
   }
 
+  func testIntegrateRecordsCellColour() throws {
+    var map = CoverageMap()
+    let camera = camera(at: .zero, yaw: 0)
+    XCTAssertTrue(
+      map.integrate(
+        depth: wall(seenBy: camera), camera: camera, trackedPoints: wallPoints(seenBy: camera),
+        colors: { _, _ in SIMD3(1, 0, 0) }))
+    let cells = map.topDown(floorY: -1.0)
+    XCTAssertFalse(cells.isEmpty)
+    for cell in cells { XCTAssertEqual(cell.color, SIMD3(1, 0, 0)) }
+  }
+
+  func testTopDownMarksFloorAndObstacleColumns() throws {
+    var map = CoverageMap()
+    let camera = camera(at: .zero, yaw: 0)
+    map.integrate(
+      depth: wall(seenBy: camera), camera: camera, trackedPoints: wallPoints(seenBy: camera))
+    // The wall spans y from about −1.0 to +1.0 m in front of the camera.
+    let cells = map.topDown(floorY: -1.0)
+    XCTAssertTrue(cells.contains { $0.floor })
+    XCTAssertTrue(cells.allSatisfy { $0.obstacle })
+    XCTAssertTrue(map.topDown(floorY: -5).allSatisfy { !$0.floor })
+  }
+
   // MARK: - Synthetic scene: a flat wall at z = -2 m seen by 518×392 depth maps.
 
   // 2.05 m keeps the exact synthetic wall mid-voxel rather than on a cell boundary.
