@@ -23,6 +23,11 @@ jobs:
           python3 -m venv /tmp/room-mesh
           /tmp/room-mesh/bin/pip install --quiet numpy==2.1.3
           /tmp/room-mesh/bin/python tests/room-mesh-unit.py
+      - name: Spot panorama stitching checks
+        run: |
+          python3 -m venv /tmp/spots
+          /tmp/spots/bin/pip install --quiet -r processing/requirements-spots.txt
+          /tmp/spots/bin/python tests/spot-stitch-unit.py
       - run: python3 tests/housing-search-migration.py
       - run: python3 tests/search-write-races.py
       - run: python3 tests/social-write-races.py
