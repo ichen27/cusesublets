@@ -47,11 +47,12 @@ Generating uploads the capture archive to **Tour Studio**, a small private servi
 ```sh
 npm ci && npm run build:studio
 python3 -m venv work/spots-venv && work/spots-venv/bin/pip install -r processing/requirements-spots.txt
-APP_DATA_DIR=work/studio-data PORT=8937 work/spots-venv/bin/python studio/server.py
+APP_DATA_DIR=work/studio-data PORT=8937 STUDIO_TOKEN=<your token> work/spots-venv/bin/python studio/server.py
 ```
 
-- Tour Studio has **no login of its own**. Run it only behind an authenticating proxy or on a private network. It answers only requests addressed to its loopback address or to a hostname in `STUDIO_HOSTS`, and changes need a header a cross-site form cannot send.
-- The app talks to it over https at the address set under **Settings** (or passed once as the launch argument `-studioURL`). A native app cannot complete a browser sign-in such as Cloudflare Access with Google, so the phone needs a route that does not require one, such as a private VPN address.
+- **Login.** Set `STUDIO_TOKEN` (at least 32 letters and digits) and every request except `/health` must carry it: the app sends it as a bearer header, and a browser gets a cookie after entering it at `/signin`. Without `STUDIO_TOKEN` the service has no login and must stay behind an authenticating proxy or on a private network. Generate one with `python3 -c "import secrets; print(secrets.token_hex(24))"` and keep it out of the repository.
+- **Hostnames.** It answers only requests addressed to its loopback address or to a hostname in `STUDIO_HOSTS`, and changes need a header a cross-site form cannot send.
+- **The app** talks to it over https at the address and token set under **Settings** (or passed once as the launch arguments `-studioURL` and `-studioToken`). The token is kept in the iPhone's Keychain. A native app cannot complete a browser sign-in such as Cloudflare Access with Google, so the address must not sit behind one.
 - Captures and tours hold real room photographs. They stay under `APP_DATA_DIR` and are removed with the property.
 - `studio/launcher.json` registers the service with the author's personal app launcher; it is an example, not a portable deployment.
 
