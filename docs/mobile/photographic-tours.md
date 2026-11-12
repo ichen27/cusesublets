@@ -2,6 +2,59 @@
 
 The iPhone app captures overlapping, calibrated ARKit camera views. The server stores the capture privately, a separate serial worker trains a Gaussian model, and the owner reviews and explicitly publishes it. Public access also requires a published listing and an active owner. RoomPlan geometry remains a separate feature. Neither output grants a CuseSublets Check.
 
+
+## Spot tours
+
+New tours use **spot capture**, modelled on Matterport-style phone capture and Street View-style viewing. The sublessor stands at a few spots and turns in place under guidance. Each spot becomes a stitched 360° photo. Viewers stand only at those spots and move by tapping circles on the floor. A rough room mesh, when the processor builds one, powers the overview and the move between spots. The design is in [the spot tour spec](../superpowers/specs/2026-11-12-spot-capture-tours-design.md).
+
+### Capture (`SpotRecorder.swift`, `SpotTurn.swift`, `SpotCaptureScreens.swift`)
+
+- **One ARKit session per tour.** An interruption, backgrounding or lost camera ends capture. Finished spots are kept and can still be generated; an unfinished spot is discarded. If tracking is lost mid-turn, that spot is discarded and the next one waits until tracking is normal again.
+- **Turning at a spot.** A fixed circle sits in the middle of the screen and the next dot is projected into the camera view. When the dot is off screen, a dotted line points towards it. Holding the circle on a dot for 0.5 s (within 4°, steady, tracking normal) captures one *slice*. The layout has 29 dots: 12 level at 30° steps, 8 tilted up 50°, 8 tilted down 50°, and one straight up. A synthetic check showed a 45° tilt leaves 1.3% of the sphere uncovered and 50° leaves none. **Undo** removes the last slice. Exposure and white balance are locked for the whole turn, so slices blend without banding.
+- **Capture map.** Between spots, the app shows the captured room from above, built from the same on-device depth as the coverage overlay. It shows numbered spots, where the phone is now, and a percentage. The percentage is the share of floor seen so far that a finished spot can see within 1.5 m, with walls and furniture between 0.3 and 1.8 m above the floor blocking the line of sight. It is guidance, not a measurement; floor the camera never passed over doesn't count. While walking, the camera keeps saving *walk* frames (up to 90) with the existing sharp, trackable, parallax policy. These feed only the mesh.
+- **Review.** Each spot can be previewed as a rough 360 (slices placed where they were captured, not stitched), redone while the session is live, or deleted. **Generate tour** packages the take.
+- **Limits.** A tour has at most 8 spots. Slices are saved 1440 px wide, walk frames 1920 px. The archive must stay within **96 MB**, below the Workers request-body limit. A spot starts only if a whole spot of slices still fits.
+- **Storage.** Spot takes live under Application Support `spot-captures/`, separately from walk-around takes, with the same file protection and backup exclusion. `frames.jsonl` records each frame's `role` (`walk` or `slice`) and `spot`. `spots.jsonl` records each finished spot only after all its slices are written, and a tombstone line records a deletion. The archive's `manifest.json` is schema version 2 with `capture: "spots"` and a `spots` list.
+
+### Processing (`processing/spot_stitch.py`, `processing/tour_worker.py`)
+
+The API stores `kind = 'spots'` (migration `0020_spot_tours.sql`), and the claim tells the worker the kind. The worker runs these steps:
+
+1. It unpacks the archive safely: only the app's file names, regular files, no links or duplicates.
+2. It loads only the slices listed in finished spots. A manifest is refused if it reuses a slice, exceeds 8 spots or 64 slices per spot, declares images over 1920 px, or exceeds a per-spot pixel budget. The JPEG header is checked before decoding, and OpenCV's own pixel cap is set.
+3. It refines each slice's ARKit rotation by up to 3° using ORB feature matches between overlapping slices. A weak prior keeps the set anchored to ARKit's gravity.
+4. It evens out exposure with per-slice gains and blends slices with feathering into a 4096 × 2048 equirectangular JPEG (quality 85). Yaw 0 is ARKit −Z; columns grow clockwise seen from above. Below −80° pitch, a neutral disc covers the floor under the person. A spot with more than 2% uncovered sphere above that fails as `spot_incomplete`.
+5. With `CUSE_ROOM_MESH=1`, it builds the room mesh from walk frames plus level slices.
+6. It uploads one USTAR bundle (panoramas, then `spots.json`) and records each panorama's byte range in the result. `GET /api/listings/{listing}/tours/{tour}/panorama/{spot}` serves one panorama by range, with the same visibility checks as the model.
+
+Install `processing/requirements-spots.txt` into the worker's Python environment. On the Mac mini, a 4096-wide spot stitches in about 12 s.
+
+### Viewer (`src/SpotViewer.tsx`)
+
+The same page runs in the iPhone app's web view and on listing pages. **Walk** shows the 360 at the current spot: drag or use the arrow keys to look, and tap a floor circle (other spots within 6 m) to move. **Plan** shows the spots from above, over the mesh when there is one. **3D** orbits the mesh, and appears only when the tour has one. Spot buttons under the viewer reach every spot without the canvas. Panoramas load one at a time: the current spot first, then nearby spots.
+
+![Spot viewer at the first spot](screenshots/spot-viewer-walk.png) ![A floor circle](screenshots/spot-viewer-floor-circle.png) ![Plan view](screenshots/spot-viewer-plan.png)
+
+These screenshots come from the **synthetic** fixture (`python processing/make_synthetic_capture.py --spots OUT`), not a real room.
+
+### Verified and not yet verified
+
+- **Verified (2026-11-12):**
+  - Unit tests for the turn state, coverage, storage and recovery, session rules, API contract, stitching and worker.
+  - The synthetic archive processed end to end against the isolated API.
+  - The viewer checked in headless Chrome: orientation against a reference render, a floor-circle tap, and Plan mode.
+- **Not yet verified:**
+  - Capture on a real iPhone 17 (dot layout feel, exposure lock, tracking loss, the capture map and the percentage).
+  - Real-room stitching quality and seams.
+  - The mesh-based 3D mode and fly-through.
+  - The viewer inside the iPhone web view.
+
+  See [the device results](spot-capture-device-results.md).
+
+## Walk-around tours (development comparison)
+
+The sections below describe the earlier walk-around Gaussian capture. Marketplace tours now use spot capture; the walk-around flow remains on the development **Device capture check** screen for comparison, and existing walk-around tours keep their viewer.
+
 ## Capture and recovery
 
 Photographic capture uses AR world tracking on supported iPhones; LiDAR is not required. The simulator cannot validate capture. Move slowly around one room with good light and overlapping views, stepping sideways between views. At least 30 stable views are required; aim for 60 or more. Capture stops at three minutes or 180 views, the limits of the processing engine.
