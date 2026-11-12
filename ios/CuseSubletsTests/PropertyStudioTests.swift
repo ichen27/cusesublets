@@ -60,6 +60,23 @@ final class PropertyStudioTests: XCTestCase {
     XCTAssertTrue(StudioClient.explain("spot_incomplete").contains("gaps"))
   }
 
+  func testTokensAreLongLettersAndDigits() {
+    XCTAssertTrue(StudioToken.isValid(String(repeating: "a1", count: 16)))
+    XCTAssertFalse(StudioToken.isValid(String(repeating: "a", count: 31)))
+    XCTAssertFalse(StudioToken.isValid(String(repeating: "a", count: 31) + ";"))
+    XCTAssertFalse(StudioToken.isValid(String(repeating: "é", count: 40)))
+  }
+
+  func testTokenCookieIsSecureAndScopedToTheService() {
+    let client = StudioClient(
+      base: URL(string: "https://studio.example.net")!, token: String(repeating: "t", count: 40))
+    let cookie = client.tokenCookie
+    XCTAssertEqual(cookie?.name, "studio_token")
+    XCTAssertEqual(cookie?.domain, "studio.example.net")
+    XCTAssertEqual(cookie?.isSecure, true)
+    XCTAssertNil(StudioClient(base: URL(string: "https://studio.example.net")!).tokenCookie)
+  }
+
   func testTourPageIsUnderTheConfiguredOrigin() {
     let client = StudioClient(base: URL(string: "https://studio.example.net:10445")!)
     XCTAssertEqual(

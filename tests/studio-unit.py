@@ -116,5 +116,62 @@ class StudioService(unittest.TestCase):
         self.assertNotIn('<b>', page)
 
 
+class StudioLogin(unittest.TestCase):
+    TOKEN = 'k' * 40
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = tempfile.TemporaryDirectory()
+        store = studio.Studio(Path(cls.scratch.name) / 'data')
+        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), studio.handler(store, None, cls.TOKEN))
+        cls.base = 'http://127.0.0.1:%d' % cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.scratch.cleanup()
+
+    def call(self, path, method='GET', data=None, headers=None):
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args):
+                return None
+        request = urllib.request.Request(self.base + path, data=data, method=method, headers=headers or {})
+        try:
+            with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
+                return response.status, response.read(), response.headers
+        except urllib.error.HTTPError as error:
+            return error.code, error.read(), error.headers
+
+    def test_everything_but_health_needs_the_token(self):
+        self.assertEqual(self.call('/health')[0], 200)
+        for path in ('/api/properties', '/api/properties/' + ID, '/tour/' + ID, '/',
+                     '/api/listings/%s/tours/tour/panorama/1' % ID, '/assets/studio.js'):
+            self.assertEqual(self.call(path)[0], 401, path)
+        for method, path in (('POST', '/api/properties/%s/capture' % ID), ('DELETE', '/api/properties/' + ID)):
+            self.assertEqual(self.call(path, method, b'x', {'X-Cuse-Studio': '1'})[0], 401, path)
+        for wrong in ('Bearer ' + 'x' * 40, 'Bearer ', 'Basic ' + self.TOKEN, self.TOKEN):
+            self.assertEqual(self.call('/api/properties', headers={'Authorization': wrong})[0], 401, wrong)
+        self.assertEqual(self.call('/api/properties', headers={'Cookie': 'studio_token=' + 'x' * 40})[0], 401)
+
+    def test_the_token_opens_the_api_as_a_header_or_cookie(self):
+        self.assertEqual(self.call('/api/properties', headers={'Authorization': 'Bearer ' + self.TOKEN})[0], 200)
+        self.assertEqual(self.call('/api/properties', headers={'Cookie': 'a=b; studio_token=' + self.TOKEN})[0], 200)
+
+    def test_a_browser_is_sent_to_sign_in_and_gets_a_cookie(self):
+        status, _, headers = self.call('/', headers={'Accept': 'text/html'})
+        self.assertEqual((status, headers['Location']), (303, '/signin'))
+        self.assertIn(b'Access token', self.call('/signin')[1])
+        status, body, headers = self.call('/signin', 'POST', b'token=' + b'x' * 40)
+        self.assertEqual(status, 401)
+        self.assertIsNone(headers['Set-Cookie'])
+        status, _, headers = self.call('/signin', 'POST', ('token=' + self.TOKEN).encode())
+        self.assertEqual(status, 303)
+        cookie = headers['Set-Cookie']
+        for flag in ('HttpOnly', 'Secure', 'SameSite=Lax'):
+            self.assertIn(flag, cookie)
+        self.assertEqual(self.call('/', headers={'Cookie': cookie.split(';')[0]})[0], 200)
+
+
 if __name__ == '__main__':
     unittest.main()

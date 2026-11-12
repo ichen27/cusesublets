@@ -145,7 +145,8 @@ struct PropertyDetailView: View {
     }
     .fullScreenCover(isPresented: $viewing) {
       if let client = StudioClient.configured {
-        StudioTourScreen(title: property?.name ?? "Tour", url: client.tourPage(id))
+        StudioTourScreen(
+          title: property?.name ?? "Tour", url: client.tourPage(id), cookie: client.tokenCookie)
       }
     }
     .sheet(item: $preview) { spot in
@@ -331,9 +332,10 @@ struct StudioTourScreen: View {
   @Environment(\.dismiss) private var dismiss
   let title: String
   let url: URL
+  let cookie: HTTPCookie?
   var body: some View {
     NavigationStack {
-      StudioWebView(url: url).ignoresSafeArea(edges: .bottom)
+      StudioWebView(url: url, cookie: cookie).ignoresSafeArea(edges: .bottom)
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .toolbar { Button("Done") { dismiss() } }
     }
@@ -342,6 +344,7 @@ struct StudioTourScreen: View {
 
 struct StudioWebView: UIViewRepresentable {
   let url: URL
+  let cookie: HTTPCookie?
   func makeCoordinator() -> Coordinator { Coordinator(origin: url) }
   func makeUIView(context: Context) -> WKWebView {
     let configuration = WKWebViewConfiguration()
@@ -350,7 +353,12 @@ struct StudioWebView: UIViewRepresentable {
     web.navigationDelegate = context.coordinator
     web.isOpaque = false
     web.backgroundColor = .systemBackground
-    web.load(URLRequest(url: url))
+    let target = url
+    Task { @MainActor [weak web] in
+      // The store is not persistent, so the token leaves with the web view.
+      if let cookie { await configuration.websiteDataStore.httpCookieStore.setCookie(cookie) }
+      web?.load(URLRequest(url: target))
+    }
     return web
   }
   func updateUIView(_ uiView: WKWebView, context: Context) {}
@@ -381,12 +389,24 @@ struct StudioSettingsView: View {
   @AppStorage(StudioClient.addressKey) private var address = ""
   @State private var result = ""
   @State private var checking = false
+  @State private var token = ""
+  @State private var hasToken = StudioToken.read() != nil
 
   var body: some View {
     Form {
       Section {
         TextField("https://…", text: $address).keyboardType(.URL).textInputAutocapitalization(.never)
           .autocorrectionDisabled()
+        SecureField(hasToken ? "Access token (saved)" : "Access token", text: $token)
+          .textInputAutocapitalization(.never).autocorrectionDisabled()
+        if !token.isEmpty {
+          Button("Save token") { saveToken() }
+        } else if hasToken {
+          Button("Remove saved token", role: .destructive) {
+            StudioToken.save(nil)
+            hasToken = false
+          }
+        }
         Button("Test connection") { Task { await test() } }.disabled(checking)
         if checking { ProgressView() }
         if !result.isEmpty { Text(result).foregroundStyle(.secondary) }
@@ -394,7 +414,7 @@ struct StudioSettingsView: View {
         Text("Tour Studio address")
       } footer: {
         Text(
-          "Your private service that stitches scans into tours. Scans contain photos of the room; they are sent only to this address."
+          "Your private service that stitches scans into tours. Scans contain photos of the room; they and the token are sent only to this address. The token is kept in this iPhone's Keychain."
         )
       }
       #if DEBUG
@@ -412,8 +432,18 @@ struct StudioSettingsView: View {
       return
     }
     checking = true
-    let healthy = await StudioClient(base: url).isHealthy()
+    let outcome = await StudioClient(base: url, token: StudioToken.read()).check()
     checking = false
-    result = healthy ? "Connected." : StudioFailure.unreachable.localizedDescription
+    result = outcome
+  }
+
+  private func saveToken() {
+    guard StudioToken.isValid(token) else {
+      result = "A token is at least \(StudioToken.minimumLength) letters and digits."
+      return
+    }
+    hasToken = StudioToken.save(token)
+    result = hasToken ? "Token saved." : "The token could not be saved."
+    token = ""
   }
 }

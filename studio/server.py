@@ -2,11 +2,16 @@
 and shows them. One process, standard library only; the stitching itself runs
 `processing/tour_worker.py --reconstruct-spots` in a child process.
 
-Run behind an authenticating proxy or a private network. The service has no login of its own.
-It answers only requests addressed to its own loopback address or to a hostname listed in
+Login: when STUDIO_TOKEN is set (at least 32 characters), every request except /health must
+carry it, as `Authorization: Bearer <token>` (the iPhone app) or as the `studio_token` cookie
+(a browser, after entering the token at /signin). Without STUDIO_TOKEN the service has no login
+and must stay behind an authenticating proxy or on a private network.
+
+It also answers only requests addressed to its own loopback address or to a hostname listed in
 STUDIO_HOSTS (comma-separated, with the port when it is not 443), so a web page cannot reach it
 by pointing another name at this machine.
 """
+import hmac
 import html
 import json
 import os
@@ -18,17 +23,21 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote
 
 REPO = Path(__file__).resolve().parent.parent
 WORKER = REPO / 'processing' / 'tour_worker.py'
 SITE = REPO / 'studio-dist'
 CAPTURE_LIMIT = 96 * 1024 * 1024
 PROCESS_TIMEOUT = 15 * 60
+MINIMUM_TOKEN = 32
+OPEN_ROUTES = {'health', 'signin_page', 'signin'}
 PROPERTY_ID = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 ROUTES = [(method, re.compile(pattern), name) for method, pattern, name in [
     ('GET', r'/health', 'health'),
     ('GET', r'/', 'index'),
+    ('GET', r'/signin', 'signin_page'),
+    ('POST', r'/signin', 'signin'),
     ('GET', r'/tour/(%s)' % PROPERTY_ID, 'viewer'),
     ('GET', r'/assets/([A-Za-z0-9._-]+)', 'asset'),
     ('GET', r'/api/properties', 'list'),
@@ -169,7 +178,16 @@ def allowed_hosts(port, extra=''):
     return names
 
 
-def handler(studio, hosts=None):
+SIGNIN_PAGE = ('<!doctype html><html lang="en"><meta charset="utf-8">'
+               '<meta name="viewport" content="width=device-width, initial-scale=1">'
+               '<title>Tour Studio</title><style>body{font:16px system-ui;margin:2rem auto;max-width:24rem;'
+               'padding:0 1rem}input,button{font:inherit;padding:.5rem;width:100%%;box-sizing:border-box;'
+               'margin-top:.5rem}</style><h1>Tour Studio</h1>%s<form method="post" action="/signin">'
+               '<label>Access token<input type="password" name="token" autocomplete="current-password" '
+               'required></label><button>Sign in</button></form></html>')
+
+
+def handler(studio, hosts=None, token=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
 
@@ -186,6 +204,9 @@ def handler(studio, hosts=None):
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', cache)
             self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Referrer-Policy', 'no-referrer')
+            for name, value in getattr(self, 'extra_headers', ()):
+                self.send_header(name, value)
             self.end_headers()
             if self.command != 'HEAD':
                 self.wfile.write(body)
@@ -194,18 +215,61 @@ def handler(studio, hosts=None):
             self.close_connection = True
             self.reply(status, {'error': code})
 
+        def signed_in(self):
+            """Whether the request carries the token, as a bearer header or the sign-in cookie."""
+            if token is None:
+                return True
+            offered = []
+            scheme, _, value = self.headers.get('Authorization', '').partition(' ')
+            if scheme.lower() == 'bearer':
+                offered.append(value.strip())
+            for part in self.headers.get('Cookie', '').split(';'):
+                name, _, value = part.strip().partition('=')
+                if name == 'studio_token':
+                    offered.append(value)
+            return any(hmac.compare_digest(o.encode(), token.encode()) for o in offered)
+
         def dispatch(self):
+            self.extra_headers = []
             if hosts is not None and self.headers.get('Host', '').lower() not in hosts:
                 return self.fail(421, 'unknown_host')
             path = self.path.split('?')[0]
             for method, pattern, name in ROUTES:
                 match = pattern.fullmatch(path)
                 if match and method == self.command:
+                    if name not in OPEN_ROUTES and not self.signed_in():
+                        # A person in a browser is sent to sign in; the app gets a plain refusal.
+                        if method == 'GET' and 'text/html' in self.headers.get('Accept', ''):
+                            self.extra_headers.append(('Location', '/signin'))
+                            return self.reply(303)
+                        return self.fail(401, 'unauthorized')
                     # Browsers cannot add this header to a cross-site form post.
-                    if method != 'GET' and self.headers.get('X-Cuse-Studio') != '1':
+                    if method != 'GET' and name != 'signin' and self.headers.get('X-Cuse-Studio') != '1':
                         return self.fail(403, 'missing_header')
                     return getattr(self, 'do_' + name)(*match.groups())
+            # Unknown paths look the same signed in or not.
             self.fail(404, 'not_found')
+
+        def do_signin_page(self):
+            self.reply(200, SIGNIN_PAGE % '', 'text/html; charset=utf-8')
+
+        def do_signin(self):
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+            except ValueError:
+                length = -1
+            if not 0 <= length <= 4096:
+                return self.fail(413, 'too_large')
+            offered = parse_qs(self.rfile.read(length).decode('utf-8', 'replace')).get('token', [''])[0]
+            if token is None or not hmac.compare_digest(offered.encode(), token.encode()):
+                # Slow guessing a little; the token is too long to guess in any case.
+                time.sleep(1)
+                return self.reply(401, SIGNIN_PAGE % '<p role="alert">That token is not right.</p>',
+                                  'text/html; charset=utf-8')
+            self.extra_headers.append((
+                'Set-Cookie', 'studio_token=%s; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax' % token))
+            self.extra_headers.append(('Location', '/'))
+            self.reply(303)
 
         do_GET = do_POST = do_DELETE = dispatch
 
@@ -286,8 +350,11 @@ def main():
         sys.exit('APP_DATA_DIR is required')
     host, port = os.environ.get('HOST', '127.0.0.1'), int(os.environ.get('PORT', '8937'))
     hosts = allowed_hosts(port, os.environ.get('STUDIO_HOSTS', ''))
-    server = ThreadingHTTPServer((host, port), handler(Studio(data), hosts))
-    print('Tour Studio on http://%s:%d' % (host, port), flush=True)
+    token = os.environ.get('STUDIO_TOKEN') or None
+    if token is not None and (len(token) < MINIMUM_TOKEN or not token.isascii() or not token.isalnum()):
+        sys.exit('STUDIO_TOKEN must be at least %d letters and digits' % MINIMUM_TOKEN)
+    server = ThreadingHTTPServer((host, port), handler(Studio(data), hosts, token))
+    print('Tour Studio on http://%s:%d (%s)' % (host, port, 'token login' if token else 'NO LOGIN'), flush=True)
     server.serve_forever()
 
 
