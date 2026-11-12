@@ -13,6 +13,16 @@
     @State private var error = ""
     @State private var busy = false
     @State private var confirmDiscard = false
+    @State private var spotCapture = false
+    @State private var hasSpotTake = false
+    @State private var spotArchive: URL?
+    @State private var confirmSpotDiscard = false
+    private let spotDraft = PhotoCaptureDraft(
+      id: "device-check-spots", ownerId: "local-device-check",
+      listingId: "local-device-check-spots", name: "Private spot check")
+    private var spotFolder: URL {
+      SpotTake.folder(owner: spotDraft.ownerId, listing: spotDraft.listingId)
+    }
     private let draft = PhotoCaptureDraft(
       id: "device-check", ownerId: "local-device-check", listingId: "local-device-check",
       name: "Private device check")
@@ -67,11 +77,46 @@
           if busy { ProgressView("Preparing archive…") }
           if !error.isEmpty { Text(error).foregroundStyle(.red) }
         }
+        Section("Spot capture") {
+          Text(
+            "Stand at a spot and turn in place, lining the circle up with each dot. Capture a few spots around the room, then review them. Nothing is uploaded from this screen."
+          )
+          if hasSpotTake {
+            Text("A local spot take is saved on this iPhone.")
+            Button("Review spot take") { spotCapture = true }.disabled(busy)
+            Button("Prepare spot capture archive") { Task { await prepareSpotArchive() } }
+              .disabled(busy)
+            if let spotArchive {
+              ShareLink("Export spot capture archive", item: spotArchive)
+            }
+            Button("Discard spot take", role: .destructive) { confirmSpotDiscard = true }
+              .disabled(busy)
+          } else {
+            Button("Start spot capture") { spotCapture = true }
+              .disabled(!ARWorldTrackingConfiguration.isSupported)
+          }
+        }
       }
       .navigationTitle("Device capture check")
       .task { recover() }
       .fullScreenCover(isPresented: $capture, onDismiss: recover) {
         PhotoCaptureScreen(recorder: PhotoRecorder(draft: draft, recordStream: true))
+      }
+      .fullScreenCover(isPresented: $spotCapture, onDismiss: recover) {
+        SpotCaptureScreen(recorder: SpotRecorder(draft: spotDraft)) { archive in
+          spotArchive = archive
+        }
+      }
+      .confirmationDialog("Discard this private spot take?", isPresented: $confirmSpotDiscard) {
+        Button("Discard", role: .destructive) {
+          do {
+            try FileManager.default.removeItem(at: spotFolder)
+            spotArchive = nil
+            recover()
+          } catch { self.error = error.localizedDescription }
+        }
+      } message: {
+        Text("This removes the local spot images and archive. Exported copies remain where you saved them.")
       }
       .confirmationDialog("Discard this private test take?", isPresented: $confirmDiscard) {
         Button("Discard", role: .destructive) {
@@ -93,6 +138,20 @@
       hasTake = FileManager.default.fileExists(
         atPath: folder.appendingPathComponent("draft.json").path)
       hasStream = hasTake && StreamRecorder.exists(in: folder)
+      hasSpotTake = FileManager.default.fileExists(
+        atPath: spotFolder.appendingPathComponent("draft.json").path)
+    }
+    private func prepareSpotArchive() async {
+      guard !busy else { return }
+      busy = true
+      error = ""
+      defer { busy = false }
+      do {
+        let folder = spotFolder
+        spotArchive = try await Task.detached(priority: .userInitiated) {
+          try SpotTake.package(folder: folder)
+        }.value
+      } catch { self.error = error.localizedDescription }
     }
     private func prepareStream() async {
       guard !busy else { return }
