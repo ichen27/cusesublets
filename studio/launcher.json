@@ -12,5 +12,6 @@
   ],
   "port": 8937,
   "healthPath": "/health",
-  "runtime": "native"
+  "runtime": "native",
+  "envFile": "/Volumes/SamsungSSD1/tools/cuse-tours/app.env"
 }

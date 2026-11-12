@@ -34,8 +34,11 @@ class StudioService(unittest.TestCase):
         load('make_synthetic_capture', 'processing/make_synthetic_capture.py').write_spots(
             cls.capture, spots=((0.0, 0.0, 0.0),))
         cls.store = studio.Studio(Path(cls.scratch.name) / 'data')
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), studio.handler(cls.store))
-        cls.base = 'http://127.0.0.1:%d' % cls.server.server_address[1]
+        cls.hosts = set()
+        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), studio.handler(cls.store, cls.hosts))
+        port = cls.server.server_address[1]
+        cls.hosts.update(studio.allowed_hosts(port, 'Studio.Example.net:10445'))
+        cls.base = 'http://127.0.0.1:%d' % port
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
     @classmethod
@@ -98,6 +101,11 @@ class StudioService(unittest.TestCase):
     def test_4_delete_removes_the_property(self):
         self.assertEqual(self.call('/api/properties/' + ID, 'DELETE', headers={'X-Cuse-Studio': '1'})[0], 200)
         self.assertEqual(self.call('/api/properties/' + ID)[0], 404)
+
+    def test_requests_for_other_hostnames_are_refused(self):
+        self.assertEqual(self.call('/api/properties', headers={'Host': 'evil.example'})[0], 421)
+        self.assertEqual(self.call('/health', headers={'Host': 'evil.example'})[0], 421)
+        self.assertEqual(self.call('/api/properties', headers={'Host': 'studio.example.net:10445'})[0], 200)
 
     def test_names_are_escaped_on_the_index_page(self):
         page = studio.index_page(type('S', (), {

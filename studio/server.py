@@ -3,6 +3,9 @@ and shows them. One process, standard library only; the stitching itself runs
 `processing/tour_worker.py --reconstruct-spots` in a child process.
 
 Run behind an authenticating proxy or a private network. The service has no login of its own.
+It answers only requests addressed to its own loopback address or to a hostname listed in
+STUDIO_HOSTS (comma-separated, with the port when it is not 443), so a web page cannot reach it
+by pointing another name at this machine.
 """
 import html
 import json
@@ -160,7 +163,13 @@ def index_page(studio):
             '<h1>Tour Studio</h1>%s</html>' % body)
 
 
-def handler(studio):
+def allowed_hosts(port, extra=''):
+    names = {'127.0.0.1:%d' % port, 'localhost:%d' % port}
+    names.update(h.strip().lower() for h in extra.split(',') if h.strip())
+    return names
+
+
+def handler(studio, hosts=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
 
@@ -186,6 +195,8 @@ def handler(studio):
             self.reply(status, {'error': code})
 
         def dispatch(self):
+            if hosts is not None and self.headers.get('Host', '').lower() not in hosts:
+                return self.fail(421, 'unknown_host')
             path = self.path.split('?')[0]
             for method, pattern, name in ROUTES:
                 match = pattern.fullmatch(path)
@@ -274,7 +285,8 @@ def main():
     if not data:
         sys.exit('APP_DATA_DIR is required')
     host, port = os.environ.get('HOST', '127.0.0.1'), int(os.environ.get('PORT', '8937'))
-    server = ThreadingHTTPServer((host, port), handler(Studio(data)))
+    hosts = allowed_hosts(port, os.environ.get('STUDIO_HOSTS', ''))
+    server = ThreadingHTTPServer((host, port), handler(Studio(data), hosts))
     print('Tour Studio on http://%s:%d' % (host, port), flush=True)
     server.serve_forever()
 
