@@ -26,6 +26,17 @@ class ViewSelection(unittest.TestCase):
         self.assertLessEqual(gaps.max() - gaps.min(), 1)
 
 
+    def test_candidates_restrict_and_spread(self):
+        candidates = list(range(0, 200, 2))
+        picked = rm.select_views(200, 60, candidates=candidates)
+        self.assertEqual(len(picked), 60)
+        self.assertTrue(all(i % 2 == 0 for i in picked))
+        self.assertEqual((picked[0], picked[-1]), (0, 198))
+
+    def test_few_candidates_are_all_kept(self):
+        self.assertEqual(rm.select_views(200, 60, candidates=[5, 3, 9]), [3, 5, 9])
+
+
 class DepthCleaning(unittest.TestCase):
     def test_keeps_a_wall_and_drops_range_confidence_and_edge_failures(self):
         depth = np.full((60, 80), 2.0, np.float32)

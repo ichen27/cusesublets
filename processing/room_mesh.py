@@ -45,11 +45,13 @@ class ViewDepth:
     K: tuple[float, float, float, float]  # fx, fy, cx, cy at depth resolution
 
 
-def select_views(count, limit=MAX_VIEWS):
-    """Indices of at most `limit` views spread evenly over the capture, always keeping both ends."""
-    if count <= limit:
-        return list(range(count))
-    return sorted({int(round(x)) for x in np.linspace(0, count - 1, limit)})
+def select_views(count, limit=MAX_VIEWS, candidates=None):
+    """Indices of at most `limit` views spread evenly over the capture (or over `candidates`, when
+    given), always keeping both ends."""
+    pool = list(range(count)) if candidates is None else sorted({i for i in candidates if 0 <= i < count})
+    if len(pool) <= limit:
+        return pool
+    return [pool[i] for i in sorted({int(round(x)) for x in np.linspace(0, len(pool) - 1, limit)})]
 
 
 def clean_depth(depth, conf=None, percentile=CONF_PERCENTILE):
@@ -120,7 +122,7 @@ def load_frames(frames_dir):
     return frames
 
 
-def estimate_depth(frames, frames_dir, model_name=MODEL, log=print):
+def estimate_depth(frames, frames_dir, model_name=MODEL, log=print, candidates=None):
     """Depth for the selected views from one Depth Anything 3 pass, in ARKit's metric scale."""
     import torch
     from depth_anything_3.api import DepthAnything3
@@ -128,7 +130,7 @@ def estimate_depth(frames, frames_dir, model_name=MODEL, log=print):
 
     device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
     model = DepthAnything3.from_pretrained(model_name).to(device).eval()
-    ids = select_views(len(frames))
+    ids = select_views(len(frames), candidates=candidates)
     images = [np.asarray(Image.open(Path(frames_dir) / frames[i]['file_path']).convert('RGB')) for i in ids]
     ext = np.stack([np.linalg.inv(np.asarray(frames[i]['transform_matrix'], np.float64) @ FLIP) for i in ids])
     ixt = np.stack([np.array([[frames[i]['fx'], 0, frames[i]['cx']], [0, frames[i]['fy'], frames[i]['cy']],
@@ -182,13 +184,14 @@ def finish(mesh, max_triangles=MAX_TRIANGLES):
     return mesh
 
 
-def build_mesh(frames_dir, out_dir, model_name=MODEL, log=print):
-    """Writes OUT_DIR/room-mesh.ply and returns its display metadata."""
+def build_mesh(frames_dir, out_dir, model_name=MODEL, log=print, candidates=None):
+    """Writes OUT_DIR/room-mesh.ply and returns its display metadata. `candidates` limits which
+    frame indices the depth pass may use (spot tours prefer walk frames and level slices)."""
     started = time.time()
     frames_dir, out_dir = Path(frames_dir), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     frames = load_frames(frames_dir)
-    depths = estimate_depth(frames, frames_dir, model_name, log)
+    depths = estimate_depth(frames, frames_dir, model_name, log, candidates)
     mesh, used = fuse(frames, frames_dir, depths)
     mesh = finish(mesh)
     vertices = np.asarray(mesh.vertices)
