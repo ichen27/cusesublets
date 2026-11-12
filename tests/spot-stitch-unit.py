@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -145,6 +146,56 @@ class Loading(unittest.TestCase):
         m['spots'][0]['slices'] = ['images/00009.jpg']
         with tempfile.TemporaryDirectory() as root, self.assertRaisesRegex(ValueError, 'capture_invalid'):
             ss.load_spot_slices(m, Path(root))
+
+
+class Bounds(unittest.TestCase):
+    """A crafted manifest must not amplify work beyond what a real capture can need."""
+
+    def manifest(self, spots, frames=8, width=1440, height=1080):
+        records = [syn.frame_record(f'images/{i:05d}.jpg', np.eye(3), spot=1, width=width, height=height)
+                   for i in range(frames)]
+        return {'frames': records, 'spots': spots}
+
+    def check(self, manifest):
+        with tempfile.TemporaryDirectory() as root, self.assertRaisesRegex(ValueError, 'capture_invalid'):
+            ss.load_spot_slices(manifest, Path(root))
+
+    def test_rejects_a_slice_listed_twice(self):
+        self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg', 'images/00000.jpg']}]))
+
+    def test_rejects_a_slice_shared_by_two_spots(self):
+        self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']},
+                                  {'spot': 2, 'slices': ['images/00000.jpg']}]))
+
+    def test_rejects_more_slices_than_a_spot_can_have(self):
+        names = [f'images/{i:05d}.jpg' for i in range(ss.MAX_SLICES + 1)]
+        self.check(self.manifest([{'spot': 1, 'slices': names}], frames=ss.MAX_SLICES + 1))
+
+    def test_rejects_more_spots_than_a_tour_can_have(self):
+        spots = [{'spot': n, 'slices': [f'images/{n:05d}.jpg']} for n in range(ss.MAX_SPOTS + 1)]
+        self.check(self.manifest(spots, frames=ss.MAX_SPOTS + 1))
+
+    def test_rejects_oversized_declared_images(self):
+        self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], width=8000, height=6000))
+
+    def test_rejects_an_image_larger_than_declared_before_decoding(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            (root / 'images').mkdir()
+            cv2.imwrite(str(root / 'images/00000.jpg'), np.zeros((1200, 1600, 3), np.uint8))
+            m = self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], frames=1)
+            slices = ss.load_spot_slices(m, root)[1]
+            with patch.object(ss.cv2 if hasattr(ss, 'cv2') else cv2, 'imread', side_effect=AssertionError('decoded')):
+                with self.assertRaisesRegex(ValueError, 'capture_invalid'):
+                    ss._images(slices)
+
+    def test_reads_jpeg_dimensions_from_the_header(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'x.jpg'
+            cv2.imwrite(str(path), np.zeros((108, 144, 3), np.uint8))
+            self.assertEqual(ss.jpeg_size(path), (144, 108))
+            path.write_bytes(b'not a jpeg')
+            self.assertIsNone(ss.jpeg_size(path))
 
 
 class Equirect(unittest.TestCase):

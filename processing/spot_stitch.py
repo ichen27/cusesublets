@@ -18,6 +18,11 @@ NADIR_FEATHER = np.radians(2)
 MAX_HOLES = 0.02
 BLOCK_ROWS = 256
 SLICE_NAME = re.compile(r'^images/\d{5}\.jpg$')
+# Bounds on what a manifest may ask for, so a crafted capture cannot amplify the work: the app
+# saves 29 slices per spot (64 leaves room to tune the layout), at most 8 spots, 1440 px wide.
+MAX_SPOTS = 8
+MAX_SLICES = 64
+MAX_SIDE = 4096
 
 
 @dataclass
@@ -34,18 +39,25 @@ def load_spot_slices(manifest, root):
     count, so slices of a spot that never finished never reach a panorama."""
     root = Path(root).resolve()
     frames = {f.get('file_path'): f for f in manifest.get('frames', [])}
-    spots = {}
-    for spot in manifest.get('spots') or []:
+    records = manifest.get('spots') or []
+    if not isinstance(records, list) or len(records) > MAX_SPOTS:
+        raise ValueError('capture_invalid')
+    spots, used = {}, set()
+    for spot in records:
         number = spot.get('spot')
-        if not isinstance(number, int) or number in spots:
+        names = spot.get('slices', [])
+        if not isinstance(number, int) or number in spots or not isinstance(names, list) or len(names) > MAX_SLICES:
             raise ValueError('capture_invalid')
         slices = []
-        for name in spot.get('slices', []):
+        for name in names:
             path = root / str(name)
-            if (not isinstance(name, str) or not SLICE_NAME.match(name) or name not in frames
+            if (not isinstance(name, str) or not SLICE_NAME.match(name) or name not in frames or name in used
                     or path.is_symlink() or not path.resolve().is_relative_to(root)):
                 raise ValueError('capture_invalid')
+            used.add(name)
             frame = frames[name]
+            if not all(isinstance(frame.get(k), int) and 1 <= frame[k] <= MAX_SIDE for k in ('width', 'height')):
+                raise ValueError('capture_invalid')
             transform = np.asarray(frame['transform_matrix'], np.float64)
             K = np.array([[frame['fx'], 0, frame['cx']], [0, frame['fy'], frame['cy']], [0, 0, 1]],
                          np.float64)
@@ -83,10 +95,34 @@ def _feather(u, v, width, height):
     return np.clip(edge / (min(width, height) / 2), 0, 1) ** 2
 
 
+def jpeg_size(path):
+    """(width, height) from a JPEG's frame header without decoding it, or None."""
+    with open(path, 'rb') as source:
+        data = source.read(1 << 20)
+    if data[:2] != b'\xff\xd8':
+        return None
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        length = int.from_bytes(data[i + 2:i + 4], 'big')
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            return int.from_bytes(data[i + 7:i + 9], 'big'), int.from_bytes(data[i + 5:i + 7], 'big')
+        i += 2 + length
+    return None
+
+
 def _images(slices):
     import cv2
     images = []
     for s in slices:
+        # Check the header first: the decoder must never see an image bigger than declared.
+        if jpeg_size(s.path) != (s.width, s.height):
+            raise ValueError('capture_invalid')
         image = cv2.imread(str(s.path), cv2.IMREAD_COLOR)
         if image is None or image.shape[:2] != (s.height, s.width):
             raise ValueError('capture_invalid')
