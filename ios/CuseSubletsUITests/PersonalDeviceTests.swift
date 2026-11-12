@@ -16,6 +16,16 @@ import XCTest
       }
       XCTAssertTrue(start.exists)
       XCTAssertFalse(start.isEnabled, "Simulator cannot perform camera capture")
+      let unavailable = app.descendants(matching: .any).matching(
+        NSPredicate(format: "label CONTAINS[c] 'Unavailable' OR value CONTAINS[c] 'Unavailable'"))
+      XCTAssertTrue(unavailable.firstMatch.exists, "Photographic capture reads Unavailable")
+      let spots = app.buttons["Start spot capture"]
+      for _ in 0..<4 {
+        if spots.exists && spots.isHittable { break }
+        app.swipeUp()
+      }
+      XCTAssertTrue(spots.exists)
+      XCTAssertFalse(spots.isEnabled, "Simulator cannot perform spot capture")
       let screenshot = XCTAttachment(screenshot: app.screenshot())
       screenshot.name = "Personal Team capture test"
       screenshot.lifetime = .keepAlways

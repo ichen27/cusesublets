@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as pc from "playcanvas";
-import type { RoomTour } from "../shared/room-tour";
+import type { RoomTour, TourResult } from "../shared/room-tour";
 export default function SplatViewer({ tour }: { tour: RoomTour }) {
   const canvas = useRef<HTMLCanvasElement>(null),
     commands = useRef<(action: string) => void>(() => {}),
@@ -16,7 +16,7 @@ export default function SplatViewer({ tour }: { tour: RoomTour }) {
     const listeners = new AbortController();
     async function load() {
       try {
-        if (!tour.result) throw new Error("Missing tour camera");
+        if (!tour.result || !("camera" in tour.result)) throw new Error("Missing tour camera");
         const response = await fetch(
           `/api/listings/${tour.listingId}/tours/${tour.id}/model`,
           { credentials: "same-origin", signal: abort.signal },
@@ -43,7 +43,7 @@ export default function SplatViewer({ tour }: { tour: RoomTour }) {
           farClip: 200,
         });
         app.root.addChild(camera);
-        const original = tour.result.camera;
+        const original = (tour.result as TourResult).camera;
         let yaw = 0,
           pitch = 0;
         const reset = () => {

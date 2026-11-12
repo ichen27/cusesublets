@@ -29,13 +29,26 @@ Record the build commit, iOS version, date, room lighting and result of each ste
 
 1. Confirm photographic capture is available and LiDAR layouts are unavailable.
 2. Tap **Start camera test**. On a fresh installation, allow camera access. If the permission prompt interrupts the start, tap **Start capture** once the app is active.
-3. Walk slowly around the room, keeping adjacent views overlapping. Move sideways as well as rotating. Aim for at least 60 stable views; the minimum is 30. Finish capture and return to the local test screen.
+3. Walk slowly around the room and sweep the camera over every surface until the blue tint is gone and the squares turn clear; amber squares need views from more angles, so step sideways rather than turning in place. A hint appears over the camera only if you move too fast, the image blurs, the view has too little detail or you keep turning in place. Aim for at least 60 views; the minimum is 30. Finish capture and return to the local test screen.
 4. Force-close and reopen the app. The local take should still be recoverable.
-5. Tap **Prepare private capture archive**, then **Export private capture archive**. Save it in a private location or transfer it directly to your Mac. It contains actual room photographs and camera metadata; never attach it to the public GitHub PR.
+5. Tap **Prepare private capture archive**, then **Export private capture archive**. Save it in a private location or transfer it directly to your Mac. It contains actual room photographs and camera metadata; never attach it to the public GitHub PR. To help tune capture, also tap **Prepare camera stream recording**, then **Export camera stream recording**, and keep the resulting `room.roomstream` just as privately.
 6. Discard the local take, reopen the app, and confirm it is gone. Exported copies must be deleted separately.
 7. Repeat with camera permission denied, then restored in Settings. Repeat with the app backgrounded or the phone locked during capture. An interrupted take must stop; it must not silently combine a new camera coordinate system with the old one. Takes with fewer than 30 views should fail export with a clear message.
 
 The archive is reconstruction input, not a finished Gaussian model. It can be evaluated with the pinned capture engine described in [photographic tours](photographic-tours.md). Inspect the resulting model and exported PLY before making quality claims.
+
+## Spot capture test — no backend required
+
+Use the **Spot capture** section of the same Device capture check screen. Record the build commit, iOS version, room and lighting, and write the results in [spot-capture-device-results.md](spot-capture-device-results.md).
+
+1. Tap **Start spot capture** and allow camera access. The capture map appears. Read the reminder to put away personal papers.
+2. Stand in the middle of the room and tap the shutter. Line the circle up with each dot and hold until the ring fills. Note any dot that is hard to reach or hold, and how long the whole spot takes.
+3. Try **Undo** once. Try **Cancel spot** (×) once on a later spot.
+4. Walk to 3–5 more spots, capturing each. Watch the percentage and the map. Write down the final percentage and your own judgement of how much of the room was covered.
+5. Mid-turn, cover the camera or move very fast until tracking is lost. That spot must be discarded, and the next must wait for tracking. Background the app once during capture: the finished spots must remain.
+6. Tap **Done**, then **Preview 360** for each spot. Check the ceiling, the floor and the area under your feet. Delete one spot and redo another.
+7. Tap **Generate tour**, then **Prepare spot capture archive** and **Export spot capture archive**. Note the archive size. Keep it private: it contains real room photographs.
+8. On the Mac mini, process the archive against the isolated API (see [photographic tours](photographic-tours.md#spot-tours)) and record each spot's hole fraction, the stitch time and visible seams.
 
 ## Full marketplace and upload test — staging required
 

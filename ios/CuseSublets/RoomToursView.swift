@@ -15,14 +15,52 @@ struct TourResult: Decodable {
   let gaussians: Int
   let camera: TourCamera
 }
+struct TourMesh: Decodable {
+  let method: String
+  let views: Int
+  let vertices: Int
+  let triangles: Int
+}
 struct RoomTour: Decodable, Identifiable {
   let id: String
   let listingId: String
   let name: String
   let status: String
+  /// `"splat"` (Gaussian walk-around) or `"spots"` (stitched 360s); older servers send none.
+  let kind: String
   let published: Bool
+  /// Gaussian display metadata; nil for spot tours, whose result is read by the web viewer.
   let result: TourResult?
+  /// Number of stitched spots in a ready spot tour.
+  let spotCount: Int
+  /// A coloured room mesh, when processing built one.
+  let mesh: TourMesh?
   let error: String?
+
+  private struct SpotSummary: Decodable { let spots: [Ignored] }
+  private struct Ignored: Decodable {}
+  enum CodingKeys: String, CodingKey {
+    case id, listingId, name, status, kind, published, result, mesh, error
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    listingId = try c.decode(String.self, forKey: .listingId)
+    name = try c.decode(String.self, forKey: .name)
+    status = try c.decode(String.self, forKey: .status)
+    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "splat"
+    published = try c.decode(Bool.self, forKey: .published)
+    if kind == "spots" {
+      result = nil
+      spotCount = (try? c.decodeIfPresent(SpotSummary.self, forKey: .result))??.spots.count ?? 0
+    } else {
+      result = try c.decodeIfPresent(TourResult.self, forKey: .result)
+      spotCount = 0
+    }
+    mesh = try c.decodeIfPresent(TourMesh.self, forKey: .mesh)
+    error = try c.decodeIfPresent(String.self, forKey: .error)
+  }
 }
 struct ToursResponse: Decodable {
   let tours: [RoomTour]
@@ -43,18 +81,22 @@ struct RoomToursView: View {
   @State private var discard = false
   @State private var deleting: RoomTour?
   @State private var export: URL?
+  @State private var exportIsMesh = false
   var owner: Bool { state.user?.id == listing.ownerId }
-  var folder: URL { PhotoCaptureDraft.folder(owner: listing.ownerId, listing: listing.id) }
+  var folder: URL { SpotTake.folder(owner: listing.ownerId, listing: listing.id) }
+  /// A walk-around take saved by an earlier build, which can only be discarded now.
+  var legacyFolder: URL { PhotoCaptureDraft.folder(owner: listing.ownerId, listing: listing.id) }
+  @State private var legacy = false
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 18) {
         Text("Photographic tours").font(.largeTitle.bold())
         Text(
-          "Capture overlapping camera views, then reconstruct a Gaussian tour. Results may have gaps, blur and distorted surfaces. These tours do not verify a property or its dimensions."
+          "Capture a few spots in each room. Viewers look around a 360° photo at each spot. Photos may show seams, and the 3D overview is rough. These tours do not verify a property or its dimensions."
         ).foregroundStyle(.secondary)
         if owner {
           if enabled && ARWorldTrackingConfiguration.isSupported {
-            Button("Capture a photographic tour", systemImage: "camera.viewfinder") {
+            Button("Capture spots for a tour", systemImage: "camera.viewfinder") {
               capture = PhotoCaptureDraft(
                 id: UUID().uuidString, ownerId: listing.ownerId, listingId: listing.id, name: "Room"
               )
@@ -69,15 +111,25 @@ struct RoomToursView: View {
             "Remove personal papers and faces from view. Captures upload privately; you choose whether to publish the result. Camera-only capture works without LiDAR on supported iPhones."
           ).font(.caption)
         }
+        if legacy {
+          Text(
+            "An older walk-around take is saved on this iPhone. This version captures spots instead, so that take can only be discarded."
+          ).font(.caption)
+          Button("Discard older take", role: .destructive) {
+            try? FileManager.default.removeItem(at: legacyFolder)
+            legacy = false
+          }
+        }
         if let local {
           Text("Saved on this iPhone · private").font(.headline)
           SavedCapturePhotos(folder: folder)
-          TextField("Room name", text: $name).textFieldStyle(.roundedBorder)
+          Button("Review spots") { capture = local }.disabled(busy)
+          TextField("Tour name", text: $name).textFieldStyle(.roundedBorder)
           Text(
-            "Upload up to 64 MB. Keep the app open during upload. If interrupted, retry the same saved take; the server prevents duplicate jobs."
+            "Upload up to 96 MB. Keep the app open during upload. If interrupted, retry the same saved take; the server prevents duplicate jobs."
           ).font(.caption)
           HStack {
-            Button("Upload and reconstruct") { Task { await upload(local) } }.buttonStyle(
+            Button("Upload and generate") { Task { await upload(local) } }.buttonStyle(
               .borderedProminent
             ).tint(.cuseButtonFill).disabled(
               busy || !enabled || name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -92,12 +144,24 @@ struct RoomToursView: View {
               StatusText(text: tour.published ? "Published" : "Private")
             }
             if tour.status == "ready" {
-              NavigationLink("Explore photographic tour") {
+              NavigationLink(tour.kind == "spots" ? "Open 360° tour" : "Explore photographic tour") {
                 TourWebView(api: state.api, listingID: listing.id, tourID: tour.id).navigationTitle(
                   tour.name
                 ).navigationBarTitleDisplayMode(.inline)
               }
-              Button("Export Gaussian PLY") { Task { await download(tour) } }.disabled(busy)
+              if tour.kind == "spots" {
+                Text("\(tour.spotCount) spots").font(.caption)
+                if owner && !tour.published {
+                  Text("Open the tour and check every spot for personal details before publishing.")
+                    .font(.caption)
+                }
+              } else {
+                Button("Export Gaussian PLY") { Task { await download(tour) } }.disabled(busy)
+              }
+              if tour.mesh != nil {
+                Button("Export room mesh (PLY)") { Task { await download(tour, mesh: true) } }
+                  .disabled(busy).accessibilityIdentifier("export-room-mesh")
+              }
               if owner {
                 Button(tour.published ? "Hide from listing" : "Publish to listing") {
                   Task { await action(tour, "visibility", ["published": !tour.published]) }
@@ -131,7 +195,9 @@ struct RoomToursView: View {
         if let export {
           ShareLink("Share exported PLY", item: export)
           Text(
-            "Use a Gaussian-compatible viewer or Blender importer. This is not an editable wall mesh."
+            exportIsMesh
+              ? "A coloured triangle mesh in metres, Y up. It opens in Blender, MeshLab and most 3D tools. It is reconstructed from photographs, so expect holes and soft edges."
+              : "Use a Gaussian-compatible viewer or Blender importer. This is not an editable wall mesh."
           ).font(.caption)
         }
       }.padding()
@@ -149,7 +215,7 @@ struct RoomToursView: View {
         }
       }
       .fullScreenCover(item: $capture, onDismiss: { recover() }) { draft in
-        PhotoCaptureScreen(recorder: PhotoRecorder(draft: draft))
+        SpotCaptureScreen(recorder: SpotRecorder(draft: draft))
       }
       .alert("Discard this saved take?", isPresented: $discard) {
         Button("Discard", role: .destructive) {
@@ -193,6 +259,8 @@ struct RoomToursView: View {
       local = nil
       return
     }
+    legacy = FileManager.default.fileExists(
+      atPath: legacyFolder.appendingPathComponent("draft.json").path)
     do {
       let file = folder.appendingPathComponent("draft.json")
       guard FileManager.default.fileExists(atPath: file.path) else {
@@ -225,13 +293,11 @@ struct RoomToursView: View {
       local = draft
       let folder = self.folder
       let (file, size, hash) = try await Task.detached(priority: .userInitiated) {
-        let file = folder.appendingPathComponent("room.roomcapture")
-        if !FileManager.default.fileExists(atPath: file.path) {
-          _ = try PhotoRecorder.package(folder: folder)
-        }
+        // Package every time: spots may have been deleted or redone since the last package.
+        let file = try SpotTake.package(folder: folder)
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size > 0, size <= 64 * 1024 * 1024 else {
-          throw CaptureFailure.message("Capture exceeds 64 MB. Discard and capture a smaller room.")
+        guard size > 0, size <= SpotTake.archiveLimit else {
+          throw CaptureFailure.message("Capture exceeds 96 MB. Remove a spot and try again.")
         }
         let input = try FileHandle(forReadingFrom: file)
         defer { try? input.close() }
@@ -243,7 +309,7 @@ struct RoomToursView: View {
       }.value
       let route = "/api/listings/\(listing.id)/tours"
       let _: TourResponse = try await state.api.post(
-        route, ["id": draft.id, "name": draft.name, "size": size, "sha256": hash])
+        route, ["id": draft.id, "name": draft.name, "size": size, "sha256": hash, "kind": "spots"])
       try await state.api.uploadCapture(route + "/\(draft.id)/upload", file: file)
       try FileManager.default.removeItem(at: folder)
       local = nil
@@ -260,12 +326,14 @@ struct RoomToursView: View {
       await load()
     } catch { self.error = error.localizedDescription }
   }
-  func download(_ tour: RoomTour) async {
+  func download(_ tour: RoomTour, mesh: Bool = false) async {
     busy = true
     defer { busy = false }
     do {
       export = try await state.api.download(
-        "/api/listings/\(listing.id)/tours/\(tour.id)/model", name: "room.ply")
+        "/api/listings/\(listing.id)/tours/\(tour.id)/\(mesh ? "mesh" : "model")",
+        name: mesh ? "room-mesh.ply" : "room.ply")
+      exportIsMesh = mesh
     } catch { self.error = error.localizedDescription }
   }
 }

@@ -76,6 +76,72 @@ class Tours(unittest.TestCase):
   self.assertEqual(self.host.call(self.base,payload)[0],409)
   self.assertEqual(self.host.raw(route+'/model')[0],404)
   self.assertEqual(processor(id+'/complete',job=newer,data=model,extra=headers)[0],409)
+ def test_mesh_belongs_to_the_claim_that_completes(self):
+  mesh=b'Synthetic mesh transport'
+  meshmeta={'method':'Synthetic mesh test','views':30,'vertices':3,'triangles':1,'voxel':0.02,'bounds':[[0,0,0],[1,1,1]]}
+  meshheaders={'X-Tour-Result':json.dumps(meshmeta),'X-File-Size':str(len(mesh)),'X-File-SHA256':hashlib.sha256(mesh).hexdigest()}
+  model=b'Synthetic model transport';meta={'method':'Synthetic transport test','views':30,'gaussians':1,'camera':{'position':[0,0,0],'target':[0,0,-1],'up':[0,1,0]}}
+  headers={'X-Tour-Result':json.dumps(meta),'X-File-Size':str(len(model)),'X-File-SHA256':hashlib.sha256(model).hexdigest()}
+  # A mesh uploaded by an attempt that then fails must not appear with a later attempt's result.
+  id,data,_=self.reserve();route=self.base+'/'+id
+  self.assertEqual(request(self.host,route+'/upload',data)[0],200)
+  job=json.loads(processor('claim',{})[1])['job'];self.assertEqual(job['id'],id)
+  self.assertEqual(processor(id+'/mesh',job=job,data=mesh,extra={**meshheaders,'X-Tour-Result':'{"views":2}'})[0],400)
+  self.assertEqual(processor(id+'/mesh',job=job,data=mesh,extra=meshheaders)[0],200)
+  self.assertEqual(self.host.raw(route+'/mesh')[0],404)
+  self.assertIsNone(self.host.call(route)[1]['tour']['mesh'])
+  self.assertEqual(processor(id+'/fail',{'code':'processing_failed'},job=job)[0],200)
+  self.assertEqual(self.host.call(route+'/retry',{})[0],200)
+  newer=json.loads(processor('claim',{})[1])['job']
+  self.assertEqual(processor(id+'/mesh',job=job,data=mesh,extra=meshheaders)[0],409)
+  self.assertEqual(processor(id+'/complete',job=newer,data=model,extra=headers)[0],200)
+  self.assertIsNone(self.host.call(route)[1]['tour']['mesh'])
+  self.assertEqual(self.host.raw(route+'/mesh')[0],404)
+  # The current attempt's mesh is served with the same visibility as the model.
+  id,data,_=self.reserve();route=self.base+'/'+id
+  self.assertEqual(request(self.host,route+'/upload',data)[0],200)
+  job=json.loads(processor('claim',{})[1])['job'];self.assertEqual(job['id'],id)
+  self.assertEqual(processor(id+'/mesh',job=job,data=mesh,extra=meshheaders)[0],200)
+  self.assertEqual(processor(id+'/complete',job=job,data=model,extra=headers)[0],200)
+  self.assertEqual(self.host.call(route)[1]['tour']['mesh'],meshmeta)
+  self.assertEqual(self.host.raw(route+'/mesh')[2],mesh)
+  self.assertEqual(self.guest.raw(route+'/mesh')[0],404)
+  self.assertEqual(self.host.call(route+'/visibility',{'published':True})[0],200)
+  self.assertEqual(self.guest.raw(route+'/mesh')[2],mesh)
+  self.host.call(route+'/delete',{})
+  self.assertEqual(self.host.raw(route+'/mesh')[0],404)
+ def test_spot_tour_serves_panoramas_by_spot(self):
+  data=b'Synthetic spot archive used to test transport only';id=str(uuid.uuid4()).upper();self.ids.append(id)
+  payload={'id':id,'name':'Synthetic spots','size':len(data),'sha256':hashlib.sha256(data).hexdigest(),'kind':'spots'}
+  status,result=self.host.call(self.base,payload);self.assertEqual(status,201,result);self.assertEqual(result['tour']['kind'],'spots')
+  route=self.base+'/'+id
+  self.assertEqual(request(self.host,route+'/upload',data)[0],200)
+  status,raw=processor('claim',{});job=json.loads(raw)['job'];self.assertEqual((job['id'],job['kind']),(id,'spots'))
+  first=b'\xff\xd8first panorama\xff\xd9';second=b'\xff\xd8second panorama\xff\xd9'
+  bundle=bytearray(2048);bundle[512:512+len(first)]=first;bundle[1536:1536+len(second)]=second;bundle=bytes(bundle)
+  pano=lambda offset,length:{'offset':offset,'length':length,'width':4096,'height':2048}
+  meta={'method':'Synthetic spot transport','slices':2,'spots':[
+   {'spot':1,'position':[0,0,0],'floorY':-1.4,'panorama':pano(512,len(first))},
+   {'spot':2,'position':[1,0,0],'floorY':-1.4,'panorama':pano(1536,len(second))}]}
+  headers={'X-Tour-Result':json.dumps(meta),'X-File-Size':str(len(bundle)),'X-File-SHA256':hashlib.sha256(bundle).hexdigest()}
+  # Splat metadata is not a valid spot result.
+  splat={'method':'x','views':30,'gaussians':1,'camera':{'position':[0,0,0],'target':[0,0,-1],'up':[0,1,0]}}
+  self.assertEqual(processor(id+'/complete',job=job,data=bundle,extra={**headers,'X-Tour-Result':json.dumps(splat)})[0],400)
+  self.assertEqual(processor(id+'/complete',job=job,data=bundle,extra=headers)[0],200)
+  self.assertEqual(self.host.call(route)[1]['tour']['result'],meta)
+  self.assertEqual(self.host.raw(route+'/panorama/1')[2],first)
+  self.assertEqual(self.host.raw(route+'/panorama/2')[2],second)
+  self.assertEqual(self.host.raw(route+'/panorama/3')[0],404)
+  self.assertEqual(self.guest.raw(route+'/panorama/1')[0],404)
+  self.assertEqual(self.host.call(route+'/visibility',{'published':True})[0],200)
+  self.assertEqual(self.guest.raw(route+'/panorama/1')[2],first)
+  self.host.call(route+'/delete',{})
+  self.assertEqual(self.host.raw(route+'/panorama/1')[0],404)
+ def test_spot_capture_limit_is_96_mb(self):
+  id=str(uuid.uuid4()).upper()
+  big={'id':id,'name':'Too big','size':96*1024*1024+1,'sha256':'a'*64,'kind':'spots'}
+  self.assertEqual(self.host.call(self.base,big)[0],413)
+  self.assertEqual(self.host.call(self.base,{**big,'size':64*1024*1024+1,'kind':'splat'})[0],413)
  def test_simultaneous_upload_and_claim_are_single_winner(self):
   id,data,payload=self.reserve();route=self.base+'/'+id
   with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:

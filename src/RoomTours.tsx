@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import type { RoomTour } from "../shared/room-tour";
 const SplatViewer = lazy(() => import("./SplatViewer"));
+const SpotViewer = lazy(() => import("./SpotViewer"));
 export function TourPlayer({
   tour,
   native = false,
@@ -10,6 +11,30 @@ export function TourPlayer({
   tour: RoomTour;
   native?: boolean;
 }) {
+  if (tour.kind === "spots")
+    return (
+      <section className="room-tour">
+        <h3>{tour.name}</h3>
+        <p>
+          360° photos from the spots where the tour was captured · photos may
+          show seams, and the 3D overview is rough. It is not a measured survey
+          or a property check.
+        </p>
+        <Suspense fallback={<p role="status">Loading viewer…</p>}>
+          <SpotViewer tour={tour} />
+        </Suspense>
+        {tour.mesh && !native && (
+          <p>
+            <a
+              href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/mesh`}
+              download="room-mesh.ply"
+            >
+              Export room mesh (PLY)
+            </a>
+          </p>
+        )}
+      </section>
+    );
   return (
     <section className="room-tour">
       <h3>{tour.name}</h3>
@@ -22,21 +47,36 @@ export function TourPlayer({
       </Suspense>
       {native ? (
         <p>
-          Use Export Gaussian PLY on the previous screen to save or share this
-          model.
+          Use Export Gaussian PLY{tour.mesh ? " or Export room mesh" : ""} on
+          the previous screen to save or share this model.
         </p>
       ) : (
-        <a
-          href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/model`}
-          download="room.ply"
-        >
-          Export Gaussian PLY
-        </a>
+        <p>
+          <a
+            href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/model`}
+            download="room.ply"
+          >
+            Export Gaussian PLY
+          </a>
+          {tour.mesh && (
+            <>
+              {" · "}
+              <a
+                href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/mesh`}
+                download="room-mesh.ply"
+              >
+                Export room mesh (PLY)
+              </a>
+            </>
+          )}
+        </p>
       )}
       <p>
         <small>
-          PLY contains Gaussian attributes for compatible viewers and Blender
-          importers. It is not an editable wall mesh.
+          The Gaussian PLY is for compatible viewers and Blender importers; it
+          is not an editable wall mesh.
+          {tour.mesh &&
+            " The room mesh is a coloured triangle mesh in metres, Y up, that opens in Blender, MeshLab and most 3D tools. It is reconstructed from photographs, so expect holes and soft edges."}
         </small>
       </p>
     </section>
