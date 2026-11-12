@@ -87,6 +87,8 @@ struct StudioClient {
     guard let token, let host = base.host else { return nil }
     return HTTPCookie(properties: [
       .name: "studio_token", .value: token, .domain: host, .path: "/", .secure: "TRUE",
+      // The page's scripts never need the token; only the browser sends it.
+      HTTPCookiePropertyKey("HttpOnly"): "TRUE",
     ])
   }
 

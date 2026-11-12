@@ -74,6 +74,7 @@ final class PropertyStudioTests: XCTestCase {
     XCTAssertEqual(cookie?.name, "studio_token")
     XCTAssertEqual(cookie?.domain, "studio.example.net")
     XCTAssertEqual(cookie?.isSecure, true)
+    XCTAssertEqual(cookie?.isHTTPOnly, true)
     XCTAssertNil(StudioClient(base: URL(string: "https://studio.example.net")!).tokenCookie)
   }
 
