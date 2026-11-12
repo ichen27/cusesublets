@@ -20,6 +20,10 @@ MAX_SPOTS = 8
 MAX_SLICES = 64
 MAX_SIDE = 1920
 MAX_SPOT_PIXELS = 48 * 1440 * 1080
+# Each slice is compared with at most this many of its nearest neighbours when refining.
+MAX_NEIGHBOURS = 6
+# The widest half field of view a slice may claim, in degrees (the 0.5× lens is about 54).
+MAX_HALF_VIEW = 70.0
 os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'] = str(MAX_SIDE * MAX_SIDE)
 
 FLIP = np.diag([1.0, -1.0, -1.0])  # ARKit camera (+Y up, −Z forward) <-> OpenCV camera
@@ -64,9 +68,20 @@ def load_spot_slices(manifest, root):
             frame = frames[name]
             if not all(isinstance(frame.get(k), int) and 1 <= frame[k] <= MAX_SIDE for k in ('width', 'height')):
                 raise ValueError('capture_invalid')
-            transform = np.asarray(frame['transform_matrix'], np.float64)
-            K = np.array([[frame['fx'], 0, frame['cx']], [0, frame['fy'], frame['cy']], [0, 0, 1]],
-                         np.float64)
+            try:
+                transform = np.asarray(frame['transform_matrix'], np.float64)
+                fx, fy, cx, cy = (float(frame[k]) for k in ('fx', 'fy', 'cx', 'cy'))
+            except (KeyError, TypeError, ValueError):
+                raise ValueError('capture_invalid')
+            # A pinhole no wider than a real phone lens, with its centre inside the image.
+            narrowest = 0.5 / np.tan(np.radians(MAX_HALF_VIEW))
+            if (transform.shape != (4, 4) or not np.all(np.isfinite(transform))
+                    or not all(np.isfinite(v) for v in (fx, fy, cx, cy))
+                    or fx < narrowest * frame['width'] or fy < narrowest * frame['height']
+                    or fx > 1e5 or fy > 1e5
+                    or not 0 <= cx <= frame['width'] or not 0 <= cy <= frame['height']):
+                raise ValueError('capture_invalid')
+            K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], np.float64)
             slices.append(Slice(path, K, transform[:3, :3] @ FLIP, int(frame['width']),
                                 int(frame['height'])))
         if not slices or sum(s.width * s.height for s in slices) > MAX_SPOT_PIXELS:
@@ -195,30 +210,34 @@ def refine_rotations(slices, max_correction_deg=3.0, images=None):
         rays /= np.linalg.norm(rays, axis=1, keepdims=True)
         return rays @ view.T, descriptors
 
-    pairs, left, right = [], [], []
+    # Only slices that can overlap (optical axes closer than their views reach), and for each
+    # slice only its nearest few, so the work grows with the slice count and not its square.
+    axes = np.stack([s.R[:, 2] for s in slices])
+    closeness = axes @ axes.T
+    candidates = set()
     for i in range(len(slices)):
-        for j in range(i + 1, len(slices)):
-            fi, fj = slices[i].R[:, 2], slices[j].R[:, 2]
-            # Only slices that can overlap: optical axes closer than their views reach.
-            reach = np.radians(min(160.0, half_views[i] + half_views[j] - 10.0))
-            if fi @ fj < np.cos(reach):
-                continue
-            forward = fi + fj
-            forward /= np.linalg.norm(forward)
-            x = np.cross(fi, fj)
-            if np.linalg.norm(x) < 1e-6:
-                x = slices[i].R[:, 0]
-            x /= np.linalg.norm(x)
-            view = np.stack([x, np.cross(forward, x), forward], 1)
-            (wi, di), (wj, dj) = redraw(i, view), redraw(j, view)
-            if di is None or dj is None:
-                continue
-            for m in matcher.match(di, dj):
-                a, b = wi[m.queryIdx], wj[m.trainIdx]
-                if a @ b > limit:
-                    pairs.append((i, j))
-                    left.append(a)
-                    right.append(b)
+        near = [j for j in np.argsort(-closeness[i]) if j != i
+                and closeness[i, j] >= np.cos(np.radians(min(160.0, half_views[i] + half_views[j] - 10.0)))]
+        candidates.update((min(i, j), max(i, j)) for j in near[:MAX_NEIGHBOURS])
+    pairs, left, right = [], [], []
+    for i, j in sorted(candidates):
+        fi, fj = slices[i].R[:, 2], slices[j].R[:, 2]
+        forward = fi + fj
+        forward /= np.linalg.norm(forward)
+        x = np.cross(fi, fj)
+        if np.linalg.norm(x) < 1e-6:
+            x = slices[i].R[:, 0]
+        x /= np.linalg.norm(x)
+        view = np.stack([x, np.cross(forward, x), forward], 1)
+        (wi, di), (wj, dj) = redraw(i, view), redraw(j, view)
+        if di is None or dj is None:
+            continue
+        for m in matcher.match(di, dj):
+            a, b = wi[m.queryIdx], wj[m.trainIdx]
+            if a @ b > limit:
+                pairs.append((i, j))
+                left.append(a)
+                right.append(b)
     rotations = [s.R for s in slices]
     if len(pairs) < 20:
         return rotations

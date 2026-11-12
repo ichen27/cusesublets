@@ -109,6 +109,29 @@ class Stitching(unittest.TestCase):
         self.assertLessEqual(holes, ss.MAX_HOLES)
         self.assertGreaterEqual(psnr(image, SPHERE, above_nadir()), 30)
 
+    def test_refinement_compares_each_slice_with_few_neighbours(self):
+        # 24 slices all facing nearly the same way could pair 276 times; the cap keeps it linear.
+        capture = Capture(self.root)
+        frame = capture.frames[0]
+        capture.manifest['frames'] = [dict(frame) for _ in range(24)]
+        slices = [ss.load_spot_slices({**capture.manifest, 'spots': [
+            {**capture.manifest['spots'][0], 'slices': [frame['file_path']]}]}, self.root)[1][0]] * 24
+        calls = []
+        original = ss._project
+        ss._project = lambda *a: calls.append(1) or original(*a)
+        try:
+            ss.refine_rotations(slices)
+        finally:
+            ss._project = original
+        self.assertLessEqual(len(calls), 2 * 24 * ss.MAX_NEIGHBOURS)
+
+    def test_impossible_intrinsics_are_refused(self):
+        for change in ({'fx': 1.0}, {'fy': float('nan')}, {'cx': -5.0}, {'cy': 1e9}, {'fx': 'wide'}):
+            capture = Capture(self.root)
+            capture.frames[0].update(change)
+            with self.assertRaisesRegex(ValueError, 'capture_invalid'):
+                capture.slices()
+
     def test_missing_ring_reports_holes(self):
         _, holes = ss.stitch(Capture(self.root, drop_ring=1).slices(), width=WIDTH, refine=False)
         self.assertGreater(holes, ss.MAX_HOLES)
