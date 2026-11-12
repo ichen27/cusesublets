@@ -19,11 +19,51 @@ struct CaptureFrameRecord: Codable, Equatable {
   var transformMatrix: [[Double]]
   var tracking = "normal"
   var points: [[Double]]
+  /// `"walk"` frames feed the room mesh; `"slice"` frames are a spot's panorama pieces.
+  var role = "walk"
+  /// The spot number a slice belongs to.
+  var spot: Int? = nil
 
   enum CodingKeys: String, CodingKey {
     case filePath = "file_path"
     case transformMatrix = "transform_matrix"
-    case timestamp, width, height, fx, fy, cx, cy, tracking, points
+    case timestamp, width, height, fx, fy, cx, cy, tracking, points, role, spot
+  }
+
+  init(
+    filePath: String, timestamp: Double, width: Int, height: Int, fx: Double, fy: Double,
+    cx: Double, cy: Double, transformMatrix: [[Double]], tracking: String = "normal",
+    points: [[Double]]
+  ) {
+    self.filePath = filePath
+    self.timestamp = timestamp
+    self.width = width
+    self.height = height
+    self.fx = fx
+    self.fy = fy
+    self.cx = cx
+    self.cy = cy
+    self.transformMatrix = transformMatrix
+    self.tracking = tracking
+    self.points = points
+  }
+
+  /// Records saved before spot capture have no role or spot: they are walk frames.
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    filePath = try c.decode(String.self, forKey: .filePath)
+    timestamp = try c.decode(Double.self, forKey: .timestamp)
+    width = try c.decode(Int.self, forKey: .width)
+    height = try c.decode(Int.self, forKey: .height)
+    fx = try c.decode(Double.self, forKey: .fx)
+    fy = try c.decode(Double.self, forKey: .fy)
+    cx = try c.decode(Double.self, forKey: .cx)
+    cy = try c.decode(Double.self, forKey: .cy)
+    transformMatrix = try c.decode([[Double]].self, forKey: .transformMatrix)
+    tracking = try c.decodeIfPresent(String.self, forKey: .tracking) ?? "normal"
+    points = try c.decode([[Double]].self, forKey: .points)
+    role = try c.decodeIfPresent(String.self, forKey: .role) ?? "walk"
+    spot = try c.decodeIfPresent(Int.self, forKey: .spot)
   }
 
   /// Evenly thins tracked points to the engine's limit and rounds them to 0.1 mm, which keeps a
@@ -45,12 +85,47 @@ struct CaptureManifest: Codable {
   var source = "arkit"
   var coordinateSystem = "arkit-camera-to-world"
   var capability = "camera"
+  /// `"splat"` for walk-around takes, `"spots"` for spot takes (schema version 2).
+  var capture = "splat"
   var frames: [CaptureFrameRecord]
+  var spots: [SpotRecord]? = nil
 
   enum CodingKeys: String, CodingKey {
     case schemaVersion = "schema_version"
     case coordinateSystem = "coordinate_system"
-    case source, capability, frames
+    case source, capability, capture, frames, spots
+  }
+
+  init(frames: [CaptureFrameRecord]) { self.frames = frames }
+
+  init(spots: [SpotRecord], frames: [CaptureFrameRecord]) {
+    schemaVersion = 2
+    capture = "spots"
+    self.frames = frames
+    self.spots = spots
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+    source = try c.decodeIfPresent(String.self, forKey: .source) ?? "arkit"
+    coordinateSystem =
+      try c.decodeIfPresent(String.self, forKey: .coordinateSystem) ?? "arkit-camera-to-world"
+    capability = try c.decodeIfPresent(String.self, forKey: .capability) ?? "camera"
+    capture = try c.decodeIfPresent(String.self, forKey: .capture) ?? "splat"
+    frames = try c.decode([CaptureFrameRecord].self, forKey: .frames)
+    spots = try c.decodeIfPresent([SpotRecord].self, forKey: .spots)
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(schemaVersion, forKey: .schemaVersion)
+    try c.encode(source, forKey: .source)
+    try c.encode(coordinateSystem, forKey: .coordinateSystem)
+    try c.encode(capability, forKey: .capability)
+    if capture != "splat" { try c.encode(capture, forKey: .capture) }
+    try c.encode(frames, forKey: .frames)
+    try c.encodeIfPresent(spots, forKey: .spots)
   }
 }
 
@@ -66,12 +141,17 @@ struct CaptureBudget {
   static let minimumQuality = 0.5
 
   let maximumViews: Int
+  /// Archive size this take must stay within.
+  let limit: Int
   private(set) var quality = maximumQuality
   private(set) var views = 0
   private var imageBytes = 0
   private var metadataBytes = 0
 
-  init(maximumViews: Int = CapturePolicy.maximumViews) { self.maximumViews = maximumViews }
+  init(maximumViews: Int = CapturePolicy.maximumViews, archiveLimit: Int = Self.archiveLimit) {
+    self.maximumViews = maximumViews
+    limit = archiveLimit
+  }
 
   /// Bytes one entry occupies in the uncompressed USTAR archive.
   static func entrySize(_ bytes: Int) -> Int { 512 + bytes + (512 - bytes % 512) % 512 }
@@ -83,7 +163,7 @@ struct CaptureBudget {
   /// Average image size the remaining views can afford.
   var target: Int {
     let remaining = max(1, maximumViews - views)
-    let free = Self.archiveLimit - archiveBytes - remaining * (Self.metadataReserve + 1024)
+    let free = limit - archiveBytes - remaining * (Self.metadataReserve + 1024)
     return max(0, free / remaining)
   }
 
@@ -93,7 +173,17 @@ struct CaptureBudget {
     let future = (maximumViews - views - 1) * Self.metadataReserve
     let manifest = Self.manifestEnvelope + metadataBytes + metadata + future
     return 1024 + imageBytes + Self.entrySize(image) + Self.entrySize(manifest)
-      <= Self.archiveLimit
+      <= limit
+  }
+
+  /// Whether `views` more images of about `averageImage` bytes fit, with their manifest space.
+  /// A spot starts only if all its slices fit, so a take never ends half-turned.
+  func canFit(views count: Int, averageImage: Int) -> Bool {
+    guard views + count <= maximumViews else { return false }
+    let future = (maximumViews - views) * Self.metadataReserve
+    let manifest = Self.manifestEnvelope + metadataBytes + future
+    return 1024 + imageBytes + count * Self.entrySize(averageImage) + Self.entrySize(manifest)
+      <= limit
   }
 
   mutating func record(image: Int, metadata: Int) {
@@ -131,10 +221,21 @@ final class CaptureWriter {
   private let context = CIContext()
   private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
   // Writer queue only.
-  private var budget = CaptureBudget()
+  private var budget: CaptureBudget
   private var count = 0
 
-  init(folder: URL) { self.folder = folder }
+  init(folder: URL, budget: CaptureBudget = CaptureBudget()) {
+    self.folder = folder
+    self.budget = budget
+  }
+
+  /// Writer queue only: the budget as it stands after the views written so far.
+  func withBudget<T>(_ read: @escaping (CaptureBudget) -> T, completion: @escaping (T) -> Void) {
+    queue.async {
+      let value = read(self.budget)
+      DispatchQueue.main.async { completion(value) }
+    }
+  }
 
   /// Call on the main thread. The image keeps the camera buffer alive until it is encoded, so
   /// callers save one view at a time (check `busy`).

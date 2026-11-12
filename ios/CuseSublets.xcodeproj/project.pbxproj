@@ -28,6 +28,7 @@
 		57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */; };
 		58603A5E9E636FD12F1C7139 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0F28E263F666B07179A50C62 /* PrivacyInfo.xcprivacy */; };
 		58ED9E8F0868FE7DD6A725FA /* RoomToursView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF199AE777B4244D9088869 /* RoomToursView.swift */; };
+		629ACC3CB7592D4DF3561FE9 /* SpotTake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91A28CDBD8C225732CF86254 /* SpotTake.swift */; };
 		68C2867E4804FF3C24E39266 /* MemberSafetyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */; };
 		71788E8290D58E3381D007ED /* CapturePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DED3ABE9FC70DFD49A8ADE7 /* CapturePolicyTests.swift */; };
 		76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E43454C554AEC16735B4F1 /* PhotoCapture.swift */; };
@@ -41,6 +42,7 @@
 		B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34400A81F415FE72E0616C7B /* ModelsTests.swift */; };
 		BE151DB85968FEB47E121E87 /* privacy.json in Resources */ = {isa = PBXBuildFile; fileRef = 01898D723ED9EF8CC50F921B /* privacy.json */; };
 		C3504A6BF4856D310C10D71B /* CaptureCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6573B854B8FE5BC5D6DB8447 /* CaptureCoverageTests.swift */; };
+		D612AF898F40919D06310D9A /* SpotTakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */; };
 		D9217D1313E6CCC792017C3C /* CaptureStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8224FC68A72324C8F26CCC38 /* CaptureStream.swift */; };
 		E6FD6C93A564F990FD6FC95E /* FloorCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */; };
 		E896FAAB55F922648B4D48E3 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B360091FC742F2D79BD19301 /* Models.swift */; };
@@ -84,6 +86,7 @@
 		2598614F789BB2443591BACE /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
 		25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemberSafetyView.swift; sourceTree = "<group>"; };
 		2732EDEDBEDAC07B6ADFD693 /* CaptureCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCoverage.swift; sourceTree = "<group>"; };
+		30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTakeTests.swift; sourceTree = "<group>"; };
 		34400A81F415FE72E0616C7B /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		3FD685FF874F61D99FC41025 /* Editors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editors.swift; sourceTree = "<group>"; };
 		4AF199AE777B4244D9088869 /* RoomToursView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomToursView.swift; sourceTree = "<group>"; };
@@ -100,6 +103,7 @@
 		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		887408B955171A2ACEDB8D83 /* DepthAnythingV2SmallF16P6.mlpackage */ = {isa = PBXFileReference; path = DepthAnythingV2SmallF16P6.mlpackage; sourceTree = "<group>"; };
 		8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorCoverageTests.swift; sourceTree = "<group>"; };
+		91A28CDBD8C225732CF86254 /* SpotTake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTake.swift; sourceTree = "<group>"; };
 		9486DB6DDDFCB3C5924CAD58 /* CuseSublets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CuseSublets.entitlements; sourceTree = "<group>"; };
 		A8C0C82C344C7477234E34FF /* LICENSE-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE-Apache-2.0.txt"; sourceTree = "<group>"; };
 		ACAE3DA6881107AA07E3CACE /* PrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyView.swift; sourceTree = "<group>"; };
@@ -163,6 +167,7 @@
 				AE25303FE8E1D06352E818DF /* RoomScansView.swift */,
 				4AF199AE777B4244D9088869 /* RoomToursView.swift */,
 				BE94AA320384886E84A6B136 /* SocialView.swift */,
+				91A28CDBD8C225732CF86254 /* SpotTake.swift */,
 				CEE85D48C8A4313993BC71A3 /* SpotTurn.swift */,
 				47E7BC0B24FCC62D117C69F8 /* Models */,
 			);
@@ -182,6 +187,7 @@
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
 				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
 				0B463D33EF6D54BE3740FC3A /* SessionLifecycleTests.swift */,
+				30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */,
 				F22ED5B906F4E4A57C789894 /* SpotTurnTests.swift */,
 			);
 			path = CuseSubletsTests;
@@ -352,6 +358,7 @@
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
 				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
 				FBA6EDB41ADF6EDB4CB78806 /* SessionLifecycleTests.swift in Sources */,
+				D612AF898F40919D06310D9A /* SpotTakeTests.swift in Sources */,
 				1ABC53A0FCD2B5DFEA76300C /* SpotTurnTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -385,6 +392,7 @@
 				4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */,
 				58ED9E8F0868FE7DD6A725FA /* RoomToursView.swift in Sources */,
 				492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */,
+				629ACC3CB7592D4DF3561FE9 /* SpotTake.swift in Sources */,
 				14B497228AEB32589D5B9613 /* SpotTurn.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
