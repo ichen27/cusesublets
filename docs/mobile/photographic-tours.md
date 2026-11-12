@@ -39,7 +39,7 @@ Archives and trained models are limited to 64 MiB. Upload streams from disk and 
 
 ## Processor setup
 
-The app and API can run without a processor; the capture screen clearly reports that processing is unavailable. To enable it, apply migrations `0013_room_tours.sql` and `0014_tour_deletions.sql` using the deployment runbook, then configure a private `TOUR_PROCESSOR_TOKEN` of at least 32 random characters both in the Worker and worker environment. Do not commit this value. The processor needs outbound access to the API; no inbound processor endpoint is exposed.
+The app and API can run without a processor; the capture screen clearly reports that processing is unavailable. To enable it, apply migrations `0013_room_tours.sql`, `0014_tour_deletions.sql` and `0019_tour_meshes.sql` using the deployment runbook, then configure a private `TOUR_PROCESSOR_TOKEN` of at least 32 random characters both in the Worker and worker environment. Do not commit this value. The processor needs outbound access to the API; no inbound processor endpoint is exposed.
 
 The adapter reuses the existing [apartment-3d-lab capture engine](https://github.com/ichen27/apartment-3d-lab/tree/b1099a13eb8a6874f91ec92a63b9a2f444a31c2b), pinned to that revision. Clone it into a separate dependency directory, check out that commit, create a Python environment, and install its `requirements-capture.txt`. This dependency's repository access is required; it is not bundled with the marketplace. Install a compatible Brush 0.3 Apple Silicon CLI separately. Preserve its upstream license and obtain the binary from its upstream release. No research-room datasets or customer photographs are distributed here.
 
@@ -56,6 +56,23 @@ python processing/tour_worker.py
 
 Use the Python interpreter from the capture engine's environment. The placeholder secret above must be replaced, not used literally. `CUSE_PROCESSOR_ORIGIN` can separately supply the configured Worker Origin when a local reverse proxy rewrites it; normally it equals the HTTPS API origin. Only HTTPS or explicit loopback HTTP is accepted, and authenticated redirects are refused.
 
+### Optional room mesh
+
+With `CUSE_ROOM_MESH=1`, the processor also builds a coloured triangle mesh after Gaussian training (`processing/room_mesh.py`). It needs, in the same Python environment:
+
+- [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3), installed from a checkout of commit `3d835ec1a5802d64a8b8b15f817a1ab54809bfe4` with `pip install -e .`. Its code is Apache-2.0.
+- The `depth-anything/DA3-BASE` weights, which the upstream model table lists as Apache-2.0. Larger DA3 variants are CC BY-NC 4.0 and must not be substituted for commercial use. Download the weights once and point `CUSE_DA3_MODEL` at the local directory so processing never fetches models at run time.
+- Open3D 0.19 and PyTorch 2 with Metal (MPS) or CUDA. The pipeline was validated on an Apple M-series Mac mini with 16 GB of memory.
+
+```sh
+export CUSE_ROOM_MESH=1
+export CUSE_DA3_MODEL=/absolute/path/to/DA3-BASE
+```
+
+The step selects up to 60 evenly spaced views and estimates their depth in one Depth Anything 3 pass, conditioned on the ARKit poses and intrinsics. Processing separate windows of views gave each window its own scale, up to 30% apart, so the view count is capped instead. Pixels below the 40th confidence percentile, outside 0.2–5 m, or across object edges are dropped. The rest is fused into a 2 cm TSDF grid; fragments under 200 triangles are removed and the mesh is simplified to at most 300,000 triangles. It is written as a binary PLY with vertex colours in ARKit world coordinates (metres, +Y up), with metadata for the API. The mesh is uploaded to `/api/tour-processor/{id}/mesh` before completion, under the same claim. Completion keeps only the mesh uploaded by the completing claim, so a mesh from an earlier failed attempt is never shown with a later result. If the mesh step fails or the API rejects the mesh, the tour still completes without one; only the error type is logged.
+
+On the iPhone 17 test scan (91 views), one pass took about 35 s, and the whole job including Gaussian training took 229 s. Measured after simplifying to 35,000 triangles, the mesh's surface roughness fell from 7.2 mm to 4.1 mm compared with fusing the app's single-image depth model. Its share of surface on the six largest planes rose from 19% to 29%. Views six seconds apart agreed within 2.2%, against 17% for the single-image model. Expect holes where no view saw a surface confidently, soft edges, and doubled surfaces if ARKit tracking drifted. It is a reconstruction from photographs, not a measured survey.
+
 Each claim lasts three minutes and is renewed every 45 seconds. Results commit only while the same claim still owns the job. A lost lease stops training; expired jobs can be reclaimed, and three interrupted claims fail visibly until the owner retries. Deleting a job invalidates active workers. Heartbeat, failure and completion writes also recheck owner activity. Use a restart-on-failure service manager for continuous operation. Processing is serial, bounded to 500,000 Gaussians and 3,000 training steps, with a training timeout. This is experimental quality, not a guaranteed photorealistic output.
 
 Working files are private and removed after each completed or failed job. Abrupt machine termination can leave temporary directories; inspect and remove abandoned job directories as part of operating the service. Original captures remain in private object storage until the owner deletes the tour. Opaque deletion IDs are retained in a cleanup ledger; processor polls sweep that ledger so a late upload cannot strand files after a failed cleanup request. A failed sweep keeps its record for retry, and deleted capture IDs cannot be reused. Define a retention policy before a public release.
@@ -64,7 +81,7 @@ Working files are private and removed after each completed or failed job. Abrupt
 
 The same lazy-loaded PlayCanvas viewer runs on public listing pages and in an ephemeral, same-origin iPhone web view. Cookies are never placed in URLs. Model requests recheck visibility and account/listing status. Drag to look; use the labeled movement controls or arrow keys, and reset if lost. Movement has no wall collisions. An unsupported graphics device shows an error and offers PLY export.
 
-The exported PLY contains Gaussian attributes. A Gaussian-compatible Blender importer is needed; it is not an editable architectural mesh. Blender-authored staging should be presented separately and labeled as edited, rather than represented as a capture of the available room.
+The exported Gaussian PLY contains Gaussian attributes. A Gaussian-compatible Blender importer is needed; it is not an editable architectural mesh. When processing built a room mesh, **Export room mesh (PLY)** downloads it from `/api/listings/{listing}/tours/{tour}/mesh` with the same visibility rules as the model. It is an ordinary coloured triangle mesh that opens in Blender, MeshLab and most 3D tools. Blender-authored staging should be presented separately and labeled as edited, rather than represented as a capture of the available room.
 
 ## Reproducible synthetic validation
 
