@@ -1,0 +1,75 @@
+.spot-viewer-stage {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #141417;
+}
+.spot-viewer-stage canvas {
+  display: block;
+  width: 100%;
+  height: min(70vh, 560px);
+  touch-action: none;
+}
+.spot-hint {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+.spot-modes {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+}
+.spot-modes button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 14px;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-weight: 600;
+}
+.spot-modes button[aria-pressed="true"] {
+  background: #fff;
+  color: #111;
+}
+.spot-viewer-stage .spot-marker {
+  position: absolute;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  line-height: 1;
+  font-size: 0.85rem;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #2f4bff;
+  color: #fff;
+  font-weight: 700;
+}
+.spot-viewer-stage .spot-marker.current {
+  background: #1fbf75;
+}
+.spot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.spot-list button[aria-current="true"] {
+  font-weight: 700;
+  text-decoration: underline;
+}

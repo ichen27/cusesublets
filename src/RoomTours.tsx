@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import type { RoomTour } from "../shared/room-tour";
 const SplatViewer = lazy(() => import("./SplatViewer"));
+const SpotViewer = lazy(() => import("./SpotViewer"));
 export function TourPlayer({
   tour,
   native = false,
@@ -10,6 +11,30 @@ export function TourPlayer({
   tour: RoomTour;
   native?: boolean;
 }) {
+  if (tour.kind === "spots")
+    return (
+      <section className="room-tour">
+        <h3>{tour.name}</h3>
+        <p>
+          360° photos from the spots where the tour was captured · photos may
+          show seams, and the 3D overview is rough. It is not a measured survey
+          or a property check.
+        </p>
+        <Suspense fallback={<p role="status">Loading viewer…</p>}>
+          <SpotViewer tour={tour} />
+        </Suspense>
+        {tour.mesh && !native && (
+          <p>
+            <a
+              href={`/api/listings/${encodeURIComponent(tour.listingId)}/tours/${encodeURIComponent(tour.id)}/mesh`}
+              download="room-mesh.ply"
+            >
+              Export room mesh (PLY)
+            </a>
+          </p>
+        )}
+      </section>
+    );
   return (
     <section className="room-tour">
       <h3>{tour.name}</h3>

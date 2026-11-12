@@ -68,4 +68,20 @@ final class ModelsTests: XCTestCase {
     NSTimeZone.default = TimeZone(secondsFromGMT: 12 * 3600)!
     XCTAssertEqual(isoDay(date), expected)
   }
+
+  func testRoomTourWithoutKindDecodesAsSplat() throws {
+    let json = #"{"id":"t","listingId":"l","name":"Room","status":"ready","published":true,"result":{"method":"m","views":60,"gaussians":5,"camera":{"position":[0,0,0],"target":[0,0,-1],"up":[0,1,0]}},"mesh":null,"error":null}"#
+    let tour = try JSONDecoder().decode(RoomTour.self, from: Data(json.utf8))
+    XCTAssertEqual(tour.kind, "splat")
+    XCTAssertNotNil(tour.result)
+    XCTAssertEqual(tour.spotCount, 0)
+  }
+
+  func testSpotTourDecodesWithItsSpots() throws {
+    let json = #"{"id":"t","listingId":"l","name":"Flat","status":"ready","kind":"spots","published":false,"result":{"method":"m","slices":58,"spots":[{"spot":1,"position":[0,0,0],"floorY":-1.4,"panorama":{"offset":512,"length":10,"width":4096,"height":2048}},{"spot":2,"position":[1,0,0],"floorY":-1.4,"panorama":{"offset":1024,"length":10,"width":4096,"height":2048}}]},"mesh":null,"error":null}"#
+    let tour = try JSONDecoder().decode(RoomTour.self, from: Data(json.utf8))
+    XCTAssertEqual(tour.kind, "spots")
+    XCTAssertNil(tour.result)
+    XCTAssertEqual(tour.spotCount, 2)
+  }
 }

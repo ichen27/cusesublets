@@ -26,11 +26,41 @@ struct RoomTour: Decodable, Identifiable {
   let listingId: String
   let name: String
   let status: String
+  /// `"splat"` (Gaussian walk-around) or `"spots"` (stitched 360s); older servers send none.
+  let kind: String
   let published: Bool
+  /// Gaussian display metadata; nil for spot tours, whose result is read by the web viewer.
   let result: TourResult?
-  /// A coloured room mesh, when processing built one alongside the Gaussian model.
+  /// Number of stitched spots in a ready spot tour.
+  let spotCount: Int
+  /// A coloured room mesh, when processing built one.
   let mesh: TourMesh?
   let error: String?
+
+  private struct SpotSummary: Decodable { let spots: [Ignored] }
+  private struct Ignored: Decodable {}
+  enum CodingKeys: String, CodingKey {
+    case id, listingId, name, status, kind, published, result, mesh, error
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    listingId = try c.decode(String.self, forKey: .listingId)
+    name = try c.decode(String.self, forKey: .name)
+    status = try c.decode(String.self, forKey: .status)
+    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "splat"
+    published = try c.decode(Bool.self, forKey: .published)
+    if kind == "spots" {
+      result = nil
+      spotCount = (try? c.decodeIfPresent(SpotSummary.self, forKey: .result))??.spots.count ?? 0
+    } else {
+      result = try c.decodeIfPresent(TourResult.self, forKey: .result)
+      spotCount = 0
+    }
+    mesh = try c.decodeIfPresent(TourMesh.self, forKey: .mesh)
+    error = try c.decodeIfPresent(String.self, forKey: .error)
+  }
 }
 struct ToursResponse: Decodable {
   let tours: [RoomTour]
@@ -62,7 +92,7 @@ struct RoomToursView: View {
       VStack(alignment: .leading, spacing: 18) {
         Text("Photographic tours").font(.largeTitle.bold())
         Text(
-          "Capture overlapping camera views, then reconstruct a Gaussian tour. Results may have gaps, blur and distorted surfaces. These tours do not verify a property or its dimensions."
+          "Capture a few spots in each room. Viewers look around a 360° photo at each spot. Photos may show seams, and the 3D overview is rough. These tours do not verify a property or its dimensions."
         ).foregroundStyle(.secondary)
         if owner {
           if enabled && ARWorldTrackingConfiguration.isSupported {
@@ -114,12 +144,20 @@ struct RoomToursView: View {
               StatusText(text: tour.published ? "Published" : "Private")
             }
             if tour.status == "ready" {
-              NavigationLink("Explore photographic tour") {
+              NavigationLink(tour.kind == "spots" ? "Open 360° tour" : "Explore photographic tour") {
                 TourWebView(api: state.api, listingID: listing.id, tourID: tour.id).navigationTitle(
                   tour.name
                 ).navigationBarTitleDisplayMode(.inline)
               }
-              Button("Export Gaussian PLY") { Task { await download(tour) } }.disabled(busy)
+              if tour.kind == "spots" {
+                Text("\(tour.spotCount) spots").font(.caption)
+                if owner && !tour.published {
+                  Text("Open the tour and check every spot for personal details before publishing.")
+                    .font(.caption)
+                }
+              } else {
+                Button("Export Gaussian PLY") { Task { await download(tour) } }.disabled(busy)
+              }
               if tour.mesh != nil {
                 Button("Export room mesh (PLY)") { Task { await download(tour, mesh: true) } }
                   .disabled(busy).accessibilityIdentifier("export-room-mesh")
