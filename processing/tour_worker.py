@@ -1,12 +1,16 @@
-"""Serial, lease-fenced Gaussian reconstruction worker. No customer data in logs."""
+"""Serial, lease-fenced tour worker: Gaussian splat tours and stitched spot tours. No customer data
+in logs."""
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -16,6 +20,14 @@ from urllib.parse import urlsplit
 
 ENGINE_REVISION = 'b1099a13eb8a6874f91ec92a63b9a2f444a31c2b'
 LIMIT = 64 * 1024 * 1024
+SPOT_LIMIT = 96 * 1024 * 1024
+FORWARDED = ('capture_invalid', 'timeout', 'model_too_large', 'spot_incomplete')
+CAPTURE_NAME = re.compile(r'^(manifest\.json|mesh\.json|images/\d{5}\.jpg)$')
+PANORAMA_QUALITY = 85
+
+
+def input_limit(job):
+    return SPOT_LIMIT if job.get('kind') == 'spots' else LIMIT
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -101,12 +113,14 @@ def reconstruct(capture, work):
         build_optional_mesh(work / 'frames', result / 'mesh')
 
 
-def build_optional_mesh(frames, out):
-    """The mesh is an addition to the Gaussian model: if it fails, the tour still completes."""
+def build_optional_mesh(frames, out, candidates=None):
+    """The mesh is an addition to the tour: if it fails, the tour still completes."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
         from room_mesh import MODEL, build_mesh
-        build_mesh(frames, out, os.environ.get('CUSE_DA3_MODEL', MODEL), log=lambda line: print(line, flush=True))
+        extra = {} if candidates is None else {'candidates': candidates}
+        build_mesh(frames, out, os.environ.get('CUSE_DA3_MODEL', MODEL), log=lambda line: print(line, flush=True),
+                   **extra)
     except Exception as error:
         # Only the error type is logged; messages can include private paths.
         print('Room mesh skipped:', type(error).__name__, flush=True)
@@ -126,6 +140,109 @@ def upload_mesh(api, job, result):
         if error.code == 409:
             raise
         print('Room mesh rejected by the API:', error.code, flush=True)
+
+
+def extract_capture(capture, out, limit=SPOT_LIMIT):
+    """Unpacks a capture archive: regular files with the app's names only, no links or
+    duplicates, bounded in total size. Returns the parsed manifest."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / 'images').mkdir(exist_ok=True)
+    seen, total = set(), 0
+    try:
+        with tarfile.open(capture, 'r:') as archive:
+            for member in archive:
+                if not member.isreg() or not CAPTURE_NAME.match(member.name) or member.name in seen:
+                    raise ValueError('capture_invalid')
+                seen.add(member.name)
+                total += member.size
+                if total > limit:
+                    raise ValueError('capture_invalid')
+                source = archive.extractfile(member)
+                with (out / member.name).open('wb') as target:
+                    while block := source.read(1024 * 1024):
+                        target.write(block)
+    except (tarfile.TarError, OSError) as error:
+        raise ValueError('capture_invalid') from error
+    if 'manifest.json' not in seen:
+        raise ValueError('capture_invalid')
+    try:
+        return json.loads((out / 'manifest.json').read_text())
+    except ValueError as error:
+        raise ValueError('capture_invalid') from error
+
+
+def write_bundle(path, panoramas, spots_json):
+    """USTAR bundle of panoramas then spots.json; returns {name: (data offset, length)} so the API
+    can serve each panorama by byte range."""
+    ranges = {}
+    with tarfile.open(path, 'w', format=tarfile.USTAR_FORMAT) as archive:
+        for name, source in panoramas:
+            data = Path(source).read_bytes()
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(data), 0o600
+            header = archive.fileobj.tell()
+            archive.addfile(info, io.BytesIO(data))
+            ranges[name] = (header + 512, len(data))
+        info = tarfile.TarInfo('spots.json')
+        info.size, info.mode = len(spots_json), 0o600
+        archive.addfile(info, io.BytesIO(spots_json))
+    return ranges
+
+
+def mesh_candidates(manifest):
+    """Walk frames plus level-ring slices: the views with the most parallax between them."""
+    picked = []
+    for index, frame in enumerate(manifest.get('frames', [])):
+        if frame.get('role', 'walk') == 'walk':
+            picked.append(index)
+            continue
+        forward_y = -float(frame['transform_matrix'][1][2])  # ARKit looks along −Z
+        if abs(forward_y) < 0.26:  # within 15° of level
+            picked.append(index)
+    return picked
+
+
+def reconstruct_spots(capture, work):
+    """Stitches every finished spot, optionally builds the mesh, and writes the bundle and its
+    display metadata under WORK/result."""
+    import cv2
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from spot_stitch import MAX_HOLES, load_spot_slices, stitch
+    work = Path(work)
+    frames = work / 'frames'
+    manifest = extract_capture(capture, frames)
+    if manifest.get('capture') != 'spots':
+        raise ValueError('capture_invalid')
+    spots = load_spot_slices(manifest, frames)
+    records = {s['spot']: s for s in manifest['spots']}
+    result = work / 'result'
+    (result / 'panos').mkdir(parents=True)
+    panoramas, described = [], []
+    for number in sorted(spots):
+        image, holes = stitch(spots[number])
+        print(f'spot {number}: {len(spots[number])} slices, holes {holes:.4f}', flush=True)
+        if holes > MAX_HOLES:
+            raise ValueError('spot_incomplete')
+        name = f'panos/{number:02d}.jpg'
+        if not cv2.imwrite(str(result / name), image, [cv2.IMWRITE_JPEG_QUALITY, PANORAMA_QUALITY]):
+            raise ValueError('processing_failed')
+        panoramas.append((name, result / name))
+        record = records[number]
+        described.append((number, name, [round(float(x), 4) for x in record['position']],
+                          round(float(record['floor_y']), 4)))
+    if os.environ.get('CUSE_ROOM_MESH') == '1':
+        build_optional_mesh(frames, result / 'mesh', mesh_candidates(manifest))
+    summary = {'spots': [{'spot': n, 'position': p, 'floorY': f, 'panorama': name} for n, name, p, f in described]}
+    ranges = write_bundle(result / 'spots.bundle', panoramas, json.dumps(summary).encode())
+    display = {
+        'method': 'ARKit guided slices, ORB-refined rotations, feathered equirect stitching',
+        'slices': sum(len(s) for s in spots.values()),
+        'spots': [{'spot': n, 'position': p, 'floorY': f,
+                   'panorama': {'offset': ranges[name][0], 'length': ranges[name][1], 'width': 4096, 'height': 2048}}
+                  for n, name, p, f in described],
+    }
+    (result / 'display.json').write_text(json.dumps(display))
 
 
 def stop_process(process):
@@ -159,17 +276,19 @@ def process_job(api, job, root):
             try:
                 work = Path(directory)
                 capture = work / 'input.roomcapture'
+                spot_tour = job.get('kind') == 'spots'
                 total = 0
                 with api.request(job['id'] + '/input', job=job) as response, capture.open('wb') as out:
                     while block := response.read(1024 * 1024):
                         total += len(block)
-                        if total > LIMIT or total > job['inputSize'] or lease_lost.is_set():
+                        if total > input_limit(job) or total > job['inputSize'] or lease_lost.is_set():
                             raise ValueError('capture_invalid')
                         out.write(block)
                 if total != job['inputSize'] or file_hash(capture) != job['inputHash']:
                     raise ValueError('capture_invalid')
                 with (work / 'process.log').open('wb') as log:
-                    process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--reconstruct',
+                    mode = '--reconstruct-spots' if spot_tour else '--reconstruct'
+                    process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), mode,
                                                 str(capture), str(work / 'training')], stdout=log,
                                                stderr=subprocess.STDOUT, start_new_session=True)
                     deadline = time.monotonic() + 7500
@@ -179,11 +298,15 @@ def process_job(api, job, root):
                         if time.monotonic() > deadline:
                             raise ValueError('timeout')
                     if process.returncode:
-                        raise ValueError('processing_failed')
+                        # The child reports only codes from a fixed list; anything else is generic.
+                        marker = work / 'training/error_code'
+                        code = marker.read_text().strip() if marker.exists() else ''
+                        raise ValueError(code if code in FORWARDED else 'processing_failed')
                 result = work / 'training/result'
                 metadata = json.loads((result / 'display.json').read_text())
                 upload_mesh(api, job, result)
-                api.json(job['id'] + '/complete', job=job, file=result / 'export_3000.ply', metadata=metadata)
+                output = result / ('spots.bundle' if spot_tour else 'export_3000.ply')
+                api.json(job['id'] + '/complete', job=job, file=output, metadata=metadata)
                 print('Tour reconstruction completed', flush=True)
             finally:
                 if process is not None:
@@ -192,7 +315,7 @@ def process_job(api, job, root):
         if process is not None:
             stop_process(process)
         if not lease_lost.is_set():
-            code = str(error) if str(error) in ('capture_invalid', 'timeout', 'model_too_large') else 'processing_failed'
+            code = str(error) if str(error) in FORWARDED else 'processing_failed'
             try:
                 api.json(job['id'] + '/fail', {'code': code}, job=job)
             except Exception:
@@ -211,6 +334,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--reconstruct', nargs=2, type=Path)
+    parser.add_argument('--reconstruct-spots', nargs=2, type=Path)
     args = parser.parse_args()
     os.umask(0o077)
     def terminate(*_):
@@ -218,6 +342,17 @@ def main():
     signal.signal(signal.SIGTERM, terminate)
     if args.reconstruct:
         reconstruct(*args.reconstruct)
+        return
+    if args.reconstruct_spots:
+        capture, work = args.reconstruct_spots
+        try:
+            reconstruct_spots(capture, work)
+        except ValueError as error:
+            if str(error) in FORWARDED:
+                Path(work).mkdir(parents=True, exist_ok=True)
+                (Path(work) / 'error_code').write_text(str(error))
+            print('Spot processing stopped:', type(error).__name__, flush=True)
+            sys.exit(2)
         return
     api = API()
     root = Path(os.environ['CUSE_PROCESSOR_WORK']).resolve()
