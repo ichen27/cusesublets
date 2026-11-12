@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 import sys
 import tarfile
-from PIL import Image
 
 def write(path):
+    from PIL import Image  # only the walk-around fixture needs Pillow
     frames=[]
     image=io.BytesIO();Image.new('RGB',(96,64),(70,120,160)).save(image,format='JPEG')
     for i in range(30):
