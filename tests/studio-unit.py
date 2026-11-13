@@ -173,5 +173,27 @@ class StudioLogin(unittest.TestCase):
         self.assertEqual(self.call('/', headers={'Cookie': cookie.split(';')[0]})[0], 200)
 
 
+class Hangups(unittest.TestCase):
+    def report(self, error):
+        import contextlib
+        import io
+        server = studio.StudioServer(('127.0.0.1', 0), studio.handler(None, set(), None))
+        self.addCleanup(server.server_close)
+        printed = io.StringIO()
+        with contextlib.redirect_stderr(printed):
+            try:
+                raise error
+            except type(error):
+                server.handle_error(None, ('127.0.0.1', 1))
+        return printed.getvalue()
+
+    def test_a_client_hanging_up_is_not_logged_as_a_crash(self):
+        self.assertEqual(self.report(ConnectionResetError(54, 'Connection reset by peer')), '')
+        self.assertEqual(self.report(BrokenPipeError(32, 'Broken pipe')), '')
+
+    def test_real_failures_are_still_logged(self):
+        self.assertIn('ValueError', self.report(ValueError('boom')))
+
+
 if __name__ == '__main__':
     unittest.main()

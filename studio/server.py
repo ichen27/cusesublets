@@ -344,6 +344,24 @@ def handler(studio, hosts=None, token=None):
     return Handler
 
 
+class StudioServer(ThreadingHTTPServer):
+    """Serves requests in threads, and stays quiet when a client hangs up.
+
+    Cloudflare's tunnel opens and drops spare connections continually, so the
+    default handler's traceback for a reset connection would bury real errors.
+    """
+
+    daemon_threads = True
+
+    QUIET = (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, TimeoutError)
+
+    def handle_error(self, request, client_address):
+        failure = sys.exc_info()[0]
+        if failure is not None and issubclass(failure, self.QUIET):
+            return
+        super().handle_error(request, client_address)
+
+
 def main():
     data = os.environ.get('APP_DATA_DIR')
     if not data:
@@ -353,7 +371,7 @@ def main():
     token = os.environ.get('STUDIO_TOKEN') or None
     if token is not None and (len(token) < MINIMUM_TOKEN or not token.isascii() or not token.isalnum()):
         sys.exit('STUDIO_TOKEN must be at least %d letters and digits' % MINIMUM_TOKEN)
-    server = ThreadingHTTPServer((host, port), handler(Studio(data), hosts, token))
+    server = StudioServer((host, port), handler(Studio(data), hosts, token))
     print('Tour Studio on http://%s:%d (%s)' % (host, port, 'token login' if token else 'NO LOGIN'), flush=True)
     server.serve_forever()
 
