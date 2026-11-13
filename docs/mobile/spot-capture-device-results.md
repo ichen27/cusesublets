@@ -13,6 +13,8 @@ The second run (2026-11-13) was the first with the 0.5× camera. All three spots
 - **Spots after the first were 640 × 480.** ARKit runs the 0.5× lens at that size between turns. The camera's format is now set before every turn.
 - **The screen between spots was black.** It now shows the live camera and a rough top-down sketch of the room around each finished spot. The sketch re-draws the spot's slices as six upright views looking down into the room, runs the bundled depth model on each, and scales the result by the floor, whose distance is known from the camera's height. Checked on this run's capture in the simulator: the hallway, bedroom and bathroom each come out with their own outline. It is a sketch, not a measurement.
 
+- **The camera did not look like 0.5×.** The photos were (103° wide, against about 67° for 1×), but the preview filled the tall screen and cropped its sides to roughly 60°. The preview now shows the whole frame with bars above and below. The 0.5× camera also opens before each spot, with Start Capture on it, so the 1× tracking camera is never on screen; between spots the screen is the room sketch with a Next Spot button. **Not yet run on a device.**
+
 The lens measured 103° × 87° after correction (focal 763 px at 1920 × 1440), slightly narrower than the 108° × 92° assumed below, with holes still under 0.1%. The 4° alignment tolerance and 0.5 s hold are unchanged starting values. Tune them from the next device run, and update `SpotLayout.standard` and `SpotTurnTests` together.
 
 ## Synthetic baseline (2026-11-12, Mac mini)

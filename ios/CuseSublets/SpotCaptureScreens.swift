@@ -13,7 +13,7 @@ struct SpotCaptureScreen: View {
 
   var body: some View {
     Group {
-      if case .turning = recorder.phase {
+      if recorder.framing || recorder.turn != nil {
         SpotTurnView(recorder: recorder)
       } else {
         SpotMapView(recorder: recorder, review: { reviewing = true }, close: close)
@@ -59,7 +59,7 @@ struct SpotCaptureScreen: View {
   }
 }
 
-/// The 0.5× camera, shown while turning at a spot.
+/// The 0.5× camera, shown before and while turning at a spot.
 struct WideCameraSurface: UIViewRepresentable {
   let recorder: SpotRecorder
   func makeUIView(context: Context) -> WideCameraView {
@@ -84,6 +84,7 @@ struct SpotTurnView: View {
   var body: some View {
     ZStack {
       WideCameraSurface(recorder: recorder).ignoresSafeArea()
+      if recorder.turn != nil {
       TimelineView(.animation) { context in
         GeometryReader { geometry in
           let target = projectedTarget(in: geometry.size)
@@ -117,23 +118,49 @@ struct SpotTurnView: View {
           .overlay(alignment: .top) { caption(now: context.date).padding(.top, 60) }
         }
       }
+      }
       VStack {
         HStack {
           Spacer()
-          Button("Cancel spot", systemImage: "xmark") { recorder.cancelSpot() }
-            .labelStyle(.iconOnly).font(.title2).padding().foregroundStyle(.white)
+          Button(recorder.framing ? "Back to the map" : "Cancel spot", systemImage: "xmark") {
+            if recorder.framing { recorder.cancelFraming() } else { recorder.cancelSpot() }
+          }
+          .labelStyle(.iconOnly).font(.title2).padding().foregroundStyle(.white)
         }
         Spacer()
-        if let hint = recorder.hint {
-          Text(hint.message).font(.callout.weight(.semibold)).padding(.horizontal, 14)
-            .padding(.vertical, 8).background(.ultraThinMaterial, in: Capsule())
-            .accessibilityIdentifier("capture-hint")
+        if recorder.framing {
+          VStack(spacing: 10) {
+            Text(
+              recorder.message.isEmpty
+                ? "This is what the spot will capture. Stand where you want the view, then turn on the spot to follow 8 dots."
+                : recorder.message
+            ).font(.callout).multilineTextAlignment(.center)
+              .accessibilityIdentifier("spot-message")
+            Button {
+              recorder.beginSpot()
+            } label: {
+              Text("Start Capture").font(.title3.weight(.semibold)).frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 8))
+            .tint(.cuseButtonFill).controlSize(.large)
+            .accessibilityIdentifier("start-capture")
+          }
+          .foregroundStyle(.white).padding(16)
+          .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+          .padding(.horizontal, 12).padding(.bottom, 12)
+        } else {
+          if let hint = recorder.hint {
+            Text(hint.message).font(.callout.weight(.semibold)).padding(.horizontal, 14)
+              .padding(.vertical, 8).background(.ultraThinMaterial, in: Capsule())
+              .accessibilityIdentifier("capture-hint")
+          }
+          ProgressView(value: recorder.turn?.progress ?? 0).tint(.green).padding(.horizontal, 24)
+            .accessibilityLabel("Spot progress")
+          Button("Undo", systemImage: "arrow.uturn.backward") { recorder.undoSlice() }
+            .buttonStyle(.borderedProminent).tint(Color(white: 0.15))
+            .disabled((recorder.turn?.captured.isEmpty ?? true)).padding(.bottom, 24)
         }
-        ProgressView(value: recorder.turn?.progress ?? 0).tint(.green).padding(.horizontal, 24)
-          .accessibilityLabel("Spot progress")
-        Button("Undo", systemImage: "arrow.uturn.backward") { recorder.undoSlice() }
-          .buttonStyle(.borderedProminent).tint(Color(white: 0.15))
-          .disabled((recorder.turn?.captured.isEmpty ?? true)).padding(.bottom, 24)
       }
     }
   }
@@ -178,77 +205,69 @@ struct SpotTurnView: View {
 
 // MARK: - Between spots
 
-/// The live camera with the room captured so far above it, and the button that starts a spot.
+/// Between spots: the rooms captured so far, drawn from above, and the way to the next spot.
+/// ARKit tracks the walk with the 1× camera, which is kept off screen: the only camera the
+/// person sees is the 0.5× one that takes the pictures.
 struct SpotMapView: View {
   @ObservedObject var recorder: SpotRecorder
   let review: () -> Void
   let close: () -> Void
 
   var body: some View {
-    GeometryReader { geometry in
-      ZStack {
-        SpotCameraSurface(recorder: recorder).ignoresSafeArea().accessibilityHidden(true)
-        VStack(spacing: 12) {
-          HStack {
-            Button("Close", systemImage: "chevron.left") { close() }.labelStyle(.iconOnly)
-              .font(.title2)
-            Spacer()
-            Text(recorder.spots.count == 1 ? "1 spot" : "\(recorder.spots.count) spots")
-              .font(.headline)
-            Spacer()
-            Button("Done") { review() }.buttonStyle(.borderedProminent).tint(.green)
-              .foregroundStyle(.black).disabled(recorder.spots.isEmpty)
-          }
-          .foregroundStyle(.white).padding(.horizontal).padding(.vertical, 8)
-          .background(.black.opacity(0.55))
-          if !recorder.spots.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-              Text("Captured so far").font(.subheadline.weight(.semibold))
-              SpotMapCanvas(
-                cells: recorder.mapCells, spots: recorder.spots, you: recorder.you,
-                patches: recorder.patches)
-              Text("A rough sketch of the rooms from above. Blue markers are your spots; the green dot is you.").font(.caption)
-                .foregroundStyle(.white.opacity(0.75))
-            }
-            .foregroundStyle(.white).padding(12)
-            .frame(height: geometry.size.height * 0.4)
-            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
-            .padding(.horizontal, 12)
-            .accessibilityIdentifier("captured-so-far")
-          }
-          Spacer(minLength: 0)
-          VStack(spacing: 10) {
-            if recorder.spots.isEmpty {
-              Text(
-                "Stand where you want the first view. Put away personal papers and photos: each spot captures the whole room around you."
-              ).font(.callout).multilineTextAlignment(.center)
-            }
-            if let hint = recorder.hint {
-              Text(hint.message).font(.callout.weight(.semibold))
-                .accessibilityIdentifier("capture-hint")
-            }
-            if !recorder.message.isEmpty {
-              Text(recorder.message).font(.callout).multilineTextAlignment(.center)
-                .accessibilityIdentifier("spot-message")
-            }
-            Button {
-              recorder.beginSpot()
-            } label: {
-              Text("Start Capture").font(.title3.weight(.semibold)).frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 8))
-            .tint(.cuseButtonFill).controlSize(.large)
-            .accessibilityIdentifier("start-capture")
-            .disabled(!recorder.running || recorder.phase != .map || recorder.spotsRemaining == 0)
-          }
-          .foregroundStyle(.white).padding(16)
-          .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
-          .padding(.horizontal, 12).padding(.bottom, 12)
+    ZStack {
+      Color.black.ignoresSafeArea()
+      SpotCameraSurface(recorder: recorder).frame(width: 1, height: 1).opacity(0.01)
+        .accessibilityHidden(true)
+      VStack(spacing: 12) {
+        HStack {
+          Button("Close", systemImage: "chevron.left") { close() }.labelStyle(.iconOnly)
+            .font(.title2)
+          Spacer()
+          Text(recorder.spots.count == 1 ? "1 spot" : "\(recorder.spots.count) spots")
+            .font(.headline)
+          Spacer()
+          Button("Done") { review() }.buttonStyle(.borderedProminent).tint(.green)
+            .foregroundStyle(.black).disabled(recorder.spots.isEmpty)
         }
+        .padding(.horizontal).padding(.vertical, 8)
+        if recorder.spots.isEmpty {
+          Spacer()
+          if recorder.running { ProgressView("Starting the camera…").tint(.white) }
+          Spacer()
+        } else {
+          SpotMapCanvas(
+            cells: recorder.mapCells, spots: recorder.spots, you: recorder.you,
+            patches: recorder.patches
+          )
+          .accessibilityIdentifier("captured-so-far")
+          Text("A rough sketch of the rooms from above. Blue markers are your spots; the green dot is you.")
+            .font(.caption).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+            .padding(.horizontal)
+        }
+        VStack(spacing: 10) {
+          if let hint = recorder.hint {
+            Text(hint.message).font(.callout.weight(.semibold))
+              .accessibilityIdentifier("capture-hint")
+          }
+          if !recorder.message.isEmpty {
+            Text(recorder.message).font(.callout).multilineTextAlignment(.center)
+              .accessibilityIdentifier("spot-message")
+          }
+          Button {
+            recorder.frameSpot()
+          } label: {
+            Text(recorder.spots.isEmpty ? "Open Camera" : "Next Spot")
+              .font(.title3.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 8)
+          }
+          .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 8))
+          .tint(.cuseButtonFill).controlSize(.large)
+          .accessibilityIdentifier("next-spot")
+          .disabled(!recorder.running || recorder.phase != .map || recorder.spotsRemaining == 0)
+        }
+        .padding(.horizontal, 16).padding(.bottom, 12)
       }
+      .foregroundStyle(.white)
     }
-    .background(Color.black)
   }
 }
 
