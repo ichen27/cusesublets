@@ -46,6 +46,7 @@
 		8E5CF358DEC748762C5BA0A7 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACAE3DA6881107AA07E3CACE /* PrivacyView.swift */; };
 		901A50D0ED3FE9D4C56E78A1 /* AppleLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF8FFF0EB781C16682C07A4 /* AppleLoginView.swift */; };
 		9DD2B8A9A28AEB8D9A083614 /* AccountDeletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028225F95C2A10B0FF48D1BF /* AccountDeletionView.swift */; };
+		A2D41A2066414406CC23E87E /* SpotSpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39623125EAEE3B7B215DAB70 /* SpotSpaceView.swift */; };
 		A9EA2A05F0143E1C1A87E734 /* FloorPatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0B5E3F5345397207F667D7 /* FloorPatchTests.swift */; };
 		AD1BEEF9F46BC9B126C3D1FD /* CaptureCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2732EDEDBEDAC07B6ADFD693 /* CaptureCoverage.swift */; };
 		AEA9730F91345EB6F8029D16 /* CaptureStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23AA33469BE4D704B0A03D31 /* CaptureStorage.swift */; };
@@ -110,6 +111,7 @@
 		2EFE54CDC1AF84DDE4EFB54B /* RoomSketch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomSketch.swift; sourceTree = "<group>"; };
 		30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTakeTests.swift; sourceTree = "<group>"; };
 		34400A81F415FE72E0616C7B /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		39623125EAEE3B7B215DAB70 /* SpotSpaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotSpaceView.swift; sourceTree = "<group>"; };
 		3FD685FF874F61D99FC41025 /* Editors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editors.swift; sourceTree = "<group>"; };
 		4AF199AE777B4244D9088869 /* RoomToursView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomToursView.swift; sourceTree = "<group>"; };
 		4BD8BDAB02688C12B03DB12F /* WideCamera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WideCamera.swift; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 				BF2C2F0E2B7DD5106607EC52 /* SpotPreview.swift */,
 				242AC5219A66CC1A88428954 /* SpotRecorder.swift */,
 				A79CF142313B036D31E63ED6 /* SpotSession.swift */,
+				39623125EAEE3B7B215DAB70 /* SpotSpaceView.swift */,
 				91A28CDBD8C225732CF86254 /* SpotTake.swift */,
 				CEE85D48C8A4313993BC71A3 /* SpotTurn.swift */,
 				B637692C1DADC1FEA38DB1CE /* StudioClient.swift */,
@@ -454,6 +457,7 @@
 				AFEAA05A837C89D5064F256F /* SpotPreview.swift in Sources */,
 				EB7EBE11E82A17E940F126AE /* SpotRecorder.swift in Sources */,
 				4706FDFD4D63B793043F5525 /* SpotSession.swift in Sources */,
+				A2D41A2066414406CC23E87E /* SpotSpaceView.swift in Sources */,
 				629ACC3CB7592D4DF3561FE9 /* SpotTake.swift in Sources */,
 				14B497228AEB32589D5B9613 /* SpotTurn.swift in Sources */,
 				8B5660E3E4A15328ADD92003 /* StudioClient.swift in Sources */,

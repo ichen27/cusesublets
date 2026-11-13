@@ -32,6 +32,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published private(set) var requestingPermission = false
   /// The 0.5× camera is showing what the next spot will capture, before Start Capture.
   @Published private(set) var framing = false
+  /// The shots of the turn in progress, for showing them where they were taken.
+  @Published private(set) var pinned: [PinnedShot] = []
   /// Top-down sketches of the room around each finished spot, by spot number.
   @Published private(set) var patches: [Int: UIImage] = [:]
   @Published var message = ""
@@ -69,6 +71,9 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private var settleUntil = -Double.infinity
   /// The camera opens by itself for the first spot, once.
   private var openedFirst = false
+  private var pinSerial = 0
+  private let stillContext = CIContext()
+  static let pinnedWidth: CGFloat = 540
   /// The correction applied after the previous turn, recorded with the next spot.
   private var lastRealign: (yaw: Double, shift: Double)?
   private var exposureLocked = false
@@ -266,6 +271,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     else { return }
     // The frame stays on disk for the mesh; it no longer belongs to this spot's panorama.
     slicePaths.removeLast()
+    if !pinned.isEmpty { pinned.removeLast() }
     objectWillChange.send()
   }
 
@@ -482,6 +488,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
         [Double(r[0][2]), Double(r[1][2]), Double(r[2][2]), Double(spotOrigin.z)],
         [0, 0, 0, 1],
       ]
+      pin(source, frame: frame, rotation: orientation.worldFromDevice(attitude))
       var record = CaptureFrameRecord(
         filePath: "", timestamp: time, width: Int(image.extent.width.rounded()),
         height: Int(image.extent.height.rounded()), fx: Double(frame.fx) * Double(scale),
@@ -493,6 +500,34 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       save(image, record: record, spot: spot)
     case .none: break
     }
+  }
+
+  /// Keeps a small upright copy of a shot to show where it was taken.
+  private func pin(_ source: CIImage, frame: WideFrame, rotation: simd_float3x3) {
+    // The sensor's picture is landscape; held upright, it reads correctly turned a quarter.
+    let upright = source.oriented(.right)
+    let scale = min(1, Self.pinnedWidth / upright.extent.width)
+    let small = upright.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    guard frame.fx > 0, frame.fy > 0,
+      let image = stillContext.createCGImage(small, from: small.extent)
+    else { return }
+    pinSerial += 1
+    pinned.append(
+      PinnedShot(
+        id: pinSerial, image: image, rotation: rotation,
+        halfWidth: Float(frame.height) / 2 / frame.fy, halfHeight: Float(frame.width) / 2 / frame.fx))
+  }
+
+  /// The phone's rotation in the tour's world now, while the 0.5× camera is running.
+  var deviceRotation: simd_float3x3? {
+    guard let orientation, let sample = motion.deviceMotion else { return nil }
+    return orientation.worldFromDevice(SpotOrientation.deviceToReference(sample))
+  }
+
+  /// Tangent of half the 0.5× camera's view across an upright screen.
+  var viewHalfWidth: Float {
+    guard let lens, lens.focal > 0 else { return 0.95 }
+    return Float(lens.image.height) / 2 / lens.focal
   }
 
   /// Where a world direction is on the 0.5× camera preview, for drawing the dots.
@@ -552,6 +587,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     }
     resumeTracking()
     turn = nil
+    pinned = []
     finishing = false
     coverageEngine.setOverlayHidden(false)
     phase = session.phase
@@ -562,6 +598,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private func abandonTurn(message text: String) {
     resumeTracking()
     turn = nil
+    pinned = []
     finishing = false
     slicePaths = []
     coverageEngine.setOverlayHidden(false)

@@ -83,9 +83,16 @@ struct SpotTurnView: View {
 
   var body: some View {
     ZStack {
-      WideCameraSurface(recorder: recorder).ignoresSafeArea()
-      if recorder.turn != nil {
+      if recorder.turn == nil {
+        // Before Start Capture: the live 0.5× camera.
+        WideCameraSurface(recorder: recorder).ignoresSafeArea()
+      } else {
+      // While turning: black space, with each shot staying where it was taken.
       TimelineView(.animation) { context in
+        ZStack {
+        SpotSpaceSurface(
+          shots: recorder.pinned, rotation: recorder.deviceRotation,
+          halfWidth: recorder.viewHalfWidth)
         GeometryReader { geometry in
           let target = projectedTarget(in: geometry.size)
           let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -115,8 +122,10 @@ struct SpotTurnView: View {
           .onChange(of: target?.onScreen ?? true) { _, onScreen in
             offScreenSince = onScreen ? nil : context.date
           }
-          .overlay(alignment: .top) { caption(now: context.date).padding(.top, 60) }
+          .overlay(alignment: .top) { caption(now: context.date).padding(.top, 76) }
         }
+        }
+        .ignoresSafeArea()
       }
       }
       VStack {
@@ -132,7 +141,7 @@ struct SpotTurnView: View {
           VStack(spacing: 10) {
             Text(
               recorder.message.isEmpty
-                ? "This is what the spot will capture. Stand where you want the view, then turn on the spot to follow 8 dots."
+                ? "This is what the spot will capture. Stand where you want the view, then turn on the spot to follow \(SpotLayout.standard.count) dots. Keep the phone upright and level."
                 : recorder.message
             ).font(.callout).multilineTextAlignment(.center)
               .accessibilityIdentifier("spot-message")
@@ -169,10 +178,7 @@ struct SpotTurnView: View {
     let away = offScreenSince.map { now.timeIntervalSince($0) >= 1.5 } ?? false
     let taken = recorder.turn?.captured.count ?? 0
     let total = recorder.turn?.layout.count ?? 0
-    let ring = recorder.turn?.current?.ring ?? 0
-    let aim =
-      ring == 1 ? "Point straight up at the ceiling" : ring == 2
-      ? "Point straight down at the floor" : (away ? "Turn to the dot" : "Point the camera at the dot")
+    let aim = away ? "Turn to the dot" : "Point the camera at the dot"
     return Text("\(aim) · \(min(taken + 1, total)) of \(total)")
       .font(.title3.weight(.semibold)).foregroundStyle(.black).padding(.horizontal, 24)
       .padding(.vertical, 14).background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 10))
