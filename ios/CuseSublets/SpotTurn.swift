@@ -11,13 +11,11 @@ struct SpotTarget: Equatable {
 }
 
 enum SpotLayout {
-  /// Six level shots on the 0.5× camera, then the ceiling and the floor. In portrait that
-  /// lens sees about 90° across and 105° up and down, so neighbouring level shots overlap by
-  /// about 30° and the two end shots close the sphere. Starting values, tuned on the iPhone 17.
-  static let standard: [SpotTarget] =
-    ring(0, count: 6, pitchDegrees: 0) + [
-      SpotTarget(ring: 1, yaw: 0, pitch: .pi / 2), SpotTarget(ring: 2, yaw: 0, pitch: -.pi / 2),
-    ]
+  /// Six level shots on the 0.5× camera: one turn on the spot, never looking up or down. In
+  /// portrait that lens sees about 87° across and 103° up and down, so neighbouring shots
+  /// overlap by about 27° and the panorama reaches about 50° above and below level. The
+  /// ceiling and floor beyond that are not photographed; the stitcher fills them softly.
+  static let standard: [SpotTarget] = ring(0, count: 6, pitchDegrees: 0)
 
   private static func ring(_ ring: Int, count: Int, pitchDegrees: Float) -> [SpotTarget] {
     (0..<count).map { index in

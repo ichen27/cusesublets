@@ -218,7 +218,7 @@ struct PropertyDetailView: View {
       GuideStep(symbol: "doc.text", text: "Put away personal papers, photos and screens.")
       GuideStep(
         symbol: "figure.stand",
-        text: "Stand in the middle of a room. Each spot takes 8 photos: six around you, then the ceiling and the floor. You are left out of the picture.")
+        text: "Stand in the middle of a room. Each spot is one turn on the spot: six photos around you, with the phone upright and level.")
       GuideStep(
         symbol: "map",
         text: "Walk to the next spot with the phone up. Two or three spots cover most rooms; add one in each doorway.")

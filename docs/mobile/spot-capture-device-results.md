@@ -15,6 +15,8 @@ The second run (2026-11-13) was the first with the 0.5× camera. All three spots
 
 - **The camera did not look like 0.5×.** The photos were (103° wide, against about 67° for 1×), but the preview filled the tall screen and cropped its sides to roughly 60°. The preview now shows the whole frame with bars above and below. The 0.5× camera also opens before each spot, with Start Capture on it, so the 1× tracking camera is never on screen; between spots the screen is the room sketch with a Next Spot button. **Not yet run on a device.**
 
+After that run the layout changed again, on the owner's request, to match comparable apps: **one level turn of six shots, no ceiling or floor shot**. The panorama then reaches about 50° above and below level, and the stitcher fills the rest with blurred colour. Re-stitching this run's level shots alone gave 0.1–0.2% holes in the band, and dropping one of the six fails as it should (about 9%). With no floor shot the person holding the phone is never photographed. While turning, the screen is now black space with each shot staying where it was taken. **Not yet run on a device.**
+
 The lens measured 103° × 87° after correction (focal 763 px at 1920 × 1440), slightly narrower than the 108° × 92° assumed below, with holes still under 0.1%. The 4° alignment tolerance and 0.5 s hold are unchanged starting values. Tune them from the next device run, and update `SpotLayout.standard` and `SpotTurnTests` together.
 
 ## Synthetic baseline (2026-11-12, Mac mini)

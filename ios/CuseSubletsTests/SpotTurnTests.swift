@@ -19,11 +19,13 @@ final class SpotTurnTests: XCTestCase {
     return event
   }
 
-  func testLayoutIsSixLevelShotsThenCeilingAndFloor() {
-    XCTAssertEqual(SpotLayout.standard.count, 8)
-    XCTAssertEqual(SpotLayout.standard.filter { $0.ring == 0 }.count, 6)
-    XCTAssertEqual(SpotLayout.standard[6].pitch, .pi / 2)
-    XCTAssertEqual(SpotLayout.standard[7].pitch, -.pi / 2)
+  func testLayoutIsOneLevelTurnOfSixShots() {
+    XCTAssertEqual(SpotLayout.standard.count, 6)
+    XCTAssertTrue(SpotLayout.standard.allSatisfy { $0.ring == 0 && $0.pitch == 0 })
+    // Evenly spaced: 60° apart, so the 87°-wide shots overlap.
+    for (index, target) in SpotLayout.standard.enumerated() {
+      XCTAssertEqual(target.yaw, Float(index) * .pi / 3, accuracy: 1e-6)
+    }
   }
 
   func testHoldingOnTargetCapturesAfterHoldDuration() {
@@ -72,7 +74,9 @@ final class SpotTurnTests: XCTestCase {
   }
 
   func testLevelRingFinishesBeforeUpperRing() {
-    var turn = SpotTurn(startYaw: 0)
+    // The app's layout is one level ring; a layout with a second ring still takes them in order.
+    let layout = SpotLayout.standard + [SpotTarget(ring: 1, yaw: 0, pitch: .pi / 2)]
+    var turn = SpotTurn(layout: layout, startYaw: 0)
     var time = 0.0
     for _ in 0..<6 {
       XCTAssertEqual(turn.current?.ring, 0)
@@ -114,11 +118,11 @@ final class SpotTurnTests: XCTestCase {
     var turn = SpotTurn(startYaw: 0)
     var time = 0.0
     var last = SpotTurnEvent.none
-    for _ in 0..<8 { last = captureCurrent(&turn, at: &time) }
+    for _ in SpotLayout.standard { last = captureCurrent(&turn, at: &time) }
     XCTAssertEqual(last, .complete)
     XCTAssertTrue(turn.isComplete)
     XCTAssertNil(turn.current)
     XCTAssertEqual(turn.progress, 1)
-    XCTAssertEqual(Set(turn.captured), Set(0..<8))
+    XCTAssertEqual(Set(turn.captured), Set(SpotLayout.standard.indices))
   }
 }
