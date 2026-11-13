@@ -44,6 +44,7 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     queue.async {
       do {
         try self.configure()
+        try self.chooseFormat()
         self.session.startRunning()
         DispatchQueue.main.async {
           if let connection = self.previewLayer.connection,
@@ -101,25 +102,6 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
       throw CaptureFailure.message("The 0.5× camera is unavailable.")
     }
     session.addInput(input)
-    // The smallest 4:3 format at least 1920 wide: enough for a 4096-wide panorama.
-    let formats = device.formats.filter { format in
-      let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-      return size.width * 3 == size.height * 4 && size.width >= Self.targetWidth
-        && format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 30 }
-    }.sorted {
-      CMVideoFormatDescriptionGetDimensions($0.formatDescription).width
-        < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width
-    }
-    try device.lockForConfiguration()
-    if let format = formats.first { device.activeFormat = format }
-    // Straight lines must stay straight for the stitcher's pinhole model.
-    if device.isGeometricDistortionCorrectionSupported {
-      device.isGeometricDistortionCorrectionEnabled = true
-    }
-    if device.isFocusModeSupported(.continuousAutoFocus) {
-      device.focusMode = .continuousAutoFocus
-    }
-    device.unlockForConfiguration()
     let output = AVCaptureVideoDataOutput()
     output.alwaysDiscardsLateVideoFrames = true
     output.videoSettings = [
@@ -137,6 +119,31 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     }
     self.device = device
     configured = true
+  }
+
+  /// Sets the camera's format before every start, not once: between turns ARKit runs this
+  /// same lens at 640 × 480 for its own tracking and leaves it that way.
+  private func chooseFormat() throws {
+    guard let device else { return }
+    // The smallest 4:3 format at least 1920 wide: enough for a 4096-wide panorama.
+    let formats = device.formats.filter { format in
+      let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+      return size.width * 3 == size.height * 4 && size.width >= Self.targetWidth
+        && format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 30 }
+    }.sorted {
+      CMVideoFormatDescriptionGetDimensions($0.formatDescription).width
+        < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width
+    }
+    try device.lockForConfiguration()
+    defer { device.unlockForConfiguration() }
+    if let format = formats.first, device.activeFormat != format { device.activeFormat = format }
+    // Straight lines must stay straight for the stitcher's pinhole model.
+    if device.isGeometricDistortionCorrectionSupported {
+      device.isGeometricDistortionCorrectionEnabled = true
+    }
+    if device.isFocusModeSupported(.continuousAutoFocus) {
+      device.focusMode = .continuousAutoFocus
+    }
   }
 
   func captureOutput(
