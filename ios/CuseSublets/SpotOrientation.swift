@@ -116,7 +116,8 @@ struct SpotOrientation {
     atan2(correction.columns.2.x, correction.columns.2.z) * 180 / .pi
   }
 
-  /// Where a world direction appears on a portrait screen showing the camera aspect-filled.
+  /// Where a world direction appears on a portrait screen showing the whole camera frame,
+  /// centred (aspect-fit).
   /// - Parameters:
   ///   - focal: focal length in sensor-image pixels.
   ///   - image: sensor image size (landscape: width is the long side).
@@ -126,7 +127,7 @@ struct SpotOrientation {
     screen: CGSize
   ) -> (point: CGPoint, ahead: Bool) {
     let d = worldFromDevice(deviceToReference).transpose * direction
-    let scale = max(screen.width / image.height, screen.height / image.width) * CGFloat(focal)
+    let scale = min(screen.width / image.height, screen.height / image.width) * CGFloat(focal)
     let depth = max(abs(-d.z), 0.05)
     let point = CGPoint(
       x: screen.width / 2 + scale * CGFloat(d.x / depth),

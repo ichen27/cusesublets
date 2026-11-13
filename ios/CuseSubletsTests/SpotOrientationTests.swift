@@ -76,6 +76,23 @@ final class SpotOrientationTests: XCTestCase {
     XCTAssertFalse(behind.ahead)
   }
 
+  func testTheWholeCameraFrameFitsOnTheScreen() {
+    let o = SpotOrientation(cameraToWorld: uprightCamera, deviceToReference: uprightDevice)
+    let screen = CGSize(width: 390, height: 844)
+    let image = CGSize(width: 1920, height: 1440)
+    // The right edge of the frame (the sensor's short side, 720 px from its centre) is the
+    // right edge of the screen: nothing is cropped, as it would be if the picture filled it.
+    let right = o.screenPoint(
+      of: SIMD3(720, 0, -700), deviceToReference: uprightDevice, focal: 700, image: image,
+      screen: screen)
+    XCTAssertEqual(right.point.x, 390, accuracy: 0.01)
+    // The top edge (the long side, 960 px) is inside the screen, leaving bars above and below.
+    let top = o.screenPoint(
+      of: SIMD3(0, 960, -700), deviceToReference: uprightDevice, focal: 700, image: image,
+      screen: screen)
+    XCTAssertEqual(top.point.y, 422 - 260, accuracy: 0.01)
+  }
+
   // MARK: Lining tracking up again after a turn
 
   private func pose(_ rotation: simd_float3x3, at p: SIMD3<Float>) -> simd_float4x4 {

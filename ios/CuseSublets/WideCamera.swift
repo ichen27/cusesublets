@@ -36,7 +36,9 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   override init() {
     super.init()
     previewLayer.session = session
-    previewLayer.videoGravity = .resizeAspectFill
+    // Show the whole frame, as the Camera app does at 0.5×. Filling a tall screen would crop
+    // the sides to about the 1× camera's view.
+    previewLayer.videoGravity = .resizeAspect
   }
 
   /// Starts the camera; `completion` gets an error message, or nil once frames are flowing.
@@ -187,7 +189,7 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   }
 }
 
-/// Shows the 0.5× camera full screen.
+/// Shows the whole 0.5× camera frame, centred.
 final class WideCameraView: UIView {
   private let layerToShow: AVCaptureVideoPreviewLayer
   init(layer: AVCaptureVideoPreviewLayer) {
