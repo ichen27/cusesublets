@@ -44,11 +44,13 @@
 		8E5CF358DEC748762C5BA0A7 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACAE3DA6881107AA07E3CACE /* PrivacyView.swift */; };
 		901A50D0ED3FE9D4C56E78A1 /* AppleLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF8FFF0EB781C16682C07A4 /* AppleLoginView.swift */; };
 		9DD2B8A9A28AEB8D9A083614 /* AccountDeletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028225F95C2A10B0FF48D1BF /* AccountDeletionView.swift */; };
+		A9EA2A05F0143E1C1A87E734 /* FloorPatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0B5E3F5345397207F667D7 /* FloorPatchTests.swift */; };
 		AD1BEEF9F46BC9B126C3D1FD /* CaptureCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2732EDEDBEDAC07B6ADFD693 /* CaptureCoverage.swift */; };
 		AEA9730F91345EB6F8029D16 /* CaptureStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23AA33469BE4D704B0A03D31 /* CaptureStorage.swift */; };
 		AFEAA05A837C89D5064F256F /* SpotPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2C2F0E2B7DD5106607EC52 /* SpotPreview.swift */; };
 		B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34400A81F415FE72E0616C7B /* ModelsTests.swift */; };
 		BE151DB85968FEB47E121E87 /* privacy.json in Resources */ = {isa = PBXBuildFile; fileRef = 01898D723ED9EF8CC50F921B /* privacy.json */; };
+		C1EDFF8E0D4C0FAD6EBF8698 /* FloorPatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A40EF311DFF1A90A0E526 /* FloorPatch.swift */; };
 		C3504A6BF4856D310C10D71B /* CaptureCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6573B854B8FE5BC5D6DB8447 /* CaptureCoverageTests.swift */; };
 		CD78D11985648775153E92DC /* PropertyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC8B3F801E16910756D3EE2 /* PropertyStore.swift */; };
 		D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */; };
@@ -145,7 +147,9 @@
 		F2DD0C534B5E075195EA6D1E /* BrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseView.swift; sourceTree = "<group>"; };
 		F6817F9190BF966336DFCF3A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyStudioTests.swift; sourceTree = "<group>"; };
+		FA5A40EF311DFF1A90A0E526 /* FloorPatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPatch.swift; sourceTree = "<group>"; };
 		FA5A5003EB90A1CA8A36386B /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
+		FE0B5E3F5345397207F667D7 /* FloorPatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPatchTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -179,6 +183,7 @@
 				2598614F789BB2443591BACE /* Discovery.swift */,
 				3FD685FF874F61D99FC41025 /* Editors.swift */,
 				21CCB35C1774E763375BEA9F /* FloorCoverage.swift */,
+				FA5A40EF311DFF1A90A0E526 /* FloorPatch.swift */,
 				FA5A5003EB90A1CA8A36386B /* InboxView.swift */,
 				F6817F9190BF966336DFCF3A /* Info.plist */,
 				25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */,
@@ -217,6 +222,7 @@
 				5C9DAD67BC8F7860D816A7E6 /* CaptureStreamTests.swift */,
 				116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */,
 				8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */,
+				FE0B5E3F5345397207F667D7 /* FloorPatchTests.swift */,
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
 				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
 				F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */,
@@ -391,6 +397,7 @@
 				0E5015F797D952DEB48E8ADC /* CaptureStreamTests.swift in Sources */,
 				2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */,
 				E6FD6C93A564F990FD6FC95E /* FloorCoverageTests.swift in Sources */,
+				A9EA2A05F0143E1C1A87E734 /* FloorPatchTests.swift in Sources */,
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
 				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
 				D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */,
@@ -421,6 +428,7 @@
 				40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */,
 				2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */,
 				550521CD4637D71B681D2A85 /* FloorCoverage.swift in Sources */,
+				C1EDFF8E0D4C0FAD6EBF8698 /* FloorPatch.swift in Sources */,
 				EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */,
 				68C2867E4804FF3C24E39266 /* MemberSafetyView.swift in Sources */,
 				E896FAAB55F922648B4D48E3 /* Models.swift in Sources */,

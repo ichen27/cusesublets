@@ -66,6 +66,56 @@ struct SpotOrientation {
     return asReferenceToDevice >= asDeviceToReference ? matrix.transpose : matrix
   }
 
+  /// The horizontal direction the person holding the phone faces, from the camera's rotation.
+  /// Level, that is where the camera looks. Aimed at the floor the top of the phone points
+  /// away from them, and aimed at the ceiling it points back at them. Nil when undecided.
+  static func facing(cameraToWorld: simd_float3x3) -> SIMD3<Float>? {
+    let forward = -cameraToWorld.columns.2
+    let top = -cameraToWorld.columns.0
+    let flat = SIMD3(forward.x, 0, forward.z) + SIMD3(top.x, 0, top.z) * -forward.y
+    return simd_length(flat) > 0.2 ? simd_normalize(flat) : nil
+  }
+
+  /// Where the phone is after a turn, given where it was when the turn began. The person pivots
+  /// on the spot with the phone held out in front, so it swings on a circle around them.
+  static func swung(
+    from origin: SIMD3<Float>, startFacing: SIMD3<Float>?, facing: SIMD3<Float>?, arm: Float
+  ) -> SIMD3<Float> {
+    guard let startFacing, let facing else { return origin }
+    return origin + (facing - startFacing) * arm
+  }
+
+  /// The correction for a tracking session restarted after a turn: it takes the poses the new
+  /// session reports to the tour's world. The new session knows which way is up but not which
+  /// way it faces or where it is, so the correction is a turn about the vertical through the
+  /// phone plus a shift.
+  /// - Parameters:
+  ///   - expected: the camera's rotation in the tour's world, from the motion sensors.
+  ///   - position: where the phone is in the tour's world.
+  ///   - reported: the camera pose the restarted session reports for the same moment.
+  static func realignment(
+    expected: simd_float3x3, position: SIMD3<Float>, reported: simd_float4x4
+  ) -> simd_float4x4 {
+    let seen = simd_float3x3(
+      SIMD3(reported.columns.0.x, reported.columns.0.y, reported.columns.0.z),
+      SIMD3(reported.columns.1.x, reported.columns.1.y, reported.columns.1.z),
+      SIMD3(reported.columns.2.x, reported.columns.2.y, reported.columns.2.z))
+    let delta = expected * seen.transpose
+    // The turn about +y that best matches `delta`.
+    let yaw = atan2(delta[2][0] - delta[0][2], delta[0][0] + delta[2][2])
+    let turn = simd_float3x3(simd_quatf(angle: yaw, axis: SIMD3(0, 1, 0)))
+    let here = SIMD3(reported.columns.3.x, reported.columns.3.y, reported.columns.3.z)
+    let shift = position - turn * here
+    return simd_float4x4(
+      SIMD4(turn.columns.0, 0), SIMD4(turn.columns.1, 0), SIMD4(turn.columns.2, 0),
+      SIMD4(shift, 1))
+  }
+
+  /// Degrees turned about the vertical by a correction from `realignment`.
+  static func yawDegrees(of correction: simd_float4x4) -> Float {
+    atan2(correction.columns.2.x, correction.columns.2.z) * 180 / .pi
+  }
+
   /// Where a world direction appears on a portrait screen showing the camera aspect-filled.
   /// - Parameters:
   ///   - focal: focal length in sensor-image pixels.

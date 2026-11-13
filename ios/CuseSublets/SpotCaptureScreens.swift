@@ -176,122 +176,230 @@ struct SpotTurnView: View {
   }
 }
 
-// MARK: - Capture map
+// MARK: - Between spots
 
+/// The live camera with the room captured so far above it, and the button that starts a spot.
 struct SpotMapView: View {
   @ObservedObject var recorder: SpotRecorder
   let review: () -> Void
   let close: () -> Void
 
   var body: some View {
-    ZStack(alignment: .top) {
-      Color.black.ignoresSafeArea()
-      SpotCameraSurface(recorder: recorder).frame(width: 1, height: 1).opacity(0.01)
-        .accessibilityHidden(true)
-      SpotMapCanvas(cells: recorder.mapCells, spots: recorder.spots, you: recorder.you)
-        .padding(.top, 110).padding(.bottom, 150)
-      VStack(spacing: 6) {
-        HStack {
-          Button("Close", systemImage: "chevron.left") { close() }.labelStyle(.iconOnly)
-            .font(.title2)
-          Spacer()
-          Button("Done") { review() }.buttonStyle(.borderedProminent).tint(.green)
-            .foregroundStyle(.black).disabled(recorder.spots.isEmpty)
+    GeometryReader { geometry in
+      ZStack {
+        SpotCameraSurface(recorder: recorder).ignoresSafeArea().accessibilityHidden(true)
+        VStack(spacing: 12) {
+          HStack {
+            Button("Close", systemImage: "chevron.left") { close() }.labelStyle(.iconOnly)
+              .font(.title2)
+            Spacer()
+            Text(recorder.spots.count == 1 ? "1 spot" : "\(recorder.spots.count) spots")
+              .font(.headline)
+            Spacer()
+            Button("Done") { review() }.buttonStyle(.borderedProminent).tint(.green)
+              .foregroundStyle(.black).disabled(recorder.spots.isEmpty)
+          }
+          .foregroundStyle(.white).padding(.horizontal).padding(.vertical, 8)
+          .background(.black.opacity(0.55))
+          if !recorder.spots.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+              Text("Captured so far").font(.subheadline.weight(.semibold))
+              SpotMapCanvas(
+                cells: recorder.mapCells, spots: recorder.spots, you: recorder.you,
+                patches: recorder.patches)
+              Text("Blue markers are your spots. The green dot is you.").font(.caption)
+                .foregroundStyle(.white.opacity(0.75))
+            }
+            .foregroundStyle(.white).padding(12)
+            .frame(height: geometry.size.height * 0.4)
+            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 12)
+            .accessibilityIdentifier("captured-so-far")
+          }
+          Spacer(minLength: 0)
+          VStack(spacing: 10) {
+            if recorder.spots.isEmpty {
+              Text(
+                "Stand where you want the first view. Put away personal papers and photos: each spot captures the whole room around you."
+              ).font(.callout).multilineTextAlignment(.center)
+            }
+            if let hint = recorder.hint {
+              Text(hint.message).font(.callout.weight(.semibold))
+                .accessibilityIdentifier("capture-hint")
+            }
+            if !recorder.message.isEmpty {
+              Text(recorder.message).font(.callout).multilineTextAlignment(.center)
+                .accessibilityIdentifier("spot-message")
+            }
+            Button {
+              recorder.beginSpot()
+            } label: {
+              Text("Start Capture").font(.title3.weight(.semibold)).frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 8))
+            .tint(.cuseButtonFill).controlSize(.large)
+            .accessibilityIdentifier("start-capture")
+            .disabled(!recorder.running || recorder.phase != .map || recorder.spotsRemaining == 0)
+          }
+          .foregroundStyle(.white).padding(16)
+          .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+          .padding(.horizontal, 12).padding(.bottom, 12)
         }
-        HStack {
-          Text("\(Int((recorder.coverage * 100).rounded()))% of room captured").font(.headline)
-            .accessibilityIdentifier("spot-coverage")
-          Spacer()
-          Text("\(recorder.spots.count) spots")
-        }
-        Text("Covers floor you've walked past; unseen areas don't count.").font(.caption)
-          .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-      }.padding().foregroundStyle(.white)
-      VStack(spacing: 12) {
-        Spacer()
-        if recorder.spots.isEmpty {
-          Text(
-            "Put away personal papers and photos. Each spot captures the whole room around you."
-          ).font(.callout).multilineTextAlignment(.center).foregroundStyle(.white).padding(.horizontal)
-        }
-        if let hint = recorder.hint {
-          Text(hint.message).font(.callout.weight(.semibold)).padding(.horizontal, 14)
-            .padding(.vertical, 8).background(.ultraThinMaterial, in: Capsule())
-        }
-        if !recorder.message.isEmpty {
-          Text(recorder.message).font(.callout).foregroundStyle(.white).multilineTextAlignment(
-            .center
-          ).padding(.horizontal).accessibilityIdentifier("spot-message")
-        }
-        Button {
-          recorder.beginSpot()
-        } label: {
-          Circle().fill(Color(white: 0.96)).frame(width: 72, height: 72)
-            .overlay(Circle().stroke(.white, lineWidth: 3).padding(-6))
-        }
-        .accessibilityLabel("Capture a spot here")
-        .disabled(!recorder.running || recorder.phase != .map || recorder.spotsRemaining == 0)
-        .padding(.bottom, 24)
       }
     }
+    .background(Color.black)
   }
 }
 
-/// The captured room from above: floor in its colours, obstacles darker, numbered spots, and
-/// where the phone is now. Fits everything captured into the available space.
+/// How map metres become screen points: everything given fits, north-up in world x and z.
+struct SpotMapLayout: Equatable {
+  let middle: SIMD2<Float>
+  let scale: CGFloat
+  let size: CGSize
+
+  init(points: [SIMD2<Float>], size: CGSize) {
+    var low = points.first ?? .zero
+    var high = low
+    for p in points {
+      low = simd_min(low, p)
+      high = simd_max(high, p)
+    }
+    let span = max(high.x - low.x, high.y - low.y, 2)
+    scale = min(size.width, size.height) / CGFloat(span + 0.6)
+    middle = (low + high) / 2
+    self.size = size
+  }
+
+  func screen(_ p: SIMD2<Float>) -> CGPoint {
+    CGPoint(
+      x: size.width / 2 + CGFloat(p.x - middle.x) * scale,
+      y: size.height / 2 + CGFloat(p.y - middle.y) * scale)
+  }
+
+  func world(_ point: CGPoint) -> SIMD2<Float> {
+    guard scale > 0 else { return middle }
+    return SIMD2(
+      middle.x + Float((point.x - size.width / 2) / scale),
+      middle.y + Float((point.y - size.height / 2) / scale))
+  }
+}
+
+/// The captured room from above: each spot's floor picture, the walked floor in its colours,
+/// numbered spots, and where the phone is now. Fits everything captured into the space. With
+/// `onMove`, a spot can be dragged to where it really was.
 struct SpotMapCanvas: View {
   let cells: [TopDownCell]
   let spots: [SpotRecord]
   let you: SIMD2<Float>?
+  var patches: [Int: UIImage] = [:]
+  var onMove: ((Int, SIMD2<Float>) -> Void)? = nil
+  /// Metres of floor picture around a spot that the map makes room for.
+  static let patchMargin: Float = 1.5
+  static let marker: CGFloat = 15
 
-  var body: some View {
-    Canvas { context, size in
-      let size2 = CoverageMap.voxelSize
-      var points = cells.map { (SIMD2<Float>(Float($0.x), Float($0.z)) + 0.5) * size2 }
-      points += spots.map { SIMD2(Float($0.position[0]), Float($0.position[2])) }
-      if let you { points.append(you) }
-      guard let first = points.first else { return }
-      var low = first
-      var high = first
-      for p in points {
-        low = simd_min(low, p)
-        high = simd_max(high, p)
-      }
-      let span = max(high.x - low.x, high.y - low.y, 2)
-      let scale = CGFloat(min(size.width, size.height)) / CGFloat(span + 0.6)
-      let middle = (low + high) / 2
-      func screen(_ p: SIMD2<Float>) -> CGPoint {
-        CGPoint(
-          x: size.width / 2 + CGFloat(p.x - middle.x) * scale,
-          y: size.height / 2 + CGFloat(p.y - middle.y) * scale)
-      }
-      let side = CGFloat(size2) * scale + 0.5
-      for cell in cells {
-        let c = (SIMD2<Float>(Float(cell.x), Float(cell.z)) + 0.5) * size2
-        let shade: Float = cell.obstacle ? 0.55 : 1
-        let color = Color(
-          red: Double(cell.color.x * shade), green: Double(cell.color.y * shade),
-          blue: Double(cell.color.z * shade))
-        let p = screen(c)
-        context.fill(
-          Path(CGRect(x: p.x - side / 2, y: p.y - side / 2, width: side, height: side)),
-          with: .color(color))
-      }
-      for spot in spots {
-        let p = screen(SIMD2(Float(spot.position[0]), Float(spot.position[2])))
-        context.fill(hexagon(at: p, radius: 15), with: .color(Color(red: 0.18, green: 0.29, blue: 1)))
-        context.draw(
-          Text("\(spot.spot)").font(.system(size: 14, weight: .bold)).foregroundStyle(.white),
-          at: p)
-      }
-      if let you {
-        let p = screen(you)
-        let dot = Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14))
-        context.fill(dot, with: .color(.green))
-        context.stroke(dot, with: .color(.white), lineWidth: 2)
+  private struct Drag: Equatable {
+    var spot: Int
+    var place: SIMD2<Float>
+    /// Frozen while dragging, so the map does not rescale under the finger.
+    var layout: SpotMapLayout
+  }
+  @State private var drag: Drag?
+
+  private func place(of spot: SpotRecord) -> SIMD2<Float> {
+    if let drag, drag.spot == spot.spot { return drag.place }
+    return SIMD2(Float(spot.position[0]), Float(spot.position[2]))
+  }
+
+  private func layout(in size: CGSize) -> SpotMapLayout {
+    if let drag, drag.layout.size == size { return drag.layout }
+    let size2 = CoverageMap.voxelSize
+    var points = cells.map { (SIMD2<Float>(Float($0.x), Float($0.z)) + 0.5) * size2 }
+    for spot in spots {
+      let p = SIMD2(Float(spot.position[0]), Float(spot.position[2]))
+      points.append(p)
+      if patches[spot.spot] != nil {
+        points.append(p - Self.patchMargin)
+        points.append(p + Self.patchMargin)
       }
     }
-    .accessibilityElement()
+    if let you { points.append(you) }
+    return SpotMapLayout(points: points, size: size)
+  }
+
+  var body: some View {
+    GeometryReader { geometry in
+      let layout = layout(in: geometry.size)
+      ZStack {
+        Canvas { context, _ in
+          guard !spots.isEmpty || !cells.isEmpty || you != nil else { return }
+          // Floor pictures first, the spot being dragged last so it stays on top.
+          let order = spots.sorted { a, b in
+            (drag?.spot == a.spot ? 1 : 0, a.spot) < (drag?.spot == b.spot ? 1 : 0, b.spot)
+          }
+          for spot in order {
+            guard let picture = patches[spot.spot] else { continue }
+            let centre = layout.screen(place(of: spot))
+            let half = CGFloat(FloorPatch.radius) * layout.scale
+            context.draw(
+              Image(uiImage: picture),
+              in: CGRect(x: centre.x - half, y: centre.y - half, width: half * 2, height: half * 2))
+          }
+          let size2 = CoverageMap.voxelSize
+          let side = CGFloat(size2) * layout.scale + 0.5
+          for cell in cells {
+            let c = (SIMD2<Float>(Float(cell.x), Float(cell.z)) + 0.5) * size2
+            let shade: Float = cell.obstacle ? 0.55 : 1
+            let color = Color(
+              red: Double(cell.color.x * shade), green: Double(cell.color.y * shade),
+              blue: Double(cell.color.z * shade))
+            let p = layout.screen(c)
+            context.fill(
+              Path(CGRect(x: p.x - side / 2, y: p.y - side / 2, width: side, height: side)),
+              with: .color(color.opacity(patches.isEmpty ? 1 : 0.5)))
+          }
+          for spot in spots {
+            let p = layout.screen(place(of: spot))
+            let shape = hexagon(at: p, radius: Self.marker)
+            context.fill(shape, with: .color(Color(red: 0.18, green: 0.29, blue: 1)))
+            context.stroke(shape, with: .color(.white), lineWidth: drag?.spot == spot.spot ? 3 : 1.5)
+            context.draw(
+              Text("\(spot.spot)").font(.system(size: 14, weight: .bold)).foregroundStyle(.white),
+              at: p)
+          }
+          if let you {
+            let p = layout.screen(you)
+            let dot = Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14))
+            context.fill(dot, with: .color(.green))
+            context.stroke(dot, with: .color(.white), lineWidth: 2)
+          }
+        }
+        if let onMove {
+          ForEach(spots, id: \.spot) { spot in
+            // An invisible handle over the marker, large enough for a finger.
+            Color.clear.contentShape(Circle()).frame(width: 48, height: 48)
+              .position(layout.screen(place(of: spot)))
+              .highPriorityGesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .named("spot-map"))
+                  .onChanged { value in
+                    let frozen = drag?.layout ?? layout
+                    drag = Drag(spot: spot.spot, place: frozen.world(value.location), layout: frozen)
+                  }
+                  .onEnded { value in
+                    let frozen = drag?.layout ?? layout
+                    drag = nil
+                    onMove(spot.spot, frozen.world(value.location))
+                  }
+              )
+              .accessibilityLabel("Spot \(spot.spot)")
+              .accessibilityHint("Drag to move this spot on the map")
+          }
+        }
+      }
+      .coordinateSpace(name: "spot-map")
+    }
+    .clipped()
+    .accessibilityElement(children: onMove == nil ? .ignore : .contain)
     .accessibilityLabel("Capture map with \(spots.count) spots")
   }
 
@@ -321,9 +429,13 @@ struct SpotReviewView: View {
     NavigationStack {
       List {
         Section {
-          SpotMapCanvas(cells: recorder.mapCells, spots: recorder.spots, you: nil)
-            .frame(height: 220).listRowBackground(Color.black)
-          Text("\(Int((recorder.coverage * 100).rounded()))% of room captured · \(recorder.spots.count) spots")
+          SpotMapCanvas(
+            cells: recorder.mapCells, spots: recorder.spots, you: nil, patches: recorder.patches,
+            onMove: { recorder.moveSpot($0, to: $1) }
+          )
+          .frame(height: 280).listRowBackground(Color.black)
+          Text("\(recorder.spots.count) spots. Drag a marker if a spot is in the wrong place.")
+            .font(.subheadline)
         }
         Section("Spots") {
           ForEach(recorder.spots, id: \.spot) { spot in

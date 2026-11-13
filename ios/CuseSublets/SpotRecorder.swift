@@ -16,6 +16,10 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   static let walkWidth: CGFloat = 1920
   /// Used when no floor has been seen yet: typical phone height above the floor.
   static let assumedEyeHeight = 1.45
+  /// Metres from the person's pivot to the phone held out in front of them.
+  static let armLength: Float = 0.35
+  /// Seconds of ARKit frames ignored after its origin is moved, while the change takes effect.
+  static let settleTime = 0.3
 
   @Published private(set) var phase = SpotPhase.map
   @Published private(set) var turn: SpotTurn?
@@ -26,6 +30,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published private(set) var you: SIMD2<Float>?
   @Published private(set) var running = false
   @Published private(set) var requestingPermission = false
+  /// Top-down floor pictures of the finished spots, by spot number.
+  @Published private(set) var patches: [Int: UIImage] = [:]
   @Published var message = ""
 
   let view = ARSCNView(frame: .zero)
@@ -55,6 +61,12 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private var trackingPaused = false
   private var orientation: SpotOrientation?
   private var spotOrigin = SIMD3<Float>.zero
+  private var startFacing: SIMD3<Float>?
+  /// Set while ARKit, restarted after a turn, still has to be lined up with the tour's world.
+  private var realign: (orientation: SpotOrientation, origin: SIMD3<Float>, facing: SIMD3<Float>?)?
+  private var settleUntil = -Double.infinity
+  /// The correction applied after the previous turn, recorded with the next spot.
+  private var lastRealign: (yaw: Double, shift: Double)?
   private var exposureLocked = false
   private var lens: (focal: Float, image: CGSize)?
   private var pendingSlices = 0
@@ -72,6 +84,13 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     session = SpotSession(completed: saved.map(\.spot))
     super.init()
     spots = saved
+    let folder = self.folder
+    if !saved.isEmpty {
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        let pictures = FloorPatch.load(folder: folder, spots: saved, frames: frames)
+        DispatchQueue.main.async { self?.patches = pictures }
+      }
+    }
     view.session.delegate = self
     view.session.delegateQueue = .main
     coverageEngine.onMap = { [weak self] cells, floor in
@@ -158,6 +177,10 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
 
   func beginSpot() {
     guard running, phase == .map else { return }
+    guard realign == nil else {
+      message = "Hold still for a moment so the camera can find its place."
+      return
+    }
     var tracked = false
     if case .normal = view.session.currentFrame?.camera.trackingState { tracked = true }
     guard tracked, let frame = view.session.currentFrame, let sample = motion.deviceMotion else {
@@ -193,6 +216,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       self.exposureLocked = false
       self.lens = nil
       self.spotOrigin = origin
+      self.startFacing = SpotOrientation.facing(cameraToWorld: cameraToWorld)
       self.orientation = SpotOrientation(cameraToWorld: cameraToWorld, deviceToReference: attitude)
       self.turn = SpotTurn(startYaw: atan2(-forward.x, -forward.z))
       self.coverageEngine.setOverlayHidden(true)
@@ -232,6 +256,19 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       try SpotTake.deleteSpot(number, in: folder)
       session.deleteSpot(number)
       spots.removeAll { $0.spot == number }
+      patches[number] = nil
+      refreshCoverage()
+    } catch { message = error.localizedDescription }
+  }
+
+  /// Puts a spot where the person dragged it on the map (metres, world x and z).
+  func moveSpot(_ number: Int, to place: SIMD2<Float>) {
+    do {
+      try SpotTake.moveSpot(number, to: place, in: folder)
+      if let index = spots.firstIndex(where: { $0.spot == number }) {
+        spots[index].position[0] = Double(place.x)
+        spots[index].position[2] = Double(place.y)
+      }
       refreshCoverage()
     } catch { message = error.localizedDescription }
   }
@@ -270,6 +307,30 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
 
   func session(_ session: ARSession, didUpdate frame: ARFrame) {
     guard running, !trackingPaused else { return }
+    if let pending = realign {
+      // ARKit restarted with a new origin. Once it tracks, line it up with the tour's world:
+      // the motion sensors kept the phone's heading through the turn.
+      guard case .normal = frame.camera.trackingState, let sample = motion.deviceMotion else {
+        show(.establishTracking, at: frame.timestamp - (startTime ?? frame.timestamp))
+        return
+      }
+      let expected = pending.orientation.cameraToWorld(SpotOrientation.deviceToReference(sample))
+      let place = SpotOrientation.swung(
+        from: pending.origin, startFacing: pending.facing,
+        facing: SpotOrientation.facing(cameraToWorld: expected), arm: Self.armLength)
+      let correction = SpotOrientation.realignment(
+        expected: expected, position: place, reported: frame.camera.transform)
+      session.setWorldOrigin(relativeTransform: correction.inverse)
+      let shift = correction.columns.3
+      lastRealign = (
+        Double(SpotOrientation.yawDegrees(of: correction)),
+        Double(simd_length(SIMD3(shift.x, shift.y, shift.z)))
+      )
+      realign = nil
+      settleUntil = frame.timestamp + Self.settleTime
+      return
+    }
+    guard frame.timestamp >= settleUntil else { return }
     coverageEngine.frameDidUpdate(view: view)
     if startTime == nil { startTime = frame.timestamp }
     let elapsed = frame.timestamp - (startTime ?? frame.timestamp)
@@ -445,11 +506,14 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       position: [Double(origin.x), Double(origin.y), Double(origin.z)],
       floorY: floor, startYaw: Double(turn?.startYaw ?? 0),
       exposureDuration: lockedExposure.duration, iso: lockedExposure.iso, lens: "ultrawide",
-      gravityMismatch: orientation.map { Double($0.gravityMismatchDegrees) })
+      gravityMismatch: orientation.map { Double($0.gravityMismatchDegrees) },
+      resumeYaw: lastRealign?.yaw, resumeShift: lastRealign?.shift)
     do {
       try SpotTake.appendSpot(record, to: folder)
       spots.append(record)
       session.spotFinished()
+      message = "Spot \(number) captured. Walk to the next spot, then tap Start Capture."
+      drawFloor(of: record)
     } catch {
       message = error.localizedDescription
       session.abandonSpot()
@@ -483,14 +547,38 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     if hint != shown { hint = shown }
   }
 
-  /// Returns the camera from the 0.5× lens to ARKit. ARKit keeps its map across the pause and
-  /// finds its place again, so later spots share the first spot's coordinates.
+  /// Makes the top-down floor picture of a finished spot, off the main thread.
+  private func drawFloor(of spot: SpotRecord) {
+    let folder = self.folder
+    writer.afterPendingWrites { [weak self] _ in
+      DispatchQueue.global(qos: .userInitiated).async {
+        let frames = (try? PhotoRecorder.savedFrames(in: folder)) ?? []
+        let picture = FloorPatch.make(spot: spot, frames: frames, folder: folder)
+        DispatchQueue.main.async {
+          guard let self, self.spots.contains(where: { $0.spot == spot.spot }) else { return }
+          self.patches[spot.spot] = picture
+        }
+      }
+    }
+  }
+
+  /// Returns the camera from the 0.5× lens to ARKit. A paused session resumes as if the phone
+  /// had not moved, which put later spots in the wrong place, so tracking starts afresh and the
+  /// first tracked frame is lined up with the tour's world (see `session(_:didUpdate:)`).
   private func resumeTracking() {
     guard trackingPaused else { return }
+    let pending = orientation.map { ($0, spotOrigin, startFacing) }
     orientation = nil
     wide.stop { [weak self] in
       guard let self, self.running, let configuration = self.arConfiguration else { return }
-      self.view.session.run(configuration)
+      if let pending {
+        self.realign = (pending.0, pending.1, pending.2)
+        // The old floor planes belong to the old origin.
+        self.planes = [:]
+        self.view.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+      } else {
+        self.view.session.run(configuration)
+      }
       self.trackingPaused = false
     }
   }

@@ -75,4 +75,65 @@ final class SpotOrientationTests: XCTestCase {
       screen: screen)
     XCTAssertFalse(behind.ahead)
   }
+
+  // MARK: Lining tracking up again after a turn
+
+  private func pose(_ rotation: simd_float3x3, at p: SIMD3<Float>) -> simd_float4x4 {
+    simd_float4x4(
+      SIMD4(rotation.columns.0, 0), SIMD4(rotation.columns.1, 0), SIMD4(rotation.columns.2, 0),
+      SIMD4(p, 1))
+  }
+
+  private func turn(_ degrees: Float) -> simd_float3x3 {
+    simd_float3x3(simd_quatf(angle: degrees * .pi / 180, axis: SIMD3(0, 1, 0)))
+  }
+
+  func testRealignmentUndoesARestartedSessionsTurnAndShift() {
+    // The camera really is here, tilted down a little and facing 40° left.
+    let tilt = simd_float3x3(simd_quatf(angle: -0.5, axis: SIMD3(1, 0, 0)))
+    let truth = turn(40) * tilt
+    let place = SIMD3<Float>(2, 1.4, -3)
+    // The restarted session calls its own heading 0 and starts near its own origin.
+    let reported = pose(turn(-75) * truth, at: SIMD3(0.1, 0.02, -0.05))
+    let fix = SpotOrientation.realignment(expected: truth, position: place, reported: reported)
+    XCTAssertEqual(SpotOrientation.yawDegrees(of: fix), 75, accuracy: 0.01)
+    let fixed = fix * reported
+    XCTAssertEqual(simd_distance(SIMD3(fixed.columns.3.x, fixed.columns.3.y, fixed.columns.3.z), place), 0, accuracy: 1e-4)
+    XCTAssertEqual(simd_distance(SIMD3(fixed.columns.2.x, fixed.columns.2.y, fixed.columns.2.z), truth.columns.2), 0, accuracy: 1e-4)
+    // A point one metre in front of the reported camera lands one metre in front of the true one.
+    let ahead = fix * (reported * SIMD4(0, 0, -1, 1))
+    XCTAssertEqual(simd_distance(SIMD3(ahead.x, ahead.y, ahead.z), place - truth.columns.2), 0, accuracy: 1e-4)
+  }
+
+  func testRealignmentOnlyTurnsAboutTheVertical() {
+    // Sensor noise tips the expected rotation slightly; the fix must not tilt the world.
+    let truth = turn(10)
+    let noisy = simd_float3x3(simd_quatf(angle: 0.03, axis: SIMD3(1, 0, 0))) * truth
+    let fix = SpotOrientation.realignment(
+      expected: noisy, position: .zero, reported: pose(turn(-20) * truth, at: .zero))
+    XCTAssertEqual(fix.columns.1.y, 1, accuracy: 1e-6)
+    XCTAssertEqual(SpotOrientation.yawDegrees(of: fix), 20, accuracy: 0.5)
+  }
+
+  func testFacingFollowsThePersonWhateverThePhoneIsAimedAt() {
+    // Upright and level, looking to −z.
+    let level = simd_float3x3(SIMD3(0, -1, 0), SIMD3(1, 0, 0), SIMD3(0, 0, 1))
+    let ahead = SIMD3<Float>(0, 0, -1)
+    XCTAssertEqual(simd_distance(SpotOrientation.facing(cameraToWorld: level)!, ahead), 0, accuracy: 1e-5)
+    // Tipped forward to the floor, then back to the ceiling: the person still faces −z.
+    let floor = simd_float3x3(simd_quatf(angle: -.pi / 2, axis: SIMD3(1, 0, 0))) * level
+    let ceiling = simd_float3x3(simd_quatf(angle: .pi / 2, axis: SIMD3(1, 0, 0))) * level
+    XCTAssertEqual(simd_distance(SpotOrientation.facing(cameraToWorld: floor)!, ahead), 0, accuracy: 1e-4)
+    XCTAssertEqual(simd_distance(SpotOrientation.facing(cameraToWorld: ceiling)!, ahead), 0, accuracy: 1e-4)
+  }
+
+  func testThePhoneSwingsAroundThePersonAsTheyTurn() {
+    let origin = SIMD3<Float>(1, 1.4, 1)
+    // Facing −z at the start, +x at the end: the phone moved from in front to their right.
+    let end = SpotOrientation.swung(
+      from: origin, startFacing: SIMD3(0, 0, -1), facing: SIMD3(1, 0, 0), arm: 0.35)
+    XCTAssertEqual(simd_distance(end, SIMD3(1.35, 1.4, 1.35)), 0, accuracy: 1e-5)
+    XCTAssertEqual(
+      SpotOrientation.swung(from: origin, startFacing: nil, facing: SIMD3(1, 0, 0), arm: 0.35), origin)
+  }
 }

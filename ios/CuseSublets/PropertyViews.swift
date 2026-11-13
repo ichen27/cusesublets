@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import simd
 
 /// The scanning app's home: every property, and where to add one.
 struct PropertiesView: View {
@@ -94,6 +95,9 @@ struct PropertyDetailView: View {
   let id: String
   @Environment(\.dismiss) private var dismiss
   @State private var spots: [SpotRecord] = []
+  @State private var patches: [Int: UIImage] = [:]
+  /// A spot was dragged since the tour was last generated.
+  @State private var moved = false
   @State private var remote: StudioProperty?
   @State private var scanning = false
   @State private var viewing = false
@@ -136,7 +140,7 @@ struct PropertyDetailView: View {
         await loadRemote()
       }
     }
-    .fullScreenCover(isPresented: $scanning, onDismiss: { spots = PropertyScan.spots(for: id) }) {
+    .fullScreenCover(isPresented: $scanning, onDismiss: { Task { await loadScan() } }) {
       if let property {
         SpotCaptureScreen(recorder: SpotRecorder(draft: PropertyStore.draft(for: property))) {
           archive in Task { await upload(archive) }
@@ -166,6 +170,8 @@ struct PropertyDetailView: View {
       Button("Discard this scan and start over", role: .destructive) {
         try? FileManager.default.removeItem(at: PropertyStore.captureFolder(id))
         spots = []
+        patches = [:]
+        moved = false
         scanning = true
       }
     } message: {
@@ -212,7 +218,7 @@ struct PropertyDetailView: View {
       GuideStep(symbol: "doc.text", text: "Put away personal papers, photos and screens.")
       GuideStep(
         symbol: "figure.stand",
-        text: "Stand in the middle of a room. Each spot takes 8 photos: six around you, then the ceiling and the floor.")
+        text: "Stand in the middle of a room. Each spot takes 8 photos: six around you, then the ceiling and the floor. You are left out of the picture.")
       GuideStep(
         symbol: "map",
         text: "Walk to the next spot with the phone up. Two or three spots cover most rooms; add one in each doorway.")
@@ -228,8 +234,13 @@ struct PropertyDetailView: View {
 
   private var scanSection: some View {
     Section("Scan on this iPhone") {
-      SpotMapCanvas(cells: [], spots: spots, you: nil).frame(height: 180)
-        .listRowBackground(Color.black)
+      SpotMapCanvas(cells: [], spots: spots, you: nil, patches: patches, onMove: move)
+        .frame(height: 280).listRowBackground(Color.black)
+      Text(
+        moved
+          ? "Spot moved. Generate again to update the tour."
+          : "The floor each spot captured, from above. Drag a marker if a spot is in the wrong place."
+      ).font(.footnote).foregroundStyle(moved ? Color.cuseOrange : .secondary)
       ForEach(spots, id: \.spot) { spot in
         HStack {
           Text("Spot \(spot.spot)")
@@ -253,8 +264,32 @@ struct PropertyDetailView: View {
   // MARK: Actions
 
   private func refresh() async {
-    spots = PropertyScan.spots(for: id)
+    await loadScan()
     await loadRemote()
+  }
+
+  /// Reads the scan saved on this iPhone and its floor pictures.
+  private func loadScan() async {
+    let id = self.id
+    let scan = await Task.detached(priority: .userInitiated) {
+      let frames = PropertyScan.frames(for: id)
+      let spots = SpotTake.savedSpots(in: PropertyStore.captureFolder(id), frames: frames)
+      return (
+        spots,
+        FloorPatch.load(folder: PropertyStore.captureFolder(id), spots: spots, frames: frames)
+      )
+    }.value
+    spots = scan.0
+    patches = scan.1
+  }
+
+  private func move(_ spot: Int, to place: SIMD2<Float>) {
+    do {
+      try SpotTake.moveSpot(spot, to: place, in: PropertyStore.captureFolder(id))
+      spots = PropertyScan.spots(for: id)
+      moved = true
+      problem = ""
+    } catch { problem = error.localizedDescription }
   }
 
   private func loadRemote() async {
@@ -294,6 +329,7 @@ struct PropertyDetailView: View {
     do {
       remote = try await client.upload(archive: archive, id: id, name: property?.name ?? "")
       store.update(id) { $0.uploaded = true }
+      moved = false
     } catch {
       problem = error.localizedDescription
     }
