@@ -33,10 +33,25 @@ def above_nadir(width=WIDTH):
     return np.repeat((rows > -80)[:, None], width, 1)
 
 
+def photographed(slices, width=WIDTH):
+    """Above the nadir disc, minus the floor behind the person, which is filled in rather than
+    photographed: the floor shot's person side, below where the level shots reach."""
+    d = ss.directions(width, width // 2)
+    mask = above_nadir(width)
+    for s in slices:
+        if s.R[1, 2] < np.sin(ss.DOWN_PITCH):
+            mask &= ~((ss._body_keep(d, s.R) < 1) & (d[..., 1] < -np.sin(np.radians(45))))
+    return mask
+
+
+PERSON_BGR = (0, 0, 255)
+
+
 class Capture:
     """Writes one synthetic spot to disk and returns its Slice list."""
 
-    def __init__(self, root, rotations=None, noise=None, brighten=None, drop_ring=None, roll=0.0):
+    def __init__(self, root, rotations=None, noise=None, brighten=None, drop_ring=None, roll=0.0,
+                 person=False):
         self.root = Path(root)
         (self.root / 'images').mkdir(parents=True, exist_ok=True)
         targets = syn.layout()
@@ -48,6 +63,9 @@ class Capture:
                 continue
             path = f'images/{len(self.frames):05d}.jpg'
             image = syn.render_slice(SPHERE, rotation)
+            if person and ring == 2:
+                # Legs fill the floor shot from just past straight down to the phone's bottom edge.
+                image[:, syn.SLICE_WIDTH // 2 + 100:] = PERSON_BGR
             if brighten and index in brighten:
                 image = np.clip(image.astype(np.float32) * brighten[index], 0, 255).astype(np.uint8)
             cv2.imwrite(str(self.root / path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
@@ -71,10 +89,38 @@ class Stitching(unittest.TestCase):
         self.temp.cleanup()
 
     def test_stitch_recovers_sphere(self):
-        image, holes = ss.stitch(Capture(self.root).slices(), width=WIDTH, refine=False)
+        slices = Capture(self.root).slices()
+        image, holes = ss.stitch(slices, width=WIDTH, refine=False)
         self.assertEqual(image.shape, (WIDTH // 2, WIDTH, 3))
         self.assertEqual(holes, 0)
-        self.assertGreaterEqual(psnr(image, SPHERE, above_nadir()), 30)
+        self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
+
+    def test_the_person_holding_the_phone_is_left_out(self):
+        slices = Capture(self.root, person=True).slices()
+        image, holes = ss.stitch(slices, width=WIDTH, refine=False)
+
+        def red(picture):
+            b, g, r = (picture[..., i].astype(int) for i in range(3))
+            return int(((r > 180) & (g < 80) & (b < 80)).sum())
+
+        # The legs cover a sixth of the floor shot; none of that red may arrive. (The sphere
+        # has a few red marks of its own.)
+        self.assertLessEqual(red(image), red(SPHERE) + 50)
+        # The floor behind them is filled in, not reported as a failed capture.
+        self.assertEqual(holes, 0)
+        self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
+
+    def test_the_floor_behind_the_person_is_filled_smoothly(self):
+        slices = Capture(self.root, person=True).slices()
+        image, _ = ss.stitch(slices, width=WIDTH, refine=False)
+        # Well below the level shots' reach (54° down), on the person's side of the floor shot.
+        d = ss.directions(WIDTH, WIDTH // 2)
+        filled = above_nadir() & (ss._body_keep(d, slices[-1].R) == 0) & (d[..., 1] < -np.sin(np.radians(58)))
+        self.assertGreater(int(filled.sum()), 0)
+        # No black or unpainted pixels, and none of the checkerboard's hard edges.
+        self.assertGreater(int(image[filled].min(axis=-1).min()), 20)
+        edges = np.abs(np.diff(image.astype(int), axis=1)).max(-1)
+        self.assertLess(float(edges[filled[:, 1:] & filled[:, :-1]].mean()), 3)
 
     def test_nadir_is_a_neutral_disc(self):
         image, _ = ss.stitch(Capture(self.root).slices(), width=WIDTH, refine=False)
@@ -104,10 +150,10 @@ class Stitching(unittest.TestCase):
         self.assertAlmostEqual(gains[5] / np.median(gains), 1 / 1.3, delta=0.05)
 
     def test_rolled_slices_stitch(self):
-        image, holes = ss.stitch(Capture(self.root, roll=np.radians(20)).slices(), width=WIDTH,
-                                 refine=False)
+        slices = Capture(self.root, roll=np.radians(20)).slices()
+        image, holes = ss.stitch(slices, width=WIDTH, refine=False)
         self.assertLessEqual(holes, ss.MAX_HOLES)
-        self.assertGreaterEqual(psnr(image, SPHERE, above_nadir()), 30)
+        self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
 
     def test_refinement_compares_each_slice_with_few_neighbours(self):
         # 24 slices all facing nearly the same way could pair 276 times; the cap keeps it linear.

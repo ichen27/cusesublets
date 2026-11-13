@@ -31,6 +31,17 @@ NADIR_BGR = (43, 43, 43)
 NADIR_PITCH = np.radians(-80)
 NADIR_FEATHER = np.radians(2)
 MAX_HOLES = 0.02
+# A slice aimed below this pitch is the floor shot. The person holding the phone stands on the
+# side its bottom edge points to (camera +x), so that side of the shot shows their legs.
+DOWN_PITCH = np.radians(-60)
+# Floor distance towards the person, per metre of camera height, where the floor shot starts
+# to be dropped and where it is dropped entirely (about 2° and 5° past straight down).
+BODY_START, BODY_FULL = 0.03, 0.09
+# Feather weight of the other slices at which they fully replace the floor shot. They are
+# taken with the person behind the camera, so they win wherever they reach.
+LEVEL_FULL = 0.25
+# Unphotographed areas are filled from a copy this many times smaller, then blurred.
+FILL_SHRINK = 8
 BLOCK_ROWS = 256
 SLICE_NAME = re.compile(r'^images/\d{5}\.jpg$')
 
@@ -322,10 +333,50 @@ def exposure_gains(slices, rotations, images=None, sigma_n=10.0, sigma_g=0.5):
     return gains / gains.mean()
 
 
+def _body_keep(d, R):
+    """Weight (0 to 1) for a floor shot's view of world directions `d`: 0 where the person
+    holding the phone is in the way. `R` is the shot's camera-to-world rotation."""
+    toward = np.array([R[0, 0], 0.0, R[2, 0]])
+    length = np.linalg.norm(toward)
+    if length < 1e-6:
+        return np.ones(d.shape[:2], np.float32)
+    drop = np.maximum(-d[..., 1], 1e-6)
+    offset = (d @ (toward / length)) / drop
+    t = np.clip((offset - BODY_START) / (BODY_FULL - BODY_START), 0, 1)
+    return np.where(d[..., 1] < 0, 1 - t * t * (3 - 2 * t), 1).astype(np.float32)
+
+
+def _fill(image, holes):
+    """Paints `holes` with the blurred colours around them. Used where nothing was
+    photographed: mostly the floor behind the person, which no shot can see."""
+    import cv2
+    height, width = holes.shape
+    small = (width // FILL_SHRINK, height // FILL_SHRINK)
+    valid = cv2.resize((~holes).astype(np.float32), small, interpolation=cv2.INTER_AREA)
+    colour = cv2.resize(image.astype(np.float32) * (~holes)[..., None], small, interpolation=cv2.INTER_AREA)
+    colour = np.clip(colour / np.maximum(valid, 1e-3)[..., None] + 0.5, 0, 255).astype(np.uint8)
+    missing = (valid < 0.5).astype(np.uint8)
+    # The panorama wraps around, so let the fill see across the left and right edges.
+    pad = small[0] // 4
+    colour = np.concatenate([colour[:, -pad:], colour, colour[:, :pad]], 1)
+    missing = np.concatenate([missing[:, -pad:], missing, missing[:, :pad]], 1)
+    filled = cv2.inpaint(colour, missing, 5, cv2.INPAINT_TELEA)
+    filled = cv2.GaussianBlur(filled, (0, 0), 6, borderType=cv2.BORDER_REPLICATE)[:, pad:-pad]
+    filled = cv2.resize(filled, (width, height), interpolation=cv2.INTER_CUBIC)
+    # Soften the border only on the filled side, so photographed pixels stay sharp.
+    alpha = cv2.GaussianBlur(holes.astype(np.float32), (0, 0), FILL_SHRINK)
+    alpha = np.where(holes, np.clip(alpha * 2, 0, 1), 0)[..., None]
+    return np.clip(image * (1 - alpha) + filled * alpha + 0.5, 0, 255).astype(np.uint8)
+
+
 def stitch(slices, width=4096, refine=True):
     """Returns (equirect BGR uint8 of width × width/2, hole fraction above the nadir disc).
-    Holes above −80° pitch are inpainted and counted; below it a neutral disc hides the floor
-    under the person's feet."""
+
+    The floor shot is used only where no other slice reaches and only on the side away from
+    the person holding the phone, so they stay out of the panorama. The floor behind them,
+    which no shot sees, is filled with blurred floor colour and is not counted as a hole. Other
+    holes above −80° pitch are filled the same way and counted; below it a neutral disc hides
+    the floor under the person's feet."""
     import cv2
     height = width // 2
     images = _images(slices)
@@ -333,32 +384,45 @@ def stitch(slices, width=4096, refine=True):
     gains = exposure_gains(slices, rotations, images=images)
     out = np.zeros((height, width, 3), np.float32)
     covered = np.zeros((height, width), bool)
+    hidden = np.zeros((height, width), bool)
     for top in range(0, height, BLOCK_ROWS):
         rows = np.arange(top, min(height, top + BLOCK_ROWS))
         d = directions(width, height, rows)
-        acc = np.zeros(d.shape, np.float32)
-        weight = np.zeros(d.shape[:2], np.float32)
+        # [0] the slices taken with the person behind the camera, [1] floor shots.
+        acc = [np.zeros(d.shape, np.float32), np.zeros(d.shape, np.float32)]
+        weight = [np.zeros(d.shape[:2], np.float32), np.zeros(d.shape[:2], np.float32)]
+        behind = np.zeros(d.shape[:2], bool)
         for s, image, R, gain in zip(slices, images, rotations, gains):
             u, v, inside = _project(d, s.K, R, s.width, s.height)
             if not inside.any():
                 continue
             w = np.where(inside, _feather(u, v, s.width, s.height), 0).astype(np.float32)
+            down = int(R[1, 2] < np.sin(DOWN_PITCH))
+            if down:
+                keep = _body_keep(d, R)
+                behind |= inside & (keep < 1)
+                w *= keep
             # Sample the 8-bit slice and widen only this block, so peak memory stays near the
             # decoded slices themselves rather than float copies of every one.
             sample = cv2.remap(image, (u - 0.5).astype(np.float32), (v - 0.5).astype(np.float32),
                                cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-            acc += sample.astype(np.float32) * (w * gain)[..., None]
-            weight += w
-        has = weight > 1e-6
-        out[rows] = np.where(has[..., None], acc / np.maximum(weight, 1e-6)[..., None], 0)
+            acc[down] += sample.astype(np.float32) * (w * gain)[..., None]
+            weight[down] += w
+        level = acc[0] / np.maximum(weight[0], 1e-6)[..., None]
+        floor = acc[1] / np.maximum(weight[1], 1e-6)[..., None]
+        share = np.where(weight[1] > 1e-6, np.clip(weight[0] / LEVEL_FULL, 0, 1), 1)[..., None]
+        has = (weight[0] > 1e-6) | (weight[1] > 1e-6)
+        out[rows] = np.where(has[..., None], level * share + floor * (1 - share), 0)
         covered[rows] = has
+        hidden[rows] = behind & ~has
     pitch = np.pi / 2 - (np.arange(height) + 0.5) / height * np.pi
     above = np.repeat((pitch >= NADIR_PITCH)[:, None], width, 1)
     holes = above & ~covered
-    hole_fraction = float(holes.sum() / above.sum())
+    hole_fraction = float((holes & ~hidden).sum() / above.sum())
     image = np.clip(out + 0.5, 0, 255).astype(np.uint8)
     if holes.any():
-        image = cv2.inpaint(image, holes.astype(np.uint8), 3, cv2.INPAINT_TELEA)
+        # Everything unphotographed is unknown to the fill, including under the disc.
+        image = _fill(image, ~covered)
     # The neutral disc: solid below −82°, blended over the 2° above it.
     alpha = np.clip((NADIR_PITCH - pitch) / NADIR_FEATHER, 0, 1)[:, None, None]
     alpha = np.where((~covered & ~above)[..., None], 1, np.broadcast_to(alpha, (height, width, 1)))
