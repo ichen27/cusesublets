@@ -207,7 +207,7 @@ struct SpotMapView: View {
               SpotMapCanvas(
                 cells: recorder.mapCells, spots: recorder.spots, you: recorder.you,
                 patches: recorder.patches)
-              Text("Blue markers are your spots. The green dot is you.").font(.caption)
+              Text("A rough sketch of the rooms from above. Blue markers are your spots; the green dot is you.").font(.caption)
                 .foregroundStyle(.white.opacity(0.75))
             }
             .foregroundStyle(.white).padding(12)
@@ -285,7 +285,7 @@ struct SpotMapLayout: Equatable {
   }
 }
 
-/// The captured room from above: each spot's floor picture, the walked floor in its colours,
+/// The captured room from above: each spot's sketch of the room around it, the walked floor in its colours,
 /// numbered spots, and where the phone is now. Fits everything captured into the space. With
 /// `onMove`, a spot can be dragged to where it really was.
 struct SpotMapCanvas: View {
@@ -295,7 +295,7 @@ struct SpotMapCanvas: View {
   var patches: [Int: UIImage] = [:]
   var onMove: ((Int, SIMD2<Float>) -> Void)? = nil
   /// Metres of floor picture around a spot that the map makes room for.
-  static let patchMargin: Float = 1.5
+  static let patchMargin: Float = 2.5
   static let marker: CGFloat = 15
 
   private struct Drag: Equatable {

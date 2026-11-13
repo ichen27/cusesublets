@@ -239,7 +239,7 @@ struct PropertyDetailView: View {
       Text(
         moved
           ? "Spot moved. Generate again to update the tour."
-          : "The floor each spot captured, from above. Drag a marker if a spot is in the wrong place."
+          : "A rough sketch of what each spot captured, from above. Drag a marker if a spot is in the wrong place."
       ).font(.footnote).foregroundStyle(moved ? Color.cuseOrange : .secondary)
       ForEach(spots, id: \.spot) { spot in
         HStack {

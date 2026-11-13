@@ -30,7 +30,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published private(set) var you: SIMD2<Float>?
   @Published private(set) var running = false
   @Published private(set) var requestingPermission = false
-  /// Top-down floor pictures of the finished spots, by spot number.
+  /// Top-down sketches of the room around each finished spot, by spot number.
   @Published private(set) var patches: [Int: UIImage] = [:]
   @Published var message = ""
 
@@ -547,7 +547,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     if hint != shown { hint = shown }
   }
 
-  /// Makes the top-down floor picture of a finished spot, off the main thread.
+  /// Makes the top-down sketch of the room around a finished spot, off the main thread.
   private func drawFloor(of spot: SpotRecord) {
     let folder = self.folder
     writer.afterPendingWrites { [weak self] _ in

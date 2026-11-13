@@ -33,7 +33,7 @@ final class FloorPatchTests: XCTestCase {
   func testFloorBelowTheCameraTakesTheFloorShotsColour() {
     let side = 64
     let rgba = FloorPatch.compose(
-      views: [view(SIMD3(200, 100, 50), cameraToWorld: down)], cameraHeight: 1.4, side: side)
+      views: [view(SIMD3(200, 100, 50), cameraToWorld: down)], cameraHeight: 1.4, side: side, radius: 2.5)
     // Just on the far side of straight down.
     let seen = pixel(rgba, side: side, column: side / 2, row: side / 2 - 3)
     XCTAssertEqual(seen.w, 255)
@@ -45,7 +45,7 @@ final class FloorPatchTests: XCTestCase {
     let side = 64
     let rgba = FloorPatch.compose(
       views: [view(SIMD3(200, 100, 50), cameraToWorld: down, personSide: SIMD3(255, 0, 0))],
-      cameraHeight: 1.4, side: side)
+      cameraHeight: 1.4, side: side, radius: 2.5)
     // 0.6 m towards the person (+z): only the floor shot sees it, and it shows their legs.
     let behind = pixel(rgba, side: side, column: side / 2, row: side / 2 + 8)
     XCTAssertEqual(behind.w, 0)
@@ -62,7 +62,7 @@ final class FloorPatchTests: XCTestCase {
     let level = simd_float3x3(SIMD3(0, -1, 0), SIMD3(1, 0, 0), SIMD3(0, 0, 1))
     let side = 64
     let rgba = FloorPatch.compose(
-      views: [view(SIMD3(10, 180, 90), cameraToWorld: level)], cameraHeight: 1.4, side: side)
+      views: [view(SIMD3(10, 180, 90), cameraToWorld: level)], cameraHeight: 1.4, side: side, radius: 2.5)
     // 1.4 m ahead is 45° down: inside the lens's 53° half view.
     let ahead = pixel(rgba, side: side, column: side / 2, row: side / 2 - 18)
     XCTAssertEqual(ahead.w, 255)
