@@ -7,10 +7,11 @@ SLICE_WIDTH, SLICE_HEIGHT, FOCAL = 1920, 1440, 700.0
 FLIP = np.diag([1.0, -1.0, -1.0])  # ARKit camera axes <-> OpenCV camera axes
 
 
-def layout():
+def layout(poles=False):
     """(yaw, pitch) of every dot, matching SpotLayout.standard in the iPhone app: six level
-    shots, then the ceiling and the floor."""
-    return [(i * np.pi / 3, 0.0) for i in range(6)] + [(0.0, np.pi / 2), (0.0, -np.pi / 2)]
+    shots. `poles` adds the ceiling and floor shots that earlier builds of the app took."""
+    level = [(i * np.pi / 3, 0.0) for i in range(6)]
+    return level + [(0.0, np.pi / 2), (0.0, -np.pi / 2)] if poles else level
 
 
 def arkit_rotation(yaw, pitch, roll=0.0):

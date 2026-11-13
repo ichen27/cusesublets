@@ -41,6 +41,9 @@ def photographed(slices, width=WIDTH):
     for s in slices:
         if s.R[1, 2] < np.sin(ss.DOWN_PITCH):
             mask &= ~((ss._body_keep(d, s.R) < 1) & (d[..., 1] < -np.sin(np.radians(45))))
+    if not any(abs(s.R[1, 2]) > 0.5 for s in slices):
+        # Level shots only: they reach 54° up and down at their centres, less between them.
+        mask &= np.abs(d[..., 1]) < np.sin(np.radians(45))
     return mask
 
 
@@ -50,16 +53,17 @@ PERSON_BGR = (0, 0, 255)
 class Capture:
     """Writes one synthetic spot to disk and returns its Slice list."""
 
-    def __init__(self, root, rotations=None, noise=None, brighten=None, drop_ring=None, roll=0.0,
-                 person=False):
+    def __init__(self, root, rotations=None, noise=None, brighten=None, drop=None, roll=0.0,
+                 person=False, poles=False):
         self.root = Path(root)
         (self.root / 'images').mkdir(parents=True, exist_ok=True)
-        targets = syn.layout()
+        # The app's spots are six level shots; earlier builds added the ceiling and the floor.
+        targets = syn.layout(poles or person)
         true = [syn.arkit_rotation(y, p, roll) for y, p in targets]
         self.frames = []
         for index, rotation in enumerate(true):
             ring = 0 if index < 6 else index - 5  # level ring, then ceiling (1), floor (2)
-            if ring == drop_ring:
+            if index == drop:
                 continue
             path = f'images/{len(self.frames):05d}.jpg'
             image = syn.render_slice(SPHERE, rotation)
@@ -92,7 +96,8 @@ class Stitching(unittest.TestCase):
         slices = Capture(self.root).slices()
         image, holes = ss.stitch(slices, width=WIDTH, refine=False)
         self.assertEqual(image.shape, (WIDTH // 2, WIDTH, 3))
-        self.assertEqual(holes, 0)
+        # Only slivers at the scalloped top and bottom edges of the level band.
+        self.assertLess(holes, 0.005)
         self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
 
     def test_the_person_holding_the_phone_is_left_out(self):
@@ -122,8 +127,8 @@ class Stitching(unittest.TestCase):
         edges = np.abs(np.diff(image.astype(int), axis=1)).max(-1)
         self.assertLess(float(edges[filled[:, 1:] & filled[:, :-1]].mean()), 3)
 
-    def test_nadir_is_a_neutral_disc(self):
-        image, _ = ss.stitch(Capture(self.root).slices(), width=WIDTH, refine=False)
+    def test_nadir_is_a_neutral_disc_when_there_is_a_floor_shot(self):
+        image, _ = ss.stitch(Capture(self.root, poles=True).slices(), width=WIDTH, refine=False)
         bottom = image[-5:].reshape(-1, 3).mean(0)
         np.testing.assert_allclose(bottom, ss.NADIR_BGR, atol=3)
 
@@ -132,7 +137,8 @@ class Stitching(unittest.TestCase):
         slices = Capture(self.root, noise=noise).slices()
         raw, _ = ss.stitch(slices, width=WIDTH, refine=False)
         refined, _ = ss.stitch(slices, width=WIDTH, refine=True)
-        before, after = psnr(raw, SPHERE, above_nadir()), psnr(refined, SPHERE, above_nadir())
+        seen = photographed(slices)
+        before, after = psnr(raw, SPHERE, seen), psnr(refined, SPHERE, seen)
         self.assertGreaterEqual(after, 26)
         self.assertGreater(after, before)
 
@@ -178,9 +184,31 @@ class Stitching(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'capture_invalid'):
                 capture.slices()
 
-    def test_missing_ring_reports_holes(self):
-        _, holes = ss.stitch(Capture(self.root, drop_ring=1).slices(), width=WIDTH, refine=False)
+    def test_a_missing_level_shot_fails(self):
+        _, holes = ss.stitch(Capture(self.root, drop=2).slices(), width=WIDTH, refine=False)
         self.assertGreater(holes, ss.MAX_HOLES)
+
+    def test_two_missing_level_shots_fail(self):
+        capture = Capture(self.root)
+        slices = [s for i, s in enumerate(capture.slices()) if i not in (2, 3)]
+        self.assertGreater(ss.stitch(slices, width=WIDTH, refine=False)[1], ss.MAX_HOLES)
+
+    def test_level_shots_alone_leave_a_soft_top_and_bottom_not_holes(self):
+        image, holes = ss.stitch(Capture(self.root).slices(), width=WIDTH, refine=False)
+        self.assertLessEqual(holes, ss.MAX_HOLES)
+        for rows in (slice(0, WIDTH // 16), slice(-WIDTH // 16, None)):
+            cap = image[rows].astype(int)
+            # Painted, with no dark disc and none of the checkerboard's hard edges.
+            self.assertGreater(int(cap.min()), 20)
+            self.assertLess(float(np.abs(np.diff(cap, axis=1)).max(-1).mean()), 2)
+        self.assertFalse(np.all(np.abs(image[-1].astype(int) - np.array(ss.NADIR_BGR)) <= 2))
+
+    def test_earlier_builds_ceiling_and_floor_shots_still_stitch(self):
+        slices = Capture(self.root, poles=True).slices()
+        image, holes = ss.stitch(slices, width=WIDTH, refine=False)
+        self.assertEqual(len(slices), 8)
+        self.assertEqual(holes, 0)
+        self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
 
 
 class Loading(unittest.TestCase):

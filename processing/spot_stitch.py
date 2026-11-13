@@ -13,7 +13,7 @@ import re
 import numpy as np
 
 # Bounds on what a manifest may ask for, so a crafted capture cannot amplify the work. The app
-# saves 8 slices per spot at 1920 × 1440 (walk frames are 1920 wide); 64 slices and the pixel
+# saves 6 slices per spot at 1920 × 1440 (walk frames are 1920 wide); 64 slices and the pixel
 # budget leave room to tune the layout. The decoder enforces the per-image cap itself, so a
 # header that lies to jpeg_size cannot reach a larger decode. Set before OpenCV is imported.
 MAX_SPOTS = 8
@@ -42,6 +42,14 @@ BODY_START, BODY_FULL = 0.03, 0.09
 LEVEL_FULL = 0.25
 # Unphotographed areas are filled from a copy this many times smaller, then blurred.
 FILL_SHRINK = 8
+# The fill is blurred sideways by this angle. Near the poles a panorama's rows are stretched,
+# so the blur widens there and the top and bottom close smoothly.
+FILL_BLUR = np.radians(6)
+# A spot may be level shots only, leaving the ceiling and floor unphotographed. Rows of the
+# panorama at least this covered are the band the shots were meant to cover, and holes are
+# counted there. The open top and bottom are then not holes, while a missing level shot
+# either leaves a counted gap in the band or leaves no band at all, and fails both ways.
+BAND_SHARE = 0.9
 BLOCK_ROWS = 256
 SLICE_NAME = re.compile(r'^images/\d{5}\.jpg$')
 
@@ -362,6 +370,14 @@ def _fill(image, holes):
     missing = np.concatenate([missing[:, -pad:], missing, missing[:, :pad]], 1)
     filled = cv2.inpaint(colour, missing, 5, cv2.INPAINT_TELEA)
     filled = cv2.GaussianBlur(filled, (0, 0), 6, borderType=cv2.BORDER_REPLICATE)[:, pad:-pad]
+    rows = filled.shape[0]
+    pitch = np.pi / 2 - (np.arange(rows) + 0.5) / rows * np.pi
+    sigma = FILL_BLUR / (2 * np.pi) * small[0] / np.maximum(np.cos(pitch), 0.02)
+    for row in range(rows):
+        if sigma[row] > 6:
+            line = np.tile(filled[row][None], (1, 3, 1))  # wrap around the panorama
+            line = cv2.GaussianBlur(line, (0, 0), min(float(sigma[row]), small[0] / 2), sigmaY=0.01)
+            filled[row] = line[0, small[0]:2 * small[0]]
     filled = cv2.resize(filled, (width, height), interpolation=cv2.INTER_CUBIC)
     # Soften the border only on the filled side, so photographed pixels stay sharp.
     alpha = cv2.GaussianBlur(holes.astype(np.float32), (0, 0), FILL_SHRINK)
@@ -372,11 +388,14 @@ def _fill(image, holes):
 def stitch(slices, width=4096, refine=True):
     """Returns (equirect BGR uint8 of width × width/2, hole fraction above the nadir disc).
 
-    The floor shot is used only where no other slice reaches and only on the side away from
-    the person holding the phone, so they stay out of the panorama. The floor behind them,
-    which no shot sees, is filled with blurred floor colour and is not counted as a hole. Other
-    holes above −80° pitch are filled the same way and counted; below it a neutral disc hides
-    the floor under the person's feet."""
+    A spot of level shots only leaves the ceiling and floor unphotographed. They are filled
+    with blurred colour from the edge of what was photographed and are not holes: holes are
+    counted in the band of rows the shots mostly cover (see BAND_SHARE).
+
+    A floor shot, if the spot has one, is used only where no other slice reaches and only on
+    the side away from the person holding the phone, so they stay out of the panorama. The
+    floor behind them is filled the same way and is not counted either, and a neutral disc
+    below −80° pitch hides the floor under their feet."""
     import cv2
     height = width // 2
     images = _images(slices)
@@ -417,15 +436,16 @@ def stitch(slices, width=4096, refine=True):
         hidden[rows] = behind & ~has
     pitch = np.pi / 2 - (np.arange(height) + 0.5) / height * np.pi
     above = np.repeat((pitch >= NADIR_PITCH)[:, None], width, 1)
-    holes = above & ~covered
-    hole_fraction = float((holes & ~hidden).sum() / above.sum())
+    band = above & (covered.mean(1) >= BAND_SHARE)[:, None]
+    holes = band & ~covered & ~hidden
+    hole_fraction = float(holes.sum() / band.sum()) if band.any() else 1.0
     image = np.clip(out + 0.5, 0, 255).astype(np.uint8)
-    if holes.any():
-        # Everything unphotographed is unknown to the fill, including under the disc.
+    if not covered.all():
         image = _fill(image, ~covered)
-    # The neutral disc: solid below −82°, blended over the 2° above it.
-    alpha = np.clip((NADIR_PITCH - pitch) / NADIR_FEATHER, 0, 1)[:, None, None]
-    alpha = np.where((~covered & ~above)[..., None], 1, np.broadcast_to(alpha, (height, width, 1)))
-    disc = np.array(NADIR_BGR, np.float32)
-    image = np.clip(image * (1 - alpha) + disc * alpha + 0.5, 0, 255).astype(np.uint8)
+    if any(R[1, 2] < np.sin(DOWN_PITCH) for R in rotations):
+        # The neutral disc: solid below −82°, blended over the 2° above it.
+        alpha = np.clip((NADIR_PITCH - pitch) / NADIR_FEATHER, 0, 1)[:, None, None]
+        alpha = np.where((~covered & ~above)[..., None], 1, np.broadcast_to(alpha, (height, width, 1)))
+        disc = np.array(NADIR_BGR, np.float32)
+        image = np.clip(image * (1 - alpha) + disc * alpha + 0.5, 0, 255).astype(np.uint8)
     return image, hole_fraction
