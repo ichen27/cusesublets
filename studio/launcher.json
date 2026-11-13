@@ -1,0 +1,17 @@
+{
+  "id": "cuse-tours",
+  "name": "Cuse Tour Studio",
+  "description": "Private: stitches spot captures from the iPhone app into 360° tours and shows them.",
+  "icon": "TS",
+  "color": "#dfe8f6",
+  "tags": ["housing", "private"],
+  "cwd": "/Volumes/SamsungSSD1/code/cusesublets-spot-tours",
+  "command": [
+    "/Volumes/SamsungSSD1/code/cusesublets-spot-tours/work/spots-venv/bin/python",
+    "studio/server.py"
+  ],
+  "port": 8937,
+  "healthPath": "/health",
+  "runtime": "native",
+  "envFile": "/Volumes/SamsungSSD1/tools/cuse-tours/app.env"
+}

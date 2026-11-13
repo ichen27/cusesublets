@@ -1,4 +1,5 @@
 import XCTest
+import simd
 
 @testable import CuseSublets
 
@@ -137,7 +138,7 @@ final class SpotTakeTests: XCTestCase {
     XCTAssertEqual(SpotTake.maximumSpots, 8)
     XCTAssertEqual(SpotTake.maximumWalkFrames, 90)
     XCTAssertEqual(SpotTake.archiveLimit, 96 * 1024 * 1024)
-    XCTAssertEqual(SpotTake.maximumViews, 8 * 29 + 90)
+    XCTAssertEqual(SpotTake.maximumViews, 8 * 6 + 90)
   }
 
   func testSplatBudgetUnchanged() {
@@ -167,5 +168,39 @@ final class SpotTakeTests: XCTestCase {
     try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
     XCTAssertFalse(try SpotTake.discardIfEmpty(folder: folder))
     XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+  }
+
+  func testAMovedSpotKeepsItsHeightAndSlices() throws {
+    try write([record(0, role: "slice", spot: 1), record(1, role: "slice", spot: 2)])
+    try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
+    try SpotTake.appendSpot(spot(2, slices: [1]), to: folder)
+    try SpotTake.moveSpot(2, to: SIMD2(3, -4.5), in: folder)
+    let saved = SpotTake.savedSpots(in: folder, frames: try PhotoRecorder.savedFrames(in: folder))
+    XCTAssertEqual(saved.map(\.spot), [1, 2])
+    XCTAssertEqual(saved[0].position, [0.5, 0, -1])
+    XCTAssertNil(saved[0].moved)
+    XCTAssertEqual(saved[1].position, [3, 0, -4.5])
+    XCTAssertEqual(saved[1].moved, true)
+    XCTAssertEqual(saved[1].slices, ["images/00001.jpg"])
+  }
+
+  func testMovingAMissingSpotOrToNowhereFails() throws {
+    try write([record(0, role: "slice", spot: 1)])
+    try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
+    XCTAssertThrowsError(try SpotTake.moveSpot(7, to: SIMD2(1, 1), in: folder))
+    XCTAssertThrowsError(try SpotTake.moveSpot(1, to: SIMD2(.nan, 1), in: folder))
+  }
+
+  func testMapLayoutTurnsADragBackIntoMetres() {
+    let layout = SpotMapLayout(
+      points: [SIMD2(-1, -2), SIMD2(3, 1)], size: CGSize(width: 300, height: 200))
+    for place in [SIMD2<Float>(-1, -2), SIMD2(3, 1), SIMD2(0.4, -0.7)] {
+      let back = layout.world(layout.screen(place))
+      XCTAssertEqual(simd_distance(back, place), 0, accuracy: 1e-4)
+    }
+    // Everything fits, with the middle of the room in the middle of the map.
+    XCTAssertEqual(layout.screen(SIMD2(1, -0.5)), CGPoint(x: 150, y: 100))
+    XCTAssertGreaterThan(layout.screen(SIMD2(-1, -2)).x, 0)
+    XCTAssertLessThan(layout.screen(SIMD2(3, 1)).x, 300)
   }
 }

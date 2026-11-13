@@ -19,9 +19,13 @@ final class SpotTurnTests: XCTestCase {
     return event
   }
 
-  func testLayoutHas29TargetsInFourRings() {
-    XCTAssertEqual(SpotLayout.standard.count, 29)
-    XCTAssertEqual(Set(SpotLayout.standard.map(\.ring)), [0, 1, 2, 3])
+  func testLayoutIsOneLevelTurnOfSixShots() {
+    XCTAssertEqual(SpotLayout.standard.count, 6)
+    XCTAssertTrue(SpotLayout.standard.allSatisfy { $0.ring == 0 && $0.pitch == 0 })
+    // Evenly spaced: 60° apart, so the 87°-wide shots overlap.
+    for (index, target) in SpotLayout.standard.enumerated() {
+      XCTAssertEqual(target.yaw, Float(index) * .pi / 3, accuracy: 1e-6)
+    }
   }
 
   func testHoldingOnTargetCapturesAfterHoldDuration() {
@@ -70,9 +74,11 @@ final class SpotTurnTests: XCTestCase {
   }
 
   func testLevelRingFinishesBeforeUpperRing() {
-    var turn = SpotTurn(startYaw: 0)
+    // The app's layout is one level ring; a layout with a second ring still takes them in order.
+    let layout = SpotLayout.standard + [SpotTarget(ring: 1, yaw: 0, pitch: .pi / 2)]
+    var turn = SpotTurn(layout: layout, startYaw: 0)
     var time = 0.0
-    for _ in 0..<12 {
+    for _ in 0..<6 {
       XCTAssertEqual(turn.current?.ring, 0)
       captureCurrent(&turn, at: &time)
     }
@@ -86,8 +92,8 @@ final class SpotTurnTests: XCTestCase {
     let second = turn.current!
     captureCurrent(&turn, at: &time)
     let third = turn.current!
-    // Each next target is one 30° step further the same way.
-    XCTAssertEqual(abs(second.yaw), .pi / 6, accuracy: 1e-5)
+    // Each next target is one 60° step further the same way.
+    XCTAssertEqual(abs(second.yaw), .pi / 3, accuracy: 1e-5)
     XCTAssertEqual(third.yaw - second.yaw, second.yaw, accuracy: 1e-5)
   }
 
@@ -112,11 +118,11 @@ final class SpotTurnTests: XCTestCase {
     var turn = SpotTurn(startYaw: 0)
     var time = 0.0
     var last = SpotTurnEvent.none
-    for _ in 0..<29 { last = captureCurrent(&turn, at: &time) }
+    for _ in SpotLayout.standard { last = captureCurrent(&turn, at: &time) }
     XCTAssertEqual(last, .complete)
     XCTAssertTrue(turn.isComplete)
     XCTAssertNil(turn.current)
     XCTAssertEqual(turn.progress, 1)
-    XCTAssertEqual(Set(turn.captured), Set(0..<29))
+    XCTAssertEqual(Set(turn.captured), Set(SpotLayout.standard.indices))
   }
 }

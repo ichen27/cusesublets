@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "build:studio": "vite build --config vite.studio.config.ts",
     "preview": "wrangler dev --ip 127.0.0.1 --port 8917",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

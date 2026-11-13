@@ -2,15 +2,16 @@
 into portrait-phone slices at the app's dot layout. Not evidence of real-room quality."""
 import numpy as np
 
-SLICE_WIDTH, SLICE_HEIGHT, FOCAL = 1440, 1080, 1100.0
+# The iPhone's 0.5× camera after lens correction: about 108° × 92°.
+SLICE_WIDTH, SLICE_HEIGHT, FOCAL = 1920, 1440, 700.0
 FLIP = np.diag([1.0, -1.0, -1.0])  # ARKit camera axes <-> OpenCV camera axes
 
 
-def layout(ring_pitch_degrees=50.0):
-    """(yaw, pitch) of every dot, matching SpotLayout.standard in the iPhone app."""
-    p = np.radians(ring_pitch_degrees)
-    return ([(i * np.pi / 6, 0.0) for i in range(12)] + [(i * np.pi / 4, p) for i in range(8)]
-            + [(i * np.pi / 4, -p) for i in range(8)] + [(0.0, np.pi / 2)])
+def layout(poles=False):
+    """(yaw, pitch) of every dot, matching SpotLayout.standard in the iPhone app: six level
+    shots. `poles` adds the ceiling and floor shots that earlier builds of the app took."""
+    level = [(i * np.pi / 3, 0.0) for i in range(6)]
+    return level + [(0.0, np.pi / 2), (0.0, -np.pi / 2)] if poles else level
 
 
 def arkit_rotation(yaw, pitch, roll=0.0):

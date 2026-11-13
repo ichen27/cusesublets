@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import simd
 
 /// One finished spot: the slices to stitch and where the person stood.
 struct SpotRecord: Codable, Equatable {
@@ -14,12 +15,25 @@ struct SpotRecord: Codable, Equatable {
   /// The locked exposure for every slice of this spot.
   var exposureDuration: Double
   var iso: Double
+  /// `"ultrawide"` when the slices came from the 0.5× camera with motion-sensor rotations.
+  var lens: String? = nil
+  /// Degrees between ARKit's and the motion sensors' idea of "up" when the spot started.
+  var gravityMismatch: Double? = nil
+  /// How far tracking had to be turned (degrees) and shifted (metres) to line up again after
+  /// the turn before this spot. Kept to judge how well spots are placed.
+  var resumeYaw: Double? = nil
+  var resumeShift: Double? = nil
+  /// True once the person has dragged this spot to a new place on the map.
+  var moved: Bool? = nil
 
   enum CodingKeys: String, CodingKey {
     case floorY = "floor_y"
     case startYaw = "start_yaw"
     case exposureDuration = "exposure_duration"
-    case spot, slices, position, iso
+    case gravityMismatch = "gravity_mismatch"
+    case resumeYaw = "resume_yaw"
+    case resumeShift = "resume_shift"
+    case spot, slices, position, iso, lens, moved
   }
 }
 
@@ -31,7 +45,7 @@ enum SpotTake {
   static let maximumWalkFrames = 90
   /// Below the Workers request-body limit.
   static let archiveLimit = 96 * 1024 * 1024
-  static let sliceWidth: CGFloat = 1440
+  static let sliceWidth: CGFloat = 1920
   static let spotsName = "spots.jsonl"
   static let archiveName = "spots.roomcapture"
   static var maximumViews: Int { maximumSpots * SpotLayout.standard.count + maximumWalkFrames }
@@ -57,6 +71,18 @@ enum SpotTake {
 
   static func deleteSpot(_ spot: Int, in folder: URL) throws {
     try append(JSONEncoder().encode(Tombstone(spot: spot, deleted: true)), to: folder)
+  }
+
+  /// Records a spot's new place on the map (world x and z, metres). Its height is kept.
+  static func moveSpot(_ number: Int, to place: SIMD2<Float>, in folder: URL) throws {
+    let frames = try PhotoRecorder.savedFrames(in: folder)
+    guard var spot = savedSpots(in: folder, frames: frames).first(where: { $0.spot == number }),
+      spot.position.count == 3, place.x.isFinite, place.y.isFinite
+    else { throw CaptureFailure.message("That spot could not be moved.") }
+    spot.position[0] = Double(place.x)
+    spot.position[2] = Double(place.y)
+    spot.moved = true
+    try appendSpot(spot, to: folder)
   }
 
   /// Finished, undeleted spots whose every slice is among the complete frames, by number.
