@@ -23,7 +23,8 @@ export interface TourSpot {
   position: [number, number, number];
   floorY: number;
   /** Lowest and highest pitch, in degrees, that the spot photographed. Above and below it the
-   * panorama is a soft fill. Absent on tours stitched before level-only capture. */
+   * panorama is streaks of the colours at its edge. Absent on tours stitched before level-only
+   * capture. */
   band?: [number, number];
   panorama: SpotPanorama;
 }

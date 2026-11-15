@@ -3,7 +3,6 @@ import {
   CIRCLE_RANGE,
   PICK_RADIUS,
   clampPitch,
-  pitchLimits,
   viewFov,
   floorHit,
   lookDirection,
@@ -70,23 +69,6 @@ describe("spot viewer geometry", () => {
     expect(viewFov(390, 760, [-20, 20])).toBe(75);
     // A wide screen keeps the ordinary view.
     expect(viewFov(1200, 560, [-47.8, 48.1])).toBe(75);
-  });
-  it("keeps the soft fill out of view except for a small margin", () => {
-    const degrees = (limits: [number, number]) => limits.map((x) => (x * 180) / Math.PI);
-    // Tall screen, 96° view of a ±48° band: tilt stops 8° either way.
-    const tall = degrees(pitchLimits(96, [-48, 48]));
-    expect(tall[0]).toBeCloseTo(-8);
-    expect(tall[1]).toBeCloseTo(8);
-    // Wide screen, 75° view: more room to tilt before the edge reaches the fill.
-    const wide = degrees(pitchLimits(75, [-48, 48]));
-    expect(wide[0]).toBeCloseTo(-18.5);
-    expect(wide[1]).toBeCloseTo(18.5);
-    // A view taller than the band stays level, centred on the band.
-    expect(degrees(pitchLimits(100, [-30, 40]))).toEqual([5, 5].map((x) => expect.closeTo(x)));
-    // A full sphere, or a tour that does not say, tilts freely.
-    expect(degrees(pitchLimits(75, [-90, 90]))[1]).toBeCloseTo(85);
-    expect(degrees(pitchLimits(75))[0]).toBeCloseTo(-85);
-    expect(clampPitch(1, pitchLimits(96, [-48, 48]))).toBeCloseTo((8 * Math.PI) / 180);
   });
   it("frames the mesh bounds when there is a mesh", () => {
     const b = overviewBounds([spot(1, 0, 0)], {

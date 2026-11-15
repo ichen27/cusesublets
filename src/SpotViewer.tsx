@@ -5,7 +5,6 @@ import type { RoomTour } from "../shared/room-tour";
 import type { SpotTourResult, TourSpot } from "../shared/spot-tour";
 import {
   clampPitch,
-  pitchLimits,
   viewFov,
   floorHit,
   lookDirection,
@@ -218,18 +217,11 @@ export default function SpotViewer({ tour, fill = false }: { tour: RoomTour; fil
       moving = false;
     const bounds = overviewBounds(spots, tour.mesh);
     const eye = (s: TourSpot): Vec3 => [s.position[0], s.position[1], s.position[2]];
-    // Field of view and tilt follow the screen's shape and what the current spot photographed.
-    let limits = pitchLimits(camera.camera!.fov, here.band);
+    // The field of view follows the screen's shape and what the current spot photographed.
     const frame = () => {
-      const fov = viewFov(surface.clientWidth, surface.clientHeight, here.band);
-      camera.camera!.fov = fov;
-      limits = pitchLimits(fov, here.band);
-      pitch = clampPitch(pitch, limits);
+      camera.camera!.fov = viewFov(surface.clientWidth, surface.clientHeight, here.band);
     };
-    const look = () => {
-      pitch = clampPitch(pitch, limits);
-      camera.setEulerAngles((pitch * 180) / Math.PI, (-yaw * 180) / Math.PI, 0);
-    };
+    const look = () => camera.setEulerAngles((pitch * 180) / Math.PI, (-yaw * 180) / Math.PI, 0);
     const showRings = () => {
       const near = new Set(nearbySpots(here, spots).map((s) => s.spot));
       for (const [n, ring] of rings) ring.enabled = viewMode === "Walk" && near.has(n);
@@ -392,7 +384,7 @@ export default function SpotViewer({ tour, fill = false }: { tour: RoomTour; fil
         if (viewMode === "Walk") {
           const scale = ((camera.camera!.fov * Math.PI) / 180) / surface.clientHeight;
           yaw -= dx * scale;
-          pitch = clampPitch(pitch + dy * scale, limits);
+          pitch = clampPitch(pitch + dy * scale);
           look();
           if (travelled > 30) setHint(false);
         } else if (viewMode === "3D") {
@@ -429,8 +421,8 @@ export default function SpotViewer({ tour, fill = false }: { tour: RoomTour; fil
         const turn = (Math.PI / 180) * 10;
         if (e.key === "ArrowLeft") yaw -= turn;
         else if (e.key === "ArrowRight") yaw += turn;
-        else if (e.key === "ArrowUp") pitch = clampPitch(pitch + turn, limits);
-        else if (e.key === "ArrowDown") pitch = clampPitch(pitch - turn, limits);
+        else if (e.key === "ArrowUp") pitch = clampPitch(pitch + turn);
+        else if (e.key === "ArrowDown") pitch = clampPitch(pitch - turn);
         else return;
         e.preventDefault();
         if (viewMode === "Walk") look();
