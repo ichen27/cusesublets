@@ -23,7 +23,9 @@ LIMIT = 64 * 1024 * 1024
 SPOT_LIMIT = 96 * 1024 * 1024
 FORWARDED = ('capture_invalid', 'timeout', 'model_too_large', 'spot_incomplete')
 CAPTURE_NAME = re.compile(r'^(manifest\.json|mesh\.json|images/\d{5}\.jpg)$')
-PANORAMA_QUALITY = 85
+PANORAMA_QUALITY = 88
+# Twice the detail of the level shots' 2880 pixels across 103°, so the viewer has it to show.
+PANORAMA_WIDTH = 8192
 
 
 def input_limit(job):
@@ -221,7 +223,8 @@ def reconstruct_spots(capture, work):
     (result / 'panos').mkdir(parents=True)
     panoramas, described = [], []
     for number in sorted(spots):
-        image, holes = stitch(spots[number])
+        report = {}
+        image, holes = stitch(spots[number], width=PANORAMA_WIDTH, report=report)
         print(f'spot {number}: {len(spots[number])} slices, holes {holes:.4f}', flush=True)
         if holes > MAX_HOLES:
             raise ValueError('spot_incomplete')
@@ -231,17 +234,19 @@ def reconstruct_spots(capture, work):
         panoramas.append((name, result / name))
         record = records[number]
         described.append((number, name, [round(float(x), 4) for x in record['position']],
-                          round(float(record['floor_y']), 4)))
+                          round(float(record['floor_y']), 4),
+                          [round(x, 1) for x in report.get('band', (-90.0, 90.0))]))
     if os.environ.get('CUSE_ROOM_MESH') == '1':
         build_optional_mesh(frames, result / 'mesh', mesh_candidates(manifest))
-    summary = {'spots': [{'spot': n, 'position': p, 'floorY': f, 'panorama': name} for n, name, p, f in described]}
+    summary = {'spots': [{'spot': n, 'position': p, 'floorY': f, 'panorama': name} for n, name, p, f, _ in described]}
     ranges = write_bundle(result / 'spots.bundle', panoramas, json.dumps(summary).encode())
     display = {
         'method': 'ARKit guided slices, ORB-refined rotations, feathered equirect stitching',
         'slices': sum(len(s) for s in spots.values()),
-        'spots': [{'spot': n, 'position': p, 'floorY': f,
-                   'panorama': {'offset': ranges[name][0], 'length': ranges[name][1], 'width': 4096, 'height': 2048}}
-                  for n, name, p, f in described],
+        'spots': [{'spot': n, 'position': p, 'floorY': f, 'band': band,
+                   'panorama': {'offset': ranges[name][0], 'length': ranges[name][1],
+                                'width': PANORAMA_WIDTH, 'height': PANORAMA_WIDTH // 2}}
+                  for n, name, p, f, band in described],
     }
     (result / 'display.json').write_text(json.dumps(display))
 

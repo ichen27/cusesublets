@@ -288,7 +288,7 @@ class Bounds(unittest.TestCase):
                     ss._images(slices)
 
     def test_rejects_images_wider_than_the_app_saves(self):
-        self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], width=2400, height=1800))
+        self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], width=4800, height=3600))
 
     def test_rejects_a_spot_over_the_pixel_budget(self):
         # Each slice is within bounds, but together they exceed what one spot may decode.
