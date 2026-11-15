@@ -213,7 +213,8 @@ def jpeg_size(path):
         return jpeg_size_bytes(source.read(1 << 20))
 
 
-def _images(slices):
+def read_images(slices):
+    """Decodes every slice, refusing any whose file is not the size its record declares."""
     import cv2
     images = []
     for s in slices:
@@ -245,7 +246,7 @@ def refine_rotations(slices, max_correction_deg=3.0, images=None):
     import cv2
     from scipy.optimize import least_squares
     from scipy.sparse import lil_matrix
-    images = _images(slices) if images is None else images
+    images = read_images(slices) if images is None else images
     # A low corner threshold finds features on plain walls and soft furniture.
     orb = cv2.ORB_create(1500, fastThreshold=7)
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -351,7 +352,7 @@ def exposure_gains(slices, rotations, images=None, sigma_n=10.0, sigma_g=0.5):
     """Per-slice brightness gains that make overlaps agree (least squares on mean luminance in
     each pairwise overlap, Brown & Lowe), normalised to mean 1 and kept within 0.5–2."""
     import cv2
-    images = _images(slices) if images is None else images
+    images = read_images(slices) if images is None else images
     d = directions(256, 128)
     lum, seen = [], []
     for s, image, R in zip(slices, images, rotations):
@@ -611,10 +612,11 @@ def _caps(image, covered):
     return painted
 
 
-def enhance(image, photographed=None):
+def enhance(image, photographed=None, sharpen=True):
     """Improves a panorama in place: brightens dim areas and calms glaring ones, then restores
     the fine detail that resampling softened. With `photographed`, only those pixels are
-    sharpened, so the soft fill stays soft. This does not recover detail the camera did not
+    sharpened, so the soft fill stays soft. `sharpen=False` leaves the sharpening out, for
+    slices a model has already sharpened. This does not recover detail the camera did not
     capture."""
     import cv2
     height, width = image.shape[:2]
@@ -626,7 +628,7 @@ def enhance(image, photographed=None):
     light = cv2.GaussianBlur(light, (0, 0), TONE_AREA * small.shape[1])[:, pad:-pad]
     gain = np.clip((TONE_TARGET / np.maximum(light, 8)) ** TONE_STRENGTH, *TONE_LIMITS)
     gain = cv2.resize(gain, (width, height), interpolation=cv2.INTER_CUBIC)
-    share, amount = SHARPEN_DETAIL
+    share, amount = SHARPEN_DETAIL if sharpen else (SHARPEN_DETAIL[0], 0.0)
     sigma = max(share * width, 0.6)
     margin = int(4 * sigma) + 1
     # In row blocks, so a large panorama never needs float copies of itself.
@@ -643,10 +645,11 @@ def enhance(image, photographed=None):
     return image
 
 
-def stitch(slices, width=4096, refine=True, report=None):
+def stitch(slices, width=4096, refine=True, report=None, images=None):
     """Returns (equirect BGR uint8 of width × width/2, hole fraction above the nadir disc).
     A dict passed as `report` gets `band`: the lowest and highest pitch, in degrees, of the
     rows that were photographed (see BAND_SHARE), for viewers that keep the fill off screen.
+    `images` are the slices' pictures if they are already decoded (see `read_images`).
 
     A spot of level shots only leaves the ceiling and floor unphotographed. They are drawn as
     streaks of the colours at the edge of what was photographed (see `_caps`) and are not
@@ -658,7 +661,7 @@ def stitch(slices, width=4096, refine=True, report=None):
     below −80° pitch hides the floor under their feet."""
     import cv2
     height = width // 2
-    images = _images(slices)
+    images = read_images(slices) if images is None else images
     rotations = refine_rotations(slices, images=images) if refine else [s.R for s in slices]
     gains = exposure_gains(slices, rotations, images=images)
     shares, tone = _shares(slices, images, rotations, gains, width)

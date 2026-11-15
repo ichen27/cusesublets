@@ -1,6 +1,7 @@
 """Panorama stitching on synthetic spheres. Needs processing/requirements-spots.txt."""
 import importlib.util
 import json
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,8 @@ def load(name):
 
 ss = load('spot_stitch')
 syn = load('spot_synthetic')
+se = load('spot_enhance')
+tw = load('tour_worker')
 WIDTH = 2048  # half the production width keeps the suite quick; the math is resolution-free
 SPHERE = syn.test_sphere(WIDTH)
 
@@ -367,6 +370,21 @@ class Finishing(unittest.TestCase):
         self.assertGreater(image[:, 40:200].mean(), 1.25 * before[:, 40:200].mean())
         self.assertGreater(image[:, 320:480].mean(), 0.9 * before[:, 320:480].mean())
 
+    def test_enhancing_can_leave_sharpening_out(self):
+        rng = np.random.default_rng(5)
+        soft = cv2.GaussianBlur(rng.uniform(40, 200, (256, 512, 3)).astype(np.float32), (0, 0), 2)
+        soft[:, :256] *= 0.35
+        image = np.clip(soft, 0, 255).astype(np.uint8)
+        sharpened = ss.enhance(image.copy())
+        plain = ss.enhance(image.copy(), sharpen=False)
+
+        def detail(picture):
+            return cv2.Laplacian(cv2.cvtColor(picture, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
+
+        self.assertLess(detail(plain[:, 300:]), 0.8 * detail(sharpened[:, 300:]))
+        # The dim half is still brought up.
+        self.assertGreater(plain[:, 40:200].mean(), 1.25 * image[:, 40:200].mean())
+
     def test_enhancing_does_not_sharpen_the_fill(self):
         rng = np.random.default_rng(6)
         image = np.clip(cv2.GaussianBlur(rng.uniform(90, 190, (128, 256, 3)).astype(np.float32),
@@ -378,6 +396,111 @@ class Finishing(unittest.TestCase):
         ss.enhance(image, photographed)
         self.assertTrue(np.array_equal(image[:, 140:], toned[:, 140:]))
         self.assertFalse(np.array_equal(image[:, :120], toned[:, :120]))
+
+
+def twice(image):
+    """Stands in for the model: twice the size, nothing invented."""
+    return cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+
+class Enhancing(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_tiles_join_into_the_same_picture_as_one_pass(self):
+        image = np.random.default_rng(1).integers(0, 255, (150, 201, 3), np.uint8)
+
+        def run(part):
+            # Every output pixel depends on its neighbours, as a real model's does.
+            return np.repeat(np.repeat(cv2.blur(part, (5, 5)), 2, 0), 2, 1)
+
+        np.testing.assert_array_equal(se.tiled(image, run, 2, tile=64, pad=8), run(image))
+
+    def test_shots_are_enlarged_only_as_far_as_the_panorama_can_show(self):
+        slices = Capture(self.root).slices()
+        images = ss.read_images(slices)
+        enhancer = se.Enhancer(twice, 2)
+        # The synthetic shots have 700 pixels to a radian; an 8192-wide panorama has 1304.
+        big, pictures = enhancer.prepare(slices, images, 8192)
+        self.assertEqual((big[0].width, big[0].height), (3840, 2880))
+        self.assertEqual(pictures[0].shape, (2880, 3840, 3))
+        np.testing.assert_allclose(big[0].K, np.diag([2, 2, 1]) @ slices[0].K)
+        np.testing.assert_array_equal(big[0].R, slices[0].R)
+        # A 2048-wide panorama has 326: the shots already hold more, so they keep their size.
+        same, pictures = enhancer.prepare(slices, images, 2048)
+        self.assertEqual((same[0].width, same[0].height), (1920, 1440))
+        self.assertEqual(pictures[0].shape, images[0].shape)
+        np.testing.assert_allclose(same[0].K, slices[0].K)
+        # In between they grow part of the way, and the intrinsics follow the new size exactly.
+        part, pictures = enhancer.prepare(slices, images, 4096)
+        self.assertTrue(1920 < part[0].width < 3840)
+        self.assertEqual(pictures[0].shape[:2], (part[0].height, part[0].width))
+        self.assertAlmostEqual(part[0].K[0, 0] / slices[0].K[0, 0], part[0].width / 1920)
+        self.assertAlmostEqual(part[0].K[1, 2] / slices[0].K[1, 2], part[0].height / 1440)
+
+    def test_shots_that_keep_their_size_still_go_through_the_model(self):
+        slices = Capture(self.root).slices()[:1]
+        seen = []
+        enhancer = se.Enhancer(lambda image: seen.append(image.shape) or twice(image), 2)
+        enhancer.prepare(slices, ss.read_images(slices), 2048)
+        self.assertTrue(seen)
+
+    def test_enhanced_shots_stitch_to_the_same_panorama(self):
+        slices = Capture(self.root).slices()
+        big, pictures = se.Enhancer(twice, 2).prepare(slices, ss.read_images(slices), 4096)
+        image, holes = ss.stitch(big, width=WIDTH, refine=False, images=pictures)
+        self.assertLess(holes, 0.005)
+        self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
+
+    def test_a_spot_too_large_to_enhance_is_left_alone(self):
+        slices = Capture(self.root).slices()
+        with patch.object(se, 'MAX_PIXELS', 5 * 1920 * 1440):
+            self.assertIsNone(se.Enhancer(twice, 2).prepare(slices, ss.read_images(slices), 8192))
+
+    def capture(self):
+        made = Capture(self.root / 'made')
+        (made.root / 'manifest.json').write_text(json.dumps(made.manifest))
+        archive = self.root / 'capture.roomcapture'
+        with tarfile.open(archive, 'w') as tar:
+            tar.add(made.root / 'manifest.json', 'manifest.json')
+            for frame in made.frames:
+                tar.add(made.root / frame['file_path'], frame['file_path'])
+        return archive
+
+    def test_the_worker_stitches_enhanced_shots_and_keeps_the_plain_panorama(self):
+        work = self.root / 'work'
+        with patch.object(tw, 'PANORAMA_WIDTH', 1024):
+            tw.reconstruct_spots(self.capture(), work, enhancer=se.Enhancer(twice, 2))
+        shown = cv2.imread(str(work / 'result/panos/01.jpg'))
+        plain = cv2.imread(str(work / 'result/plain/01.jpg'))
+        self.assertEqual(shown.shape, (512, 1024, 3))
+        self.assertEqual(plain.shape, (512, 1024, 3))
+        display = json.loads((work / 'result/display.json').read_text())
+        self.assertIn('enhanced', display['method'])
+        self.assertLessEqual(len(display['method']), 180)
+
+    def test_without_an_enhancer_the_worker_writes_one_panorama(self):
+        work = self.root / 'work'
+        with patch.object(tw, 'PANORAMA_WIDTH', 1024):
+            tw.reconstruct_spots(self.capture(), work, enhancer=None)
+        self.assertTrue((work / 'result/panos/01.jpg').exists())
+        self.assertFalse((work / 'result/plain').exists())
+        self.assertNotIn('enhanced', json.loads((work / 'result/display.json').read_text())['method'])
+
+    def test_a_failing_enhancer_does_not_fail_the_tour(self):
+        def broken(image):
+            raise RuntimeError('out of memory')
+
+        work = self.root / 'work'
+        with patch.object(tw, 'PANORAMA_WIDTH', 1024):
+            tw.reconstruct_spots(self.capture(), work, enhancer=se.Enhancer(broken, 2))
+        self.assertTrue((work / 'result/panos/01.jpg').exists())
+        self.assertFalse((work / 'result/plain').exists())
+        self.assertNotIn('enhanced', json.loads((work / 'result/display.json').read_text())['method'])
 
 
 class Loading(unittest.TestCase):
@@ -454,7 +577,7 @@ class Bounds(unittest.TestCase):
             with patch.object(cv2, 'imdecode', side_effect=AssertionError('decoded')), \
                     patch.object(cv2, 'imread', side_effect=AssertionError('decoded')):
                 with self.assertRaisesRegex(ValueError, 'capture_invalid'):
-                    ss._images(slices)
+                    ss.read_images(slices)
 
     def test_rejects_images_wider_than_the_app_saves(self):
         self.check(self.manifest([{'spot': 1, 'slices': ['images/00000.jpg']}], width=4800, height=3600))

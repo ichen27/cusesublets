@@ -29,7 +29,9 @@ REPO = Path(__file__).resolve().parent.parent
 WORKER = REPO / 'processing' / 'tour_worker.py'
 SITE = REPO / 'studio-dist'
 CAPTURE_LIMIT = 96 * 1024 * 1024
-PROCESS_TIMEOUT = 15 * 60
+# Long enough for the largest capture (8 spots) with the optional slice enhancement, which
+# takes two to three minutes a spot on an Apple M4.
+PROCESS_TIMEOUT = 45 * 60
 MINIMUM_TOKEN = 32
 OPEN_ROUTES = {'health', 'signin_page', 'signin'}
 PROPERTY_ID = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
