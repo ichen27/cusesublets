@@ -54,7 +54,7 @@ class Capture:
     """Writes one synthetic spot to disk and returns its Slice list."""
 
     def __init__(self, root, rotations=None, noise=None, brighten=None, drop=None, roll=0.0,
-                 person=False, poles=False):
+                 person=False, poles=False, scenes=None, zoom=1.0, shade=None):
         self.root = Path(root)
         (self.root / 'images').mkdir(parents=True, exist_ok=True)
         # The app's spots are six level shots; earlier builds added the ceiling and the floor.
@@ -66,10 +66,18 @@ class Capture:
             if index == drop:
                 continue
             path = f'images/{len(self.frames):05d}.jpg'
-            image = syn.render_slice(SPHERE, rotation)
+            # `scenes` gives single shots their own surroundings, as when they disagree.
+            # `zoom` enlarges what every shot sees without saying so, as a room does when the
+            # phone swings on the arm: neighbours then disagree however they are turned.
+            image = syn.render_slice((scenes or {}).get(index, SPHERE), rotation, focal=syn.FOCAL * zoom)
             if person and ring == 2:
                 # Legs fill the floor shot from just past straight down to the phone's bottom edge.
                 image[:, syn.SLICE_WIDTH // 2 + 100:] = PERSON_BGR
+            if shade:
+                # Brighter towards one side of every shot and darker towards the other, by
+                # this share, as uneven room light does. No single gain per shot undoes it.
+                ramp = np.linspace(1 + shade, 1 - shade, image.shape[0])[:, None, None]
+                image = np.clip(image * ramp, 0, 255).astype(np.uint8)
             if brighten and index in brighten:
                 image = np.clip(image.astype(np.float32) * brighten[index], 0, 255).astype(np.uint8)
             cv2.imwrite(str(self.root / path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
@@ -142,12 +150,17 @@ class Stitching(unittest.TestCase):
         self.assertGreaterEqual(after, 26)
         self.assertGreater(after, before)
 
-    def test_refinement_corrections_are_clamped(self):
+    def test_refinement_never_turns_a_shot_more_than_its_limit(self):
         slices = Capture(self.root).slices()
         rotations = ss.refine_rotations(slices, max_correction_deg=3.0)
         for s, r in zip(slices, rotations):
             angle = np.degrees(np.arccos(np.clip((np.trace(r @ s.R.T) - 1) / 2, -1, 1)))
             self.assertLessEqual(angle, 3.0 + 1e-6)
+
+    def test_refinement_leaves_shots_alone_when_turning_them_cannot_make_them_agree(self):
+        slices = Capture(self.root, zoom=1.15).slices()
+        for s, r in zip(slices, ss.refine_rotations(slices)):
+            np.testing.assert_array_equal(r, s.R)
 
     def test_exposure_gains_equalise(self):
         slices = Capture(self.root, brighten={5: 1.3}).slices()
@@ -209,6 +222,94 @@ class Stitching(unittest.TestCase):
         self.assertEqual(len(slices), 8)
         self.assertEqual(holes, 0)
         self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
+
+    def test_an_object_two_shots_place_differently_is_drawn_solid_not_as_a_ghost(self):
+        # A hand-held phone swings on the arm, so neighbouring shots see a near object in
+        # different places. Here shot 0 has a post 26° left of ahead and shot 1 has it at 34°.
+        post = np.array((255, 0, 255))
+        rows = slice(*(int((90 - p) / 180 * (WIDTH // 2)) for p in (25, -25)))
+
+        def columns(low, high):
+            return slice(*(int((yaw + 180) / 360 * WIDTH) for yaw in (low, high)))
+
+        scenes = {}
+        for shot, where in ((0, columns(-28, -24)), (1, columns(-36, -32))):
+            scenes[shot] = SPHERE.copy()
+            scenes[shot][rows, where] = post
+        image, _ = ss.stitch(Capture(self.root, scenes=scenes).slices(), width=WIDTH, refine=False)
+        window = image[rows, columns(-38, -22)].astype(int)
+        truth = SPHERE[rows, columns(-38, -22)].astype(int)
+        # A ghost is neither the post nor what is behind it.
+        ghost = (np.abs(window - post).max(-1) > 25) & (np.abs(window - truth).max(-1) > 25)
+        one_post = (rows.stop - rows.start) * (columns(-28, -24).stop - columns(-28, -24).start)
+        self.assertLess(int(ghost.sum()), 0.3 * one_post)
+
+    def test_shots_lit_differently_meet_without_a_visible_step(self):
+        slices = Capture(self.root, shade=0.1).slices()
+        image, _ = ss.stitch(slices, width=WIDTH, refine=False)
+        rows = slice(*(int((90 - p) / 180 * (WIDTH // 2)) for p in (25, -25)))
+
+        def columns(picture):
+            # Brightness of each column, averaged with its neighbours so that the sphere's own
+            # hard edges, which a stitch softens a little, do not count as steps.
+            return np.convolve(np.tile(picture[rows].mean((0, 2)), 3), np.ones(9) / 9, 'same')[WIDTH:2 * WIDTH]
+
+        # Against the truth, brightness ramps across every shot. Where two shots meet it has to
+        # come back up, and must do so gradually.
+        level = columns(image) / columns(SPHERE)
+        self.assertGreater(float(level.max() - level.min()), 0.1)
+        step = np.abs(np.diff(np.r_[level, level[:1]]))
+        self.assertLess(float(step.max()), 0.008)
+
+
+class Seams(unittest.TestCase):
+    """`_seams` on a toy panorama: 48 rows, 128 columns, two shots that overlap in columns
+    48 to 79. Each shot's weight peaks at its own middle, like the stitcher's feathering."""
+
+    def shots(self, shift=0):
+        columns = np.arange(128)
+        left = np.where(columns < 80, 40 - np.abs(columns - 39.5), 0).clip(0) / 40
+        right = np.where(columns >= 48, 40 - np.abs(columns - 87.5), 0).clip(0) / 40
+        weights = [np.tile(w.astype(np.float32), (48, 1)) for w in (left, right)]
+        scene = np.tile(np.linspace(60, 180, 128, dtype=np.float32)[None, :, None], (48, 1, 3))
+        colours = [scene.copy(), scene.copy()]
+        return [np.roll(c, shift, 1) for c in colours], [np.roll(w, shift, 1) for w in weights]
+
+    def test_shots_that_agree_meet_in_the_middle_of_their_overlap(self):
+        colours, weights = self.shots()
+        owner = ss._seams(colours, weights)
+        self.assertTrue((owner[:, :63] == 0).all())
+        self.assertTrue((owner[:, 65:] == 1).all())
+
+    def test_the_cut_goes_round_an_object_the_shots_disagree_about(self):
+        colours, weights = self.shots()
+        # Only the left shot sees this object, right where the middle of the overlap runs.
+        colours[0][14:34, 58:70] = 0
+        owner = ss._seams(colours, weights)
+        self.assertEqual(len(np.unique(owner[14:34, 58:70])), 1)
+        # Away from it the shots still meet in the middle.
+        self.assertTrue((owner[:6, :63] == 0).all() and (owner[:6, 65:] == 1).all())
+
+    def test_seams_do_not_depend_on_where_the_panorama_wraps(self):
+        colours, weights = self.shots()
+        colours[0][14:34, 58:70] = 0
+        owner = ss._seams(colours, weights)
+        # Turned so the overlap straddles the panorama's left and right edges.
+        turned = [np.roll(c, 64, 1) for c in colours], [np.roll(w, 64, 1) for w in weights]
+        np.testing.assert_array_equal(ss._seams(*turned), np.roll(owner, 64, 1))
+
+    def test_every_photographed_pixel_goes_to_one_shot_that_sees_it(self):
+        colours, weights = self.shots()
+        # A third shot across the top overlaps both, and nothing sees the bottom rows.
+        top = np.zeros((48, 128), np.float32)
+        top[:20] = 0.5
+        weights = [np.where(np.arange(48)[:, None] < 40, w, 0).astype(np.float32) for w in weights] + [top]
+        colours.append(colours[0] + 30)
+        owner = ss._seams(colours, weights)
+        seen = np.stack(weights) > 0
+        np.testing.assert_array_equal(owner >= 0, seen.any(0))
+        self.assertTrue(np.take_along_axis(seen, owner.clip(0)[None], 0)[0][owner >= 0].all())
+        self.assertTrue((owner[40:] == -1).all())
 
 
 class Finishing(unittest.TestCase):
