@@ -45,7 +45,9 @@ enum SpotTake {
   static let maximumWalkFrames = 90
   /// Below the Workers request-body limit.
   static let archiveLimit = 96 * 1024 * 1024
-  static let sliceWidth: CGFloat = 1920
+  /// 2880 pixels across the lens's 103°: about 28 to a degree, more than the 8192-wide
+  /// panorama's 23, so stitching does not lose detail the camera captured.
+  static let sliceWidth: CGFloat = 2880
   static let spotsName = "spots.jsonl"
   static let archiveName = "spots.roomcapture"
   static var maximumViews: Int { maximumSpots * SpotLayout.standard.count + maximumWalkFrames }

@@ -17,7 +17,9 @@ struct WideFrame {
 /// The ultra-wide (0.5×) back camera, used while turning at a spot. ARKit's world tracking only
 /// offers the 1× camera, so it is paused while this runs.
 final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
-  static let targetWidth: Int32 = 1920
+  /// Slices are saved 2880 wide. The camera runs at the smallest format at least that wide
+  /// (4032 × 3024 on current iPhones), so a slice is scaled down from more detail, not up.
+  static let targetWidth: Int32 = 2880
 
   let previewLayer = AVCaptureVideoPreviewLayer()
   /// Called on the main queue for each delivered frame.
@@ -127,18 +129,20 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   /// same lens at 640 × 480 for its own tracking and leaves it that way.
   private func chooseFormat() throws {
     guard let device else { return }
-    // The smallest 4:3 format at least 1920 wide: enough for a 4096-wide panorama.
+    func width(_ format: AVCaptureDevice.Format) -> Int32 {
+      CMVideoFormatDescriptionGetDimensions(format.formatDescription).width
+    }
+    // 4:3 uses the whole sensor, so it sees the most up and down.
     let formats = device.formats.filter { format in
       let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-      return size.width * 3 == size.height * 4 && size.width >= Self.targetWidth
+      return size.width * 3 == size.height * 4
         && format.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= 30 }
-    }.sorted {
-      CMVideoFormatDescriptionGetDimensions($0.formatDescription).width
-        < CMVideoFormatDescriptionGetDimensions($1.formatDescription).width
-    }
+    }.sorted { width($0) < width($1) }
+    // The smallest that is wide enough, or failing that the widest there is.
+    let chosen = formats.first { width($0) >= Self.targetWidth } ?? formats.last
     try device.lockForConfiguration()
     defer { device.unlockForConfiguration() }
-    if let format = formats.first, device.activeFormat != format { device.activeFormat = format }
+    if let chosen, device.activeFormat != chosen { device.activeFormat = chosen }
     // Straight lines must stay straight for the stitcher's pinhole model.
     if device.isGeometricDistortionCorrectionSupported {
       device.isGeometricDistortionCorrectionEnabled = true

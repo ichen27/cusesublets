@@ -9,8 +9,9 @@ import SwiftUI
 /// the 0.5× camera takes the slices, with the motion sensors supplying each slice's rotation. Rules live in `SpotSession`, `SpotTurn` and `SpotTake`; this class
 /// connects them to the camera.
 final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
-  /// Conservative size of one 1920 × 1440 slice, for deciding whether a whole spot still fits.
-  static let estimatedSliceBytes = 900_000
+  /// Conservative size of one 2880 × 2160 slice, for deciding whether a whole spot still fits.
+  /// (1920 × 1440 slices measured 0.3 to 0.5 MB on an iPhone 17.)
+  static let estimatedSliceBytes = 1_500_000
   /// Radians per second; faster than this, a slice would blur.
   static let steadyRotation = 0.35
   static let walkWidth: CGFloat = 1920
@@ -73,7 +74,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   private var openedFirst = false
   private var pinSerial = 0
   private let stillContext = CIContext()
-  static let pinnedWidth: CGFloat = 540
+  /// As wide as the screen in pixels, so a pinned shot looks as sharp as the live camera did.
+  static let pinnedWidth: CGFloat = 1080
   /// The correction applied after the previous turn, recorded with the next spot.
   private var lastRealign: (yaw: Double, shift: Double)?
   private var exposureLocked = false
