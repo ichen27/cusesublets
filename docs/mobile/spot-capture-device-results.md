@@ -20,8 +20,15 @@ After that run the layout changed again, on the owner's request, to match compar
 The fourth run (2026-11-15), the first with six level dots, stitched cleanly but looked far worse than a comparable app's tour. Three causes, fixed after it:
 
 - **The viewer drew at a third of the screen's sharpness.** The engine renders one pixel per CSS pixel unless told otherwise; on a 3× phone that is a third of the detail each way. It now uses the screen's full resolution.
-- **The view was small and narrow.** A 75° view in a box showed a slice of the band and made the fill easy to reach. On a tall screen the tour now fills the screen with a view as tall as the photographed band (about 96°), which shows floor to ceiling at once, and tilt stops 8° into the fill. A level turn with this lens cannot photograph beyond about 50° up or down, so the fill itself cannot shrink without more shots.
+- **The view was small and narrow.** A 75° view in a box showed a slice of the band and made the fill easy to reach. On a tall screen the tour now fills the screen with a view as tall as the photographed band (about 96°), which shows floor to ceiling at once, floor to ceiling at once. A level turn with this lens cannot photograph beyond about 50° up or down, so the fill itself cannot shrink without more shots.
+- **The fill and the finish.** Above and below the band, each direction now keeps the colour at the edge of what was photographed and blurs sideways towards the pole, instead of a flat blur, and the viewer looks freely up and down again. After stitching, dim areas are lifted (a spot has one exposure, locked on the first dot, so Test 4's hallway was murky) and fine detail is sharpened.
 - **Detail was thrown away twice.** Slices were 1920 wide (19 pixels a degree) and panoramas 4096 (11). Slices are now 2880, scaled down from the camera's 4032-wide format, and panoramas 8192 (23). **The new capture size has not run on a device.**
+
+**What the iPhone 17 reports about its cameras** (read from the device on 2026-11-15):
+
+- ARKit world tracking offers only the 1× camera (`builtInWideAngleCamera`), in every format. The hand-off to the 0.5× camera for a turn is therefore necessary.
+- The 0.5× camera's 4:3 formats are 1920 × 1440, 2592 × 1944, 3264 × 2448 and 4032 × 3024. All report a field of view of 103.6° uncorrected and 106.2° with geometric distortion correction. So switching the correction off would not widen the view, and one level turn cannot photograph much beyond 50° above or below level.
+- **Open question:** capture enables the correction, yet the intrinsics delivered with each frame give 103.0°, the uncorrected figure. If the frames really span 106.2°, the stitcher places them with a focal length about 5% too long, which would double edges at seams. Test 4's rooms have too little texture to settle it (two usable photo pairs, which disagree). It needs a textured scene or the calibration data that photo capture provides.
 
 The lens measured 103° × 87° after correction (focal 763 px at 1920 × 1440), slightly narrower than the 108° × 92° assumed below, with holes still under 0.1%. The 4° alignment tolerance and 0.5 s hold are unchanged starting values. Tune them from the next device run, and update `SpotLayout.standard` and `SpotTurnTests` together.
 
