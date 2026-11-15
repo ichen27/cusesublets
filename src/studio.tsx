@@ -44,9 +44,8 @@ function StudioTour() {
   if (!property.tour)
     return <p role="alert">The tour could not be made ({property.error ?? "unknown error"}).</p>;
   return (
-    <section className="room-tour">
-      <h3>{property.name}</h3>
-      <SpotViewer tour={property.tour} />
+    <section className="room-tour studio-tour" aria-label={property.name}>
+      <SpotViewer tour={property.tour} fill />
     </section>
   );
 }

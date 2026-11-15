@@ -5,6 +5,8 @@ import type { RoomTour } from "../shared/room-tour";
 import type { SpotTourResult, TourSpot } from "../shared/spot-tour";
 import {
   clampPitch,
+  pitchLimits,
+  viewFov,
   floorHit,
   lookDirection,
   nearbySpots,
@@ -70,7 +72,8 @@ function unlitMaterial(texture?: pc.Texture) {
   return material;
 }
 
-export default function SpotViewer({ tour }: { tour: RoomTour }) {
+/** `fill` makes the viewer take all of its container's height, for a full-screen page. */
+export default function SpotViewer({ tour, fill = false }: { tour: RoomTour; fill?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const control = useRef<{
     go: (spot: TourSpot) => void;
@@ -98,6 +101,9 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
     const app = new pc.Application(surface, {
       graphicsDeviceOptions: { antialias: true, alpha: false },
     });
+    // The engine draws at one device pixel per CSS pixel unless told otherwise, which on a
+    // phone's 3× screen is a third of the sharpness available.
+    app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 3);
     app.setCanvasFillMode(pc.FILLMODE_NONE, surface.clientWidth, surface.clientHeight);
     app.setCanvasResolution(pc.RESOLUTION_AUTO);
     app.start();
@@ -174,12 +180,24 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
             signal: abort.signal,
           });
           if (!response.ok) throw new Error("unavailable");
-          const bitmap = await createImageBitmap(await response.blob());
+          const blob = await response.blob();
+          let bitmap = await createImageBitmap(blob);
+          const most = app.graphicsDevice.maxTextureSize;
+          if (bitmap.width > most) {
+            // An older device cannot hold the full panorama; give it the largest it can.
+            bitmap.close();
+            bitmap = await createImageBitmap(blob, {
+              resizeWidth: most,
+              resizeHeight: most / 2,
+              resizeQuality: "high",
+            });
+          }
           const t = new pc.Texture(app.graphicsDevice, {
             width: bitmap.width,
             height: bitmap.height,
             format: pc.PIXELFORMAT_RGBA8,
             mipmaps: true,
+            anisotropy: Math.min(8, app.graphicsDevice.maxAnisotropy),
             addressU: pc.ADDRESS_REPEAT,
             addressV: pc.ADDRESS_CLAMP_TO_EDGE,
           });
@@ -200,7 +218,18 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
       moving = false;
     const bounds = overviewBounds(spots, tour.mesh);
     const eye = (s: TourSpot): Vec3 => [s.position[0], s.position[1], s.position[2]];
-    const look = () => camera.setEulerAngles((pitch * 180) / Math.PI, (-yaw * 180) / Math.PI, 0);
+    // Field of view and tilt follow the screen's shape and what the current spot photographed.
+    let limits = pitchLimits(camera.camera!.fov, here.band);
+    const frame = () => {
+      const fov = viewFov(surface.clientWidth, surface.clientHeight, here.band);
+      camera.camera!.fov = fov;
+      limits = pitchLimits(fov, here.band);
+      pitch = clampPitch(pitch, limits);
+    };
+    const look = () => {
+      pitch = clampPitch(pitch, limits);
+      camera.setEulerAngles((pitch * 180) / Math.PI, (-yaw * 180) / Math.PI, 0);
+    };
     const showRings = () => {
       const near = new Set(nearbySpots(here, spots).map((s) => s.spot));
       for (const [n, ring] of rings) ring.enabled = viewMode === "Walk" && near.has(n);
@@ -248,6 +277,7 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
       const from = eye(here);
       const to = eye(target);
       here = target;
+      frame();
       setCurrent(target.spot);
       setHint(false);
       if (viewMode !== "Walk") {
@@ -362,7 +392,7 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
         if (viewMode === "Walk") {
           const scale = ((camera.camera!.fov * Math.PI) / 180) / surface.clientHeight;
           yaw -= dx * scale;
-          pitch = clampPitch(pitch + dy * scale);
+          pitch = clampPitch(pitch + dy * scale, limits);
           look();
           if (travelled > 30) setHint(false);
         } else if (viewMode === "3D") {
@@ -399,16 +429,23 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
         const turn = (Math.PI / 180) * 10;
         if (e.key === "ArrowLeft") yaw -= turn;
         else if (e.key === "ArrowRight") yaw += turn;
-        else if (e.key === "ArrowUp") pitch = clampPitch(pitch + turn);
-        else if (e.key === "ArrowDown") pitch = clampPitch(pitch - turn);
+        else if (e.key === "ArrowUp") pitch = clampPitch(pitch + turn, limits);
+        else if (e.key === "ArrowDown") pitch = clampPitch(pitch - turn, limits);
         else return;
         e.preventDefault();
         if (viewMode === "Walk") look();
       },
       { signal: listeners.signal },
     );
-    const resizeCanvas = () =>
-      app.resizeCanvas(surface.parentElement!.clientWidth, Math.min(innerHeight * 0.7, 560));
+    const resizeCanvas = () => {
+      const stage = surface.parentElement!;
+      app.resizeCanvas(
+        stage.clientWidth,
+        fill ? stage.clientHeight : Math.min(innerHeight * 0.7, 560),
+      );
+      frame();
+      if (viewMode === "Walk") look();
+    };
     const resize = new ResizeObserver(resizeCanvas);
     resize.observe(surface.parentElement!);
     resizeCanvas();
@@ -457,11 +494,11 @@ export default function SpotViewer({ tour }: { tour: RoomTour }) {
       app.destroy();
     };
     // spots derive from tour.result
-  }, [tour.id, tour.listingId, tour.result, tour.mesh]);
+  }, [tour.id, tour.listingId, tour.result, tour.mesh, fill]);
 
   const modes = viewerModes(hasMesh);
   return (
-    <div className="spot-viewer">
+    <div className={"spot-viewer" + (fill ? " fill" : "")}>
       <div className="spot-viewer-stage">
         <canvas
           ref={canvas}

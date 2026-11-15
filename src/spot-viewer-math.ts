@@ -49,7 +49,36 @@ export function lookDirection(yaw: number, pitch: number): Vec3 {
   ];
 }
 
-export const clampPitch = (p: number) => Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, p));
+export const clampPitch = (p: number, limits?: [number, number]) =>
+  limits
+    ? Math.max(limits[0], Math.min(limits[1], p))
+    : Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, p));
+
+/** Degrees of soft fill a person may tilt into before the view stops. */
+const FILL_MARGIN = 8;
+/** Vertical field of view on a tall screen, when the photographed band allows it. */
+export const TALL_FOV = 100;
+export const WIDE_FOV = 75;
+
+/** Vertical field of view, in degrees. A tall screen shows about as much up and down as the
+ * spot photographed, so the whole band is in view at once and none of it is wasted. */
+export function viewFov(width: number, height: number, band?: [number, number]): number {
+  if (height <= width) return WIDE_FOV;
+  const span = band ? band[1] - band[0] : 180;
+  return Math.max(WIDE_FOV, Math.min(TALL_FOV, span));
+}
+
+/** How far the view may tilt, in radians, so its top and bottom edges stay within the
+ * photographed band plus a small margin. A full sphere tilts freely. */
+export function pitchLimits(fov: number, band?: [number, number]): [number, number] {
+  if (!band || (band[0] <= -85 && band[1] >= 85)) return [-PITCH_LIMIT, PITCH_LIMIT];
+  const low = band[0] - FILL_MARGIN + fov / 2;
+  const high = band[1] + FILL_MARGIN - fov / 2;
+  const rad = Math.PI / 180;
+  // A view taller than the band cannot avoid the fill; keep it level.
+  if (low > high) return [((low + high) / 2) * rad, ((low + high) / 2) * rad];
+  return [Math.max(low * rad, -PITCH_LIMIT), Math.min(high * rad, PITCH_LIMIT)];
+}
 
 /** Centre and horizontal extent to frame in the overview: the mesh when there is one, else the spots. */
 export function overviewBounds(
