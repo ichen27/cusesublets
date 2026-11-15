@@ -211,6 +211,74 @@ class Stitching(unittest.TestCase):
         self.assertGreaterEqual(psnr(image, SPHERE, photographed(slices)), 30)
 
 
+class Finishing(unittest.TestCase):
+    """The streaks above and below what was photographed, and the sharpening pass."""
+
+    def band(self, width=512):
+        """A panorama photographed only in its middle third: red on the left, blue on the right."""
+        height = width // 2
+        image = np.zeros((height, width, 3), np.uint8)
+        covered = np.zeros((height, width), bool)
+        covered[height // 3: 2 * height // 3] = True
+        image[covered] = (0, 0, 200)
+        image[height // 3: 2 * height // 3, width // 2:] = (200, 0, 0)
+        return image, covered
+
+    def test_each_direction_keeps_its_edge_colour_and_all_meet_at_the_pole(self):
+        image, covered = self.band()
+        painted = ss._caps(image, covered)
+        height, width = covered.shape
+        self.assertTrue(np.array_equal(painted, ~covered))
+        for row in (height // 3 - 3, 2 * height // 3 + 3):
+            # Just past the edge: still the colour of that side.
+            np.testing.assert_allclose(image[row, width // 4], (0, 0, 200), atol=12)
+            np.testing.assert_allclose(image[row, 3 * width // 4], (200, 0, 0), atol=12)
+        for row in (0, height - 1):
+            # At the pole every direction has blended into one colour.
+            np.testing.assert_allclose(image[row, width // 4], image[row, 3 * width // 4], atol=12)
+            np.testing.assert_allclose(image[row, width // 4], (100, 0, 100), atol=20)
+
+    def test_streaks_leave_photographed_pixels_alone(self):
+        image, covered = self.band()
+        before = image.copy()
+        ss._caps(image, covered)
+        self.assertTrue(np.array_equal(image[covered], before[covered]))
+
+    def test_a_fully_photographed_panorama_gets_no_streaks(self):
+        image = np.full((64, 128, 3), 90, np.uint8)
+        self.assertFalse(ss._caps(image, np.ones((64, 128), bool)).any())
+        self.assertFalse(ss._caps(image, np.zeros((64, 128), bool)).any())
+
+    def test_enhancing_sharpens_detail_and_lifts_dim_areas(self):
+        rng = np.random.default_rng(5)
+        soft = cv2.GaussianBlur(rng.uniform(40, 200, (256, 512, 3)).astype(np.float32), (0, 0), 2)
+        soft[:, :256] *= 0.35  # a dim half
+        image = np.clip(soft, 0, 255).astype(np.uint8)
+        before = image.copy()
+
+        def detail(picture):
+            return cv2.Laplacian(cv2.cvtColor(picture, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
+
+        ss.enhance(image)
+        self.assertEqual(image.shape, before.shape)
+        self.assertGreater(detail(image[:, 300:]), 1.3 * detail(before[:, 300:]))
+        # The dim half comes up; the well-lit half is not darkened much.
+        self.assertGreater(image[:, 40:200].mean(), 1.25 * before[:, 40:200].mean())
+        self.assertGreater(image[:, 320:480].mean(), 0.9 * before[:, 320:480].mean())
+
+    def test_enhancing_does_not_sharpen_the_fill(self):
+        rng = np.random.default_rng(6)
+        image = np.clip(cv2.GaussianBlur(rng.uniform(90, 190, (128, 256, 3)).astype(np.float32),
+                                         (0, 0), 2), 0, 255).astype(np.uint8)
+        photographed = np.zeros((128, 256), bool)
+        photographed[:, :128] = True
+        toned = image.copy()
+        ss.enhance(toned, np.zeros((128, 256), bool))  # brightness only
+        ss.enhance(image, photographed)
+        self.assertTrue(np.array_equal(image[:, 140:], toned[:, 140:]))
+        self.assertFalse(np.array_equal(image[:, :120], toned[:, :120]))
+
+
 class Loading(unittest.TestCase):
     def manifest(self, **spot):
         frames = [syn.frame_record(f'images/{i:05d}.jpg', np.eye(3), spot=1 if i < 2 else 2)

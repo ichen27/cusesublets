@@ -210,7 +210,7 @@ def reconstruct_spots(capture, work):
     display metadata under WORK/result."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     # spot_stitch sets OpenCV's decode pixel cap, so it is imported before OpenCV.
-    from spot_stitch import MAX_HOLES, load_spot_slices, stitch
+    from spot_stitch import MAX_HOLES, enhance, load_spot_slices, stitch
     import cv2
     work = Path(work)
     frames = work / 'frames'
@@ -228,6 +228,7 @@ def reconstruct_spots(capture, work):
         print(f'spot {number}: {len(spots[number])} slices, holes {holes:.4f}', flush=True)
         if holes > MAX_HOLES:
             raise ValueError('spot_incomplete')
+        enhance(image, report.pop('covered', None))
         name = f'panos/{number:02d}.jpg'
         if not cv2.imwrite(str(result / name), image, [cv2.IMWRITE_JPEG_QUALITY, PANORAMA_QUALITY]):
             raise ValueError('processing_failed')

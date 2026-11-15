@@ -45,6 +45,26 @@ FILL_SHRINK = 8
 # The fill is blurred sideways by this angle. Near the poles a panorama's rows are stretched,
 # so the blur widens there and the top and bottom close smoothly.
 FILL_BLUR = np.radians(6)
+# The unphotographed ceiling and floor are drawn as streaks: each direction keeps the colour at
+# the edge of what was photographed there, blurred sideways more and more towards the pole,
+# where every direction meets. Rows of this many pixels inside the edge give the colour.
+CAP_EDGE_ROWS = 12
+# The streaks are worked out on a strip this wide and enlarged.
+CAP_WIDTH = 1024
+# Sideways blur, in degrees of arc, gained per degree of distance from the edge.
+CAP_SPREAD = 0.12
+# Sharpening restores fine detail the stitch softened: (sigma as a share of the panorama's
+# width, strength).
+SHARPEN_DETAIL = (1.4 / 8192, 0.7)
+# A spot has one exposure, so its dim corners come out murky and its windows glaring. Each
+# area is pulled towards TONE_TARGET by this share of the way (in stops), judged over a
+# neighbourhood TONE_AREA of the panorama's width across, and by no more than TONE_LIMITS.
+# Bright areas are barely darkened: where a window has burnt out there is no detail to bring
+# back, and darkening it only turns white walls grey.
+TONE_TARGET = 150.0
+TONE_STRENGTH = 0.45
+TONE_AREA = 0.03
+TONE_LIMITS = (0.92, 1.9)
 # A spot may be level shots only, leaving the ceiling and floor unphotographed. Rows of the
 # panorama at least this covered are the band the shots were meant to cover, and holes are
 # counted there. The open top and bottom are then not holes, while a missing level shot
@@ -391,14 +411,100 @@ def _fill(image, holes):
     return image
 
 
+def _caps(image, covered):
+    """Paints the unphotographed top and bottom of a panorama in place, as streaks running from
+    the edge of what was photographed to the pole. Returns the pixels it painted."""
+    import cv2
+    height, width = covered.shape
+    painted = np.zeros_like(covered)
+    any_row = covered.any(0)
+    if not any_row.any():
+        return painted
+    strip = min(CAP_WIDTH, width)
+    pitch = 90 - (np.arange(height) + 0.5) / height * 180
+    for top in (True, False):
+        # Each column's first photographed row from this pole, and the cap beyond it.
+        edge = np.argmax(covered if top else covered[::-1], axis=0)
+        edge = np.where(any_row, edge, 0)
+        if not top:
+            edge = height - 1 - edge
+        if (edge == (0 if top else height - 1)).all():
+            continue
+        rows = np.arange(height)[:, None]
+        cap = (rows < edge[None]) if top else (rows > edge[None])
+        cap &= ~covered & any_row[None]
+        if not cap.any():
+            continue
+        # The colour just inside each column's edge.
+        inside = edge[None] + (np.arange(CAP_EDGE_ROWS)[:, None] + 1) * (1 if top else -1)
+        inside = np.clip(inside, 0, height - 1)
+        columns = np.broadcast_to(np.arange(width)[None], inside.shape)
+        known = covered[inside, columns][..., None]
+        colour = (image[inside, columns] * known).sum(0) / np.maximum(known.sum(0), 1)
+        colour[~any_row | (known.sum(0)[:, 0] == 0)] = colour[any_row].mean(0)
+        line = cv2.resize(colour[None].astype(np.float32), (strip, 1), interpolation=cv2.INTER_AREA)
+        span = np.flatnonzero(cap.any(1))
+        first, last = int(span[0]), int(span[-1]) + 1
+        step = max(1, (last - first) // 256)
+        sample = np.arange(first, last, step)
+        nearest = pitch[edge].max() if top else pitch[edge].min()
+        streaks = np.empty((len(sample), strip, 3), np.float32)
+        for i, row in enumerate(sample):
+            depth = abs(pitch[row] - nearest)
+            sigma = CAP_SPREAD * depth / max(np.cos(np.radians(pitch[row])), 0.02) * strip / 360
+            if sigma < 0.3:
+                streaks[i] = line[0]
+                continue
+            sigma = min(sigma, strip / 2)
+            wrapped = np.tile(line, (1, 3, 1))  # the panorama wraps around
+            streaks[i] = cv2.GaussianBlur(wrapped, (0, 0), sigma, sigmaY=0.01)[0, strip:2 * strip]
+        full = cv2.resize(streaks, (width, last - first), interpolation=cv2.INTER_LINEAR)
+        block = cap[first:last]
+        image[first:last][block] = np.clip(full[block] + 0.5, 0, 255)
+        painted |= cap
+    return painted
+
+
+def enhance(image, photographed=None):
+    """Improves a panorama in place: brightens dim areas and calms glaring ones, then restores
+    the fine detail that resampling softened. With `photographed`, only those pixels are
+    sharpened, so the soft fill stays soft. This does not recover detail the camera did not
+    capture."""
+    import cv2
+    height, width = image.shape[:2]
+    # Brightness of each neighbourhood, on a small copy that wraps around like the panorama.
+    small = cv2.resize(image, (width // FILL_SHRINK, height // FILL_SHRINK), interpolation=cv2.INTER_AREA)
+    light = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    pad = light.shape[1] // 4
+    light = np.concatenate([light[:, -pad:], light, light[:, :pad]], 1)
+    light = cv2.GaussianBlur(light, (0, 0), TONE_AREA * small.shape[1])[:, pad:-pad]
+    gain = np.clip((TONE_TARGET / np.maximum(light, 8)) ** TONE_STRENGTH, *TONE_LIMITS)
+    gain = cv2.resize(gain, (width, height), interpolation=cv2.INTER_CUBIC)
+    share, amount = SHARPEN_DETAIL
+    sigma = max(share * width, 0.6)
+    margin = int(4 * sigma) + 1
+    # In row blocks, so a large panorama never needs float copies of itself.
+    for top in range(0, height, BLOCK_ROWS):
+        low, high = max(0, top - margin), min(height, top + BLOCK_ROWS + margin)
+        block = np.clip(image[low:high] * gain[low:high, :, None], 0, 255).astype(np.uint8)
+        sharp = cv2.addWeighted(block, 1 + amount, cv2.GaussianBlur(block, (0, 0), sigma), -amount, 0)
+        rows = slice(top - low, top - low + min(BLOCK_ROWS, height - top))
+        if photographed is None:
+            image[top:top + BLOCK_ROWS] = sharp[rows]
+        else:
+            keep = photographed[top:top + BLOCK_ROWS]
+            image[top:top + BLOCK_ROWS] = np.where(keep[..., None], sharp[rows], block[rows])
+    return image
+
+
 def stitch(slices, width=4096, refine=True, report=None):
     """Returns (equirect BGR uint8 of width × width/2, hole fraction above the nadir disc).
     A dict passed as `report` gets `band`: the lowest and highest pitch, in degrees, of the
     rows that were photographed (see BAND_SHARE), for viewers that keep the fill off screen.
 
-    A spot of level shots only leaves the ceiling and floor unphotographed. They are filled
-    with blurred colour from the edge of what was photographed and are not holes: holes are
-    counted in the band of rows the shots mostly cover (see BAND_SHARE).
+    A spot of level shots only leaves the ceiling and floor unphotographed. They are drawn as
+    streaks of the colours at the edge of what was photographed (see `_caps`) and are not
+    holes: holes are counted in the band of rows the shots mostly cover (see BAND_SHARE).
 
     A floor shot, if the spot has one, is used only where no other slice reaches and only on
     the side away from the person holding the phone, so they stay out of the panorama. The
@@ -450,9 +556,14 @@ def stitch(slices, width=4096, refine=True, report=None):
     if report is not None and band.any():
         seen = np.degrees(pitch[band.any(1)])
         report['band'] = (float(seen.min()), float(seen.max()))
+    if report is not None:
+        report['covered'] = covered
     image = out
     if not covered.all():
-        image = _fill(image, ~covered)
+        # The open top and bottom become streaks; anything else unphotographed is blurred in.
+        rest = ~covered & ~_caps(image, covered)
+        if rest.any():
+            image = _fill(image, rest)
     if any(R[1, 2] < np.sin(DOWN_PITCH) for R in rotations):
         # The neutral disc: solid below −82°, blended over the 2° above it.
         alpha = np.clip((NADIR_PITCH - pitch) / NADIR_FEATHER, 0, 1)[:, None, None]
