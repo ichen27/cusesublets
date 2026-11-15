@@ -39,6 +39,14 @@ The fourth run (2026-11-15), the first with six level dots, stitched cleanly but
 - **Tried and not adopted:** shifting each shot as if the room were a shell at a fitted distance (one per seam, or per seam and height). The simple shells explained little (mismatch 0.84 to 0.78) because furniture, doors and walls at one seam are at very different distances, and the flexible one bent straight edges into steps and opened gaps.
 - **Not done yet, at capture:** turning the phone about itself and stepping round it, as on a tripod, would cut the swing to a few centimetres. More shots per turn would also halve the gap between neighbours. Neither has been tried on a device.
 
+**Sharpening slices with a model** (tried on the fourth run's capture, 2026-11-15, Apple M4):
+
+- Real-ESRGAN's 2× model on each slice before stitching gave visibly cleaner edges and texture in the panorama (a hair dryer's mesh, cords, embossed paper) at 10.7 s a slice. SwinIR's 2× model looked about the same on a crop and took roughly ten times as long; Real-ESRGAN's small general model looked painterly.
+- With the model, the stitcher's own sharpening made the result harsh, so it is left out for enhanced slices.
+- Small lettering came out sharper but cannot be trusted to be right.
+- The whole three-spot job took 4 min 2 s with the model against about 1.5 min without.
+- **Not measured:** the 2880-wide slices the current app saves. No scan at that size exists yet.
+
 The lens measured 103° × 87° after correction (focal 763 px at 1920 × 1440), slightly narrower than the 108° × 92° assumed below, with holes still under 0.1%. The 4° alignment tolerance and 0.5 s hold are unchanged starting values. Tune them from the next device run, and update `SpotLayout.standard` and `SpotTurnTests` together.
 
 ## Synthetic baseline (2026-11-12, Mac mini)

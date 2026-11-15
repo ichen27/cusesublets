@@ -27,8 +27,9 @@ The API stores `kind = 'spots'` (migration `0020_spot_tours.sql`), and the claim
 2. It loads only the slices listed in finished spots. A manifest is refused if it reuses a slice, exceeds 8 spots or 64 slices per spot, declares images over 4096 px, or exceeds a per-spot pixel budget. The JPEG header is checked before decoding, and OpenCV's own pixel cap is set.
 3. It refines each slice's rotation using ORB feature matches between overlapping slices, to undo small errors in the sensed rotations. If any slice would need to turn more than 3°, the slices disagree for another reason (a hand-held phone swings on the arm, so each shot sees the room from a different place) and the sensed rotations are kept. Each overlapping pair is first redrawn through one shared pinhole view aimed between the two, because wide slices stretch the same surface differently at their edges. A slice is compared with at most six neighbours. The shared turn the matches cannot see is removed, so the set stays anchored to the sensors.
 4. It evens out exposure with per-slice gains and puts the slices together into a 8192 × 4096 equirectangular JPEG (quality 88). Each pixel comes from one slice. Neighbouring slices meet along a line chosen where they look alike, so something they place differently is drawn once and not as a ghost; only their broad light and shade is mixed across the line, so plain walls show no step. Where slices disagree, a strip of the room can still be missing at the line or an edge can kink there; see the [device results](spot-capture-device-results.md). Yaw 0 is ARKit −Z; columns grow clockwise seen from above. The level shots reach about 50° above and below level; the ceiling and floor beyond that are drawn as streaks of the colours at the edge of what was photographed, blurring together towards the pole, and are not holes. After stitching, dim areas are lifted and fine detail is sharpened. Holes are counted in the band of rows the shots cover, so a missing level shot still fails. Spots from earlier builds also have a ceiling and a floor shot: the floor shot shows the legs of the person holding the phone, so it is used only where the level shots do not reach and only on the side away from them, and a neutral disc below −80° pitch covers the floor under them. A spot with more than 2% uncovered sphere above that fails as `spot_incomplete`.
-5. With `CUSE_ROOM_MESH=1`, it builds the room mesh from walk frames plus level slices.
-6. It uploads one USTAR bundle (panoramas, then `spots.json`) and records each panorama's byte range in the result. `GET /api/listings/{listing}/tours/{tour}/panorama/{spot}` serves one panorama by range, with the same visibility checks as the model.
+5. With `CUSE_ENHANCE_MODEL` set to a super-resolution model file, it also runs every slice through that model and stitches the spot again from the result (see [Sharper panoramas with a model](#sharper-panoramas-with-a-model-optional)). That panorama is the one shown. If the model cannot be loaded, a spot is too large, or anything in this step fails, the spot keeps the panorama from step 4.
+6. With `CUSE_ROOM_MESH=1`, it builds the room mesh from walk frames plus level slices.
+7. It uploads one USTAR bundle (panoramas, then `spots.json`) and records each panorama's byte range in the result. `GET /api/listings/{listing}/tours/{tour}/panorama/{spot}` serves one panorama by range, with the same visibility checks as the model.
 
 Install `processing/requirements-spots.txt` into the worker's Python environment. On the Mac mini, an 8192-wide spot of six slices stitches in about 5 s.
 
@@ -55,6 +56,26 @@ APP_DATA_DIR=work/studio-data PORT=8937 STUDIO_TOKEN=<your token> work/spots-ven
 - **The app** talks to it over https at the address and token set under **Settings** (or passed once as the launch arguments `-studioURL` and `-studioToken`). The token is kept in the iPhone's Keychain. A native app cannot complete a browser sign-in such as Cloudflare Access with Google, so the address must not sit behind one.
 - Captures and tours hold real room photographs. They stay under `APP_DATA_DIR` and are removed with the property.
 - `studio/launcher.json` registers the service with the author's personal app launcher; it is an example, not a portable deployment.
+
+#### Sharper panoramas with a model (optional)
+
+The slices are frames from the camera's video stream, which are softer and noisier than photographs. The worker can run each slice through a super-resolution model before stitching. It is off unless `CUSE_ENHANCE_MODEL` names a model file.
+
+```sh
+work/spots-venv/bin/pip install -r processing/requirements-enhance.txt
+mkdir -p work/models
+curl -L -o work/models/RealESRGAN_x2plus.pth \
+  https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth
+CUSE_ENHANCE_MODEL=work/models/RealESRGAN_x2plus.pth APP_DATA_DIR=work/studio-data PORT=8937 \
+  STUDIO_TOKEN=<your token> work/spots-venv/bin/python studio/server.py
+```
+
+- **Which model.** [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)'s `RealESRGAN_x2plus` (BSD 3-Clause, 67 MB) is the one tried. The file is downloaded, not kept in this repository. Any colour image-to-image model that [spandrel](https://github.com/chaiNNer-org/spandrel) can load should work. On one real scan, SwinIR's 2× model looked about the same and took roughly ten times as long, and Real-ESRGAN's small `realesr-general-x4v3` smoothed texture away.
+- **What it does.** Each slice goes through the model, then is kept only as large as the panorama can show: 1920-wide slices end up about twice the size, 2880-wide ones about 1.4 times. The stitcher's own sharpening is left out for these slices, because both together look harsh.
+- **What it does not do.** The model draws plausible detail. Edges and surfaces come out cleaner, but small lettering and fine patterns can be changed, and nothing the camera missed (a burnt-out window, a strip lost at a seam) comes back. A tour that must show a room exactly as photographed should be made without it.
+- **The untouched panorama is kept.** Tour Studio leaves each spot's panorama from the slices as captured in `out/result/plain/` beside the property's other files. The viewer has no switch between the two yet.
+- **Cost.** On an Apple M4 a 1920 × 1440 slice takes about 11 s, so a three-spot scan took 4 minutes instead of 1.5. Without a GPU it will be far slower. A spot with more than eight 2880 × 2160 slices' worth of pixels is stitched without the model.
+- **Tests** use a stand-in for the model, so they need neither PyTorch nor the model file. The real model has only been run by hand, on one scan.
 
 ### Viewer (`src/SpotViewer.tsx`)
 
