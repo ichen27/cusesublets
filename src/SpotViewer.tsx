@@ -5,6 +5,7 @@ import type { RoomTour } from "../shared/room-tour";
 import type { SpotTourResult, TourSpot } from "../shared/spot-tour";
 import {
   clampPitch,
+  openingPitch,
   viewFov,
   floorHit,
   lookDirection,
@@ -210,7 +211,7 @@ export default function SpotViewer({ tour, fill = false }: { tour: RoomTour; fil
     };
 
     let yaw = 0,
-      pitch = 0,
+      pitch = openingPitch(start.band),
       here = start,
       viewMode: ViewerMode = "Walk",
       orbit = 0,

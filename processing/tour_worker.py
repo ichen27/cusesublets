@@ -193,14 +193,15 @@ def write_bundle(path, panoramas, spots_json):
 
 
 def mesh_candidates(manifest):
-    """Walk frames plus level-ring slices: the views with the most parallax between them."""
+    """Walk frames plus each spot's ring of slices: the views with the most parallax between
+    them. Earlier builds' ceiling and floor shots are left out."""
     picked = []
     for index, frame in enumerate(manifest.get('frames', [])):
         if frame.get('role', 'walk') == 'walk':
             picked.append(index)
             continue
         forward_y = -float(frame['transform_matrix'][1][2])  # ARKit looks along −Z
-        if abs(forward_y) < 0.26:  # within 15° of level
+        if abs(forward_y) < 0.5:  # within 30° of level; the ring is tipped 15° down
             picked.append(index)
     return picked
 

@@ -45,8 +45,10 @@ def photographed(slices, width=WIDTH):
         if s.R[1, 2] < np.sin(ss.DOWN_PITCH):
             mask &= ~((ss._body_keep(d, s.R) < 1) & (d[..., 1] < -np.sin(np.radians(45))))
     if not any(abs(s.R[1, 2]) > 0.5 for s in slices):
-        # Level shots only: they reach 54° up and down at their centres, less between them.
-        mask &= np.abs(d[..., 1]) < np.sin(np.radians(45))
+        # One ring of shots only: they reach 54° above and below where they look at their
+        # centres, less between them.
+        tilt = np.arcsin(np.mean([s.R[1, 2] for s in slices]))
+        mask &= (d[..., 1] > np.sin(tilt - np.radians(45))) & (d[..., 1] < np.sin(tilt + np.radians(45)))
     return mask
 
 
@@ -209,15 +211,34 @@ class Stitching(unittest.TestCase):
         slices = [s for i, s in enumerate(capture.slices()) if i not in (2, 3)]
         self.assertGreater(ss.stitch(slices, width=WIDTH, refine=False)[1], ss.MAX_HOLES)
 
-    def test_level_shots_alone_leave_a_soft_top_and_bottom_not_holes(self):
+    def test_a_ring_of_shots_alone_leaves_a_soft_top_and_bottom_not_holes(self):
         image, holes = ss.stitch(Capture(self.root).slices(), width=WIDTH, refine=False)
         self.assertLessEqual(holes, ss.MAX_HOLES)
-        for rows in (slice(0, WIDTH // 16), slice(-WIDTH // 16, None)):
+        # The 5° nearest each pole. The shots stop 54° short of the top one and 23° short of
+        # the bottom one.
+        for rows in (slice(0, WIDTH // 36), slice(-WIDTH // 36, None)):
             cap = image[rows].astype(int)
             # Painted, with no dark disc and none of the checkerboard's hard edges.
             self.assertGreater(int(cap.min()), 20)
             self.assertLess(float(np.abs(np.diff(cap, axis=1)).max(-1).mean()), 2)
         self.assertFalse(np.all(np.abs(image[-1].astype(int) - np.array(ss.NADIR_BGR)) <= 2))
+
+    def test_the_apps_shots_photograph_more_floor_than_ceiling(self):
+        report = {}
+        _, holes = ss.stitch(Capture(self.root).slices(), width=WIDTH, refine=False, report=report)
+        low, high = report['band']
+        self.assertLessEqual(holes, ss.MAX_HOLES)
+        # Tipped 15° down, the shots reach 15° further down and 15° less far up than level ones.
+        self.assertLess(low, -62)
+        self.assertTrue(30 < high < 40, high)
+
+    def test_mesh_views_are_the_ring_of_shots_without_ceiling_or_floor_shots(self):
+        def frame(pitch, role='slice'):
+            record = syn.frame_record('images/0.jpg', syn.arkit_rotation(0.0, np.radians(pitch)), spot=1)
+            return {**record, 'role': role}
+        # The ring is tipped 15° down and each shot may be 4° off its dot.
+        frames = [frame(-19), frame(-11), frame(0), frame(90), frame(-90), frame(-80, role='walk')]
+        self.assertEqual(tw.mesh_candidates({'frames': frames}), [0, 1, 2, 5])
 
     def test_earlier_builds_ceiling_and_floor_shots_still_stitch(self):
         slices = Capture(self.root, poles=True).slices()

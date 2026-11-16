@@ -47,6 +47,23 @@ The fourth run (2026-11-15), the first with six level dots, stitched cleanly but
 - The whole three-spot job took 4 min 2 s with the model against about 1.5 min without.
 - **Not measured:** the 2880-wide slices the current app saves. No scan at that size exists yet.
 
+**Dots lowered by 15°** (2026-11-15, on the owner's request: the floor matters more than the ceiling):
+
+- One turn photographs a band about 96° tall, so every degree the shots tip down moves that band from ceiling to floor. Stitching synthetic rings with the measured lens gave, for a phone 1.4 m up in a 2.4 m room:
+
+  | Tilt | Band | Floor seen from | Ceiling line kept for walls beyond |
+  | --- | --- | --- | --- |
+  | 0° (before) | −48° to +48° | 1.26 m | 0.90 m |
+  | 10° | −59° to +38° | 0.85 m | 1.27 m |
+  | **15° (now)** | −64° to +33° | 0.69 m | 1.52 m |
+  | 20° | −69° to +29° | 0.53 m | 1.84 m |
+  | 25° | −75° to +24° | 0.38 m | 2.27 m |
+
+  Holes stayed under 0.1% of the band at every tilt.
+- **What it costs.** Cropping the fourth run's shots to the top edge a 15° tilt gives, and re-stitching, shows the loss: in the hallway, where the door is under a metre away, the top of the door frame and the ceiling above it become streaks of fill. Rooms with walls further than 1.5 m keep the ceiling line.
+- The viewer now opens looking at the middle of what a spot photographed (15° down for these spots), so the fill above is off screen until the viewer looks up.
+- **Not yet run on a device.** The floor near the feet is the closest thing in the picture, so the arm's swing shifts it most between shots; patterned floors (boards, tiles) may kink where shots meet. The gain at the floor cannot be previewed from an earlier scan.
+
 The lens measured 103° × 87° after correction (focal 763 px at 1920 × 1440), slightly narrower than the 108° × 92° assumed below, with holes still under 0.1%. The 4° alignment tolerance and 0.5 s hold are unchanged starting values. Tune them from the next device run, and update `SpotLayout.standard` and `SpotTurnTests` together.
 
 ## Synthetic baseline (2026-11-12, Mac mini)

@@ -53,6 +53,17 @@ export function lookDirection(yaw: number, pitch: number): Vec3 {
  * spot photographed the panorama is streaks of the colours at its edge. */
 export const clampPitch = (p: number) => Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, p));
 
+/** The view opens no further from level than this, in degrees. */
+const OPENING_LIMIT = 25;
+
+/** Pitch, in radians, a spot's view opens at: the middle of what it photographed, so shots
+ * tipped towards the floor open showing the floor and not the fill above them. */
+export function openingPitch(band?: [number, number]): number {
+  if (!band) return 0;
+  const middle = Math.max(-OPENING_LIMIT, Math.min(OPENING_LIMIT, (band[0] + band[1]) / 2));
+  return (middle * Math.PI) / 180;
+}
+
 /** Vertical field of view on a tall screen, when the photographed band allows it. */
 export const TALL_FOV = 100;
 export const WIDE_FOV = 75;

@@ -19,9 +19,13 @@ final class SpotTurnTests: XCTestCase {
     return event
   }
 
-  func testLayoutIsOneLevelTurnOfSixShots() {
+  func testLayoutIsOneTurnOfSixShotsTippedTowardsTheFloor() {
     XCTAssertEqual(SpotLayout.standard.count, 6)
-    XCTAssertTrue(SpotLayout.standard.allSatisfy { $0.ring == 0 && $0.pitch == 0 })
+    // 15° below level: the floor matters more to a viewer than the ceiling.
+    for target in SpotLayout.standard {
+      XCTAssertEqual(target.ring, 0)
+      XCTAssertEqual(target.pitch, -15 * .pi / 180, accuracy: 1e-6)
+    }
     // Evenly spaced: 60° apart, so the 87°-wide shots overlap.
     for (index, target) in SpotLayout.standard.enumerated() {
       XCTAssertEqual(target.yaw, Float(index) * .pi / 3, accuracy: 1e-6)
@@ -68,8 +72,10 @@ final class SpotTurnTests: XCTestCase {
   func testStartYawRotatesTheFirstTarget() {
     let turn = SpotTurn(startYaw: .pi / 2)
     let d = turn.direction(of: turn.current!)
-    // ARKit yaw about +Y: facing −Z at yaw 0, so yaw π/2 faces −X.
-    XCTAssertEqual(d.x, -1, accuracy: 1e-5)
+    // ARKit yaw about +Y: facing −Z at yaw 0, so yaw π/2 faces −X. The dot is tipped down.
+    let tilt = SpotLayout.tiltDegrees * .pi / 180
+    XCTAssertEqual(d.x, -cos(tilt), accuracy: 1e-5)
+    XCTAssertEqual(d.y, sin(tilt), accuracy: 1e-5)
     XCTAssertEqual(d.z, 0, accuracy: 1e-5)
   }
 

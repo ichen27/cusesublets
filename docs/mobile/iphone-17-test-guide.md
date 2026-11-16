@@ -42,7 +42,7 @@ The archive is reconstruction input, not a finished Gaussian model. It can be ev
 Open the **Cuse Capture Test** app. It starts on **Properties**: add a property, read the guide and tap **Start scan**. Each spot is 8 photos on the 0.5× camera. (The older checks are under Settings → Device capture check.) Record the build commit, iOS version, room and lighting, and write the results in [spot-capture-device-results.md](spot-capture-device-results.md).
 
 1. Tap **Start scan** and allow camera access. The capture map appears.
-2. Stand in the middle of the room and tap the shutter. The view switches to the 0.5× camera. Line the circle up with each dot and hold until the ring fills: six around you, then the ceiling, then the floor. Note any dot that is hard to reach or hold, and how long the whole spot takes.
+2. Stand in the middle of the room and tap the shutter. The view switches to the 0.5× camera. Line the circle up with each dot and hold until the ring fills: six around you, each a little below eye level. Note any dot that is hard to reach or hold, and how long the whole spot takes.
 3. Try **Undo** once. Try **Cancel spot** (×) once on a later spot.
 4. After each spot the map returns. Check that the green dot (you) is where you are standing and that it follows you as you walk; if it jumps or freezes, note it, because that means ARKit did not find its place after the turn. Walk to 3–5 more spots, capturing each. Write down the final percentage and your own judgement of how much of the room was covered.
 5. Background the app once during capture: the finished spots must remain.

@@ -141,7 +141,7 @@ struct SpotTurnView: View {
           VStack(spacing: 10) {
             Text(
               recorder.message.isEmpty
-                ? "This is what the spot will capture. Stand where you want the view, then turn on the spot to follow \(SpotLayout.standard.count) dots. Keep the phone upright and level."
+                ? "This is what the spot will capture. Stand where you want the view, then turn on the spot to follow \(SpotLayout.standard.count) dots. Keep the phone upright. The dots sit a little below eye level, to capture more of the floor."
                 : recorder.message
             ).font(.callout).multilineTextAlignment(.center)
               .accessibilityIdentifier("spot-message")
