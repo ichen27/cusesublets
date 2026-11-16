@@ -31,8 +31,10 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published private(set) var you: SIMD2<Float>?
   @Published private(set) var running = false
   @Published private(set) var requestingPermission = false
-  /// The 0.5× camera is showing what the next spot will capture, before Start Capture.
-  @Published private(set) var framing = false
+  /// A spot was asked for and opens as soon as the camera knows where it is.
+  @Published private(set) var opening = false
+  /// Spots whose sketch for the map is still being drawn.
+  @Published private(set) var sketching: Set<Int> = []
   /// The shots of the turn in progress, for showing them where they were taken.
   @Published private(set) var pinned: [PinnedShot] = []
   /// Top-down sketches of the room around each finished spot, by spot number.
@@ -70,8 +72,11 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   /// Set while ARKit, restarted after a turn, still has to be lined up with the tour's world.
   private var realign: (orientation: SpotOrientation, origin: SIMD3<Float>, facing: SIMD3<Float>?)?
   private var settleUntil = -Double.infinity
-  /// The camera opens by itself for the first spot, once.
-  private var openedFirst = false
+  private var checkingBudget = false
+  /// When the spot being opened was asked for, and when its camera's first picture arrived.
+  private var askedAt: Double?
+  private var firstWideFrame: Double?
+  private var cameraDelay: Double?
   private var pinSerial = 0
   private let stillContext = CIContext()
   /// As wide as the screen in pixels, so a pinned shot looks as sharp as the live camera did.
@@ -79,7 +84,10 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   /// The correction applied after the previous turn, recorded with the next spot.
   private var lastRealign: (yaw: Double, shift: Double)?
   private var exposureLocked = false
-  private var lens: (focal: Float, image: CGSize)?
+  /// The 0.5× camera's focal length and picture size, in pixels. Until its first picture
+  /// arrives this is its usual shape (103° across the long side), so the dot can be drawn the
+  /// moment the camera screen opens.
+  private var lens: (focal: Float, image: CGSize) = (1602, CGSize(width: 4032, height: 3024))
   private var pendingSlices = 0
   private var finishing = false
   private var lockedExposure: (duration: Double, iso: Double) = (0, 0)
@@ -180,31 +188,73 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     motion.startDeviceMotionUpdates(using: .xArbitraryZVertical)
     wide.onFrame = { [weak self] frame in self?.turnFrame(frame) }
     coverageEngine.reset(view: view)
+    // Loading the depth model takes a while; do it now, not when the first spot's sketch waits.
+    DispatchQueue.global(qos: .utility).async { _ = DepthEstimator.shared }
     running = true
     UIApplication.shared.isIdleTimerDisabled = true
   }
 
   // MARK: Spot actions (main thread)
 
-  /// Opens the 0.5× camera where the person stands, so they see what the spot will capture.
-  /// ARKit only tracks with the 1× camera, so it is paused from here until the spot ends.
-  func frameSpot() {
-    guard running, phase == .map, !framing else { return }
-    guard realign == nil else {
-      message = "Hold still for a moment so the camera can find its place."
-      return
-    }
-    var tracked = false
-    if case .normal = view.session.currentFrame?.camera.trackingState { tracked = true }
-    guard tracked, let frame = view.session.currentFrame, let sample = motion.deviceMotion else {
-      message = "Hold still for a moment so the camera can find its place."
-      return
-    }
+  /// A new camera is still choosing its exposure, and a spot keeps the exposure of its first
+  /// shot. `seconds` is the time since the camera's first picture.
+  static func exposureSettled(after seconds: Double, adjusting: Bool) -> Bool {
+    seconds >= 0.5 && (!adjusting || seconds >= 1.5)
+  }
+
+  /// The button on the map: opens the 0.5× camera where the person stands, with the first dot
+  /// straight ahead, ready to capture. If the camera does not know where it is yet, the spot
+  /// opens as soon as it does.
+  func openSpot() {
+    guard running, phase == .map, turn == nil, !checkingBudget else { return }
     guard WideCamera.isAvailable else {
       message = "Spot capture needs an iPhone with a 0.5× camera."
       return
     }
-    let pose = frame.camera.transform
+    guard spotsRemaining > 0 else {
+      message = "This tour has the maximum of \(SpotTake.maximumSpots) spots."
+      return
+    }
+    if !opening {
+      opening = true
+      askedAt = CACurrentMediaTime()
+      message = ""
+    }
+    // Without a tracked pose there is nowhere to put the spot; the next tracked frame tries again.
+    guard trackedPose() != nil else { return }
+    checkingBudget = true
+    writer.withBudget({
+      $0.canFit(views: SpotLayout.standard.count, averageImage: Self.estimatedSliceBytes)
+    }) { [weak self] fits in
+      guard let self else { return }
+      self.checkingBudget = false
+      guard self.running, self.opening, self.phase == .map else { return }
+      guard fits else {
+        self.opening = false
+        self.message = "This tour is full. Review your spots and generate the tour."
+        return
+      }
+      guard let (pose, sample) = self.trackedPose() else { return }
+      guard self.session.startSpot(budgetFits: true, tracking: true) else {
+        self.opening = false
+        return
+      }
+      self.beginTurn(pose: pose, sample: sample)
+    }
+  }
+
+  /// Where ARKit says the phone is, when that can be trusted.
+  private func trackedPose() -> (simd_float4x4, CMDeviceMotion)? {
+    guard realign == nil, !trackingPaused, let frame = view.session.currentFrame,
+      frame.timestamp >= settleUntil, case .normal = frame.camera.trackingState,
+      let sample = motion.deviceMotion
+    else { return nil }
+    return (frame.camera.transform, sample)
+  }
+
+  /// Hands the camera from ARKit, which only tracks with the 1× lens, to the 0.5× camera, and
+  /// starts the turn with the first dot the way the person faces.
+  private func beginTurn(pose: simd_float4x4, sample: CMDeviceMotion) {
     let cameraToWorld = simd_float3x3(
       SIMD3(pose.columns.0.x, pose.columns.0.y, pose.columns.0.z),
       SIMD3(pose.columns.1.x, pose.columns.1.y, pose.columns.1.z),
@@ -213,56 +263,25 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     startFacing = SpotOrientation.facing(cameraToWorld: cameraToWorld)
     orientation = SpotOrientation(
       cameraToWorld: cameraToWorld, deviceToReference: SpotOrientation.deviceToReference(sample))
-    lens = nil
+    // Someone looking down at the map still faces the way the top of the phone points.
+    let ahead = startFacing ?? -cameraToWorld.columns.2
+    slicePaths = []
+    pendingSlices = 0
+    finishing = false
+    exposureLocked = false
+    firstWideFrame = nil
+    cameraDelay = nil
     coverageEngine.setOverlayHidden(true)
-    message = ""
-    framing = true
     trackingPaused = true
     view.session.pause()
+    turn = SpotTurn(startYaw: atan2(-ahead.x, -ahead.z))
+    opening = false
+    message = ""
+    phase = session.phase
     wide.start { [weak self] problem in
-      guard let self, let problem else { return }
-      if case .turning = self.phase {
-        self.abandonTurn(message: problem)
-        self.session.abandonSpot()
-        self.phase = self.session.phase
-      } else if self.framing {
-        self.cancelFraming()
-        self.message = problem
-      }
-    }
-  }
-
-  /// Leaves the camera without capturing and goes back to the map.
-  func cancelFraming() {
-    guard framing else { return }
-    framing = false
-    resumeTracking()
-    coverageEngine.setOverlayHidden(false)
-  }
-
-  /// Start Capture: begins the turn, with the first dot straight ahead.
-  func beginSpot() {
-    guard running, framing, phase == .map, let orientation, let sample = motion.deviceMotion
-    else { return }
-    let forward = orientation.forward(SpotOrientation.deviceToReference(sample))
-    writer.withBudget({
-      $0.canFit(views: SpotLayout.standard.count, averageImage: Self.estimatedSliceBytes)
-    }) { [weak self] fits in
-      guard let self, self.framing else { return }
-      guard self.session.startSpot(budgetFits: fits, tracking: true) else {
-        self.message =
-          fits
-          ? "This tour has the maximum of \(SpotTake.maximumSpots) spots."
-          : "This tour is full. Review your spots and generate the tour."
-        return
-      }
-      self.slicePaths = []
-      self.pendingSlices = 0
-      self.finishing = false
-      self.exposureLocked = false
-      self.turn = SpotTurn(startYaw: atan2(-forward.x, -forward.z))
-      self.message = ""
-      self.framing = false
+      guard let self, let problem, case .turning = self.phase else { return }
+      self.abandonTurn(message: problem)
+      self.session.abandonSpot()
       self.phase = self.session.phase
     }
   }
@@ -280,7 +299,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   /// Leaves the current turn without saving the spot.
   func cancelSpot() {
     guard case .turning = phase else { return }
-    abandonTurn(message: "Spot cancelled. Its views still help the 3D model.")
+    let taken = !slicePaths.isEmpty || pendingSlices > 0
+    abandonTurn(message: taken ? "Cancelled. Its views still help the 3D model." : "")
     session.abandonSpot()
     phase = session.phase
   }
@@ -310,7 +330,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   /// Deletes a spot and immediately starts a new turn to replace it, while tracking is live.
   func redoSpot(_ number: Int) {
     deleteSpot(number)
-    frameSpot()
+    openSpot()
   }
 
   /// Ends capture; finished spots stay for review.
@@ -318,7 +338,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     permissionGeneration = UUID()
     requestingPermission = false
     if case .turning = phase { abandonTurn(message: SpotSession.endedMessage) }
-    framing = false
+    opening = false
     guard running else { return }
     running = false
     wide.stop()
@@ -404,11 +424,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       show(decision.reason == .limitReached ? nil : decision.hint, at: elapsed)
       paint(frame, usable: decision.usable, saved: decision.save, at: elapsed)
       if decision.save { saveWalk(frame, source: source) }
-      // For the first spot the camera opens as soon as tracking has started.
-      if tracked, !openedFirst, spots.isEmpty {
-        openedFirst = true
-        frameSpot()
-      }
+      // A spot asked for before the camera knew where it was opens now.
+      if tracked, opening { openSpot() }
     case .turning: break
     case .relocating:
       show(.establishTracking, at: elapsed)
@@ -464,10 +481,19 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       let sample = motion.deviceMotion
     else { return }
     lens = (frame.fx, CGSize(width: frame.width, height: frame.height))
+    if firstWideFrame == nil {
+      firstWideFrame = frame.timestamp
+      cameraDelay = askedAt.map { CACurrentMediaTime() - $0 }
+    }
     let attitude = SpotOrientation.deviceToReference(sample)
     let rate = sample.rotationRate
     let speed = (rate.x * rate.x + rate.y * rate.y + rate.z * rate.z).squareRoot()
-    let steady = speed < Self.steadyRotation && !writer.busy && !finishing
+    let settled =
+      exposureLocked
+      || Self.exposureSettled(
+        after: frame.timestamp - (firstWideFrame ?? frame.timestamp),
+        adjusting: wide.adjustingExposure)
+    let steady = speed < Self.steadyRotation && !writer.busy && !finishing && settled
     let time = frame.timestamp - (startTime ?? frame.timestamp)
     let event = current.update(forward: orientation.forward(attitude), time: time, steady: steady)
     turn = current
@@ -528,13 +554,13 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
 
   /// Tangent of half the 0.5× camera's view across an upright screen.
   var viewHalfWidth: Float {
-    guard let lens, lens.focal > 0 else { return 0.95 }
+    guard lens.focal > 0 else { return 0.95 }
     return Float(lens.image.height) / 2 / lens.focal
   }
 
   /// Where a world direction is on the 0.5× camera preview, for drawing the dots.
   func screenPoint(of direction: SIMD3<Float>, in screen: CGSize) -> (point: CGPoint, ahead: Bool)? {
-    guard let orientation, let lens, let sample = motion.deviceMotion else { return nil }
+    guard let orientation, let sample = motion.deviceMotion else { return nil }
     return orientation.screenPoint(
       of: direction, deviceToReference: SpotOrientation.deviceToReference(sample),
       focal: lens.focal, image: lens.image, screen: screen)
@@ -576,12 +602,12 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       floorY: floor, startYaw: Double(turn?.startYaw ?? 0),
       exposureDuration: lockedExposure.duration, iso: lockedExposure.iso, lens: "ultrawide",
       gravityMismatch: orientation.map { Double($0.gravityMismatchDegrees) },
-      resumeYaw: lastRealign?.yaw, resumeShift: lastRealign?.shift)
+      resumeYaw: lastRealign?.yaw, resumeShift: lastRealign?.shift, cameraDelay: cameraDelay)
     do {
       try SpotTake.appendSpot(record, to: folder)
       spots.append(record)
       session.spotFinished()
-      message = "Spot \(number) captured. Walk to the next spot, then tap Next Spot."
+      message = "Captured. Walk to where you want the next view, then tap Capture Here."
       drawFloor(of: record)
     } catch {
       message = error.localizedDescription
@@ -618,16 +644,23 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     if hint != shown { hint = shown }
   }
 
-  /// Makes the top-down sketch of the room around a finished spot, off the main thread.
+  /// Makes the top-down sketch of the room around a finished spot, off the main thread, and
+  /// records how long the person waited for it.
   private func drawFloor(of spot: SpotRecord) {
     let folder = self.folder
+    let asked = CACurrentMediaTime()
+    sketching.insert(spot.spot)
     writer.afterPendingWrites { [weak self] _ in
       DispatchQueue.global(qos: .userInitiated).async {
         let frames = (try? PhotoRecorder.savedFrames(in: folder)) ?? []
         let picture = FloorPatch.make(spot: spot, frames: frames, folder: folder)
         DispatchQueue.main.async {
-          guard let self, self.spots.contains(where: { $0.spot == spot.spot }) else { return }
+          guard let self else { return }
+          self.sketching.remove(spot.spot)
+          guard let index = self.spots.firstIndex(where: { $0.spot == spot.spot }) else { return }
           self.patches[spot.spot] = picture
+          self.spots[index].sketchDelay = CACurrentMediaTime() - asked
+          try? SpotTake.appendSpot(self.spots[index], to: folder)
         }
       }
     }

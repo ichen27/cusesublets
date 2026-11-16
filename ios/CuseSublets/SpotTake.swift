@@ -25,6 +25,10 @@ struct SpotRecord: Codable, Equatable {
   var resumeShift: Double? = nil
   /// True once the person has dragged this spot to a new place on the map.
   var moved: Bool? = nil
+  /// Seconds from asking for this spot to the 0.5× camera's first picture, and from its last
+  /// shot to its sketch on the map. Kept to judge how long the person waits.
+  var cameraDelay: Double? = nil
+  var sketchDelay: Double? = nil
 
   enum CodingKeys: String, CodingKey {
     case floorY = "floor_y"
@@ -33,6 +37,8 @@ struct SpotRecord: Codable, Equatable {
     case gravityMismatch = "gravity_mismatch"
     case resumeYaw = "resume_yaw"
     case resumeShift = "resume_shift"
+    case cameraDelay = "camera_delay"
+    case sketchDelay = "sketch_delay"
     case spot, slices, position, iso, lens, moved
   }
 }

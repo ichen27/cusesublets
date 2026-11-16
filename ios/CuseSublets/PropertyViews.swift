@@ -104,6 +104,8 @@ struct PropertyDetailView: View {
   @State private var working = ""
   @State private var problem = ""
   @State private var preview: SpotRecord?
+  /// The spot tapped on the map.
+  @State private var picked: Int?
   @State private var confirmRescan = false
   @State private var confirmDelete = false
   @State private var renaming = false
@@ -162,7 +164,7 @@ struct PropertyDetailView: View {
           Text("Rough preview. The finished tour is stitched when you generate it.")
             .font(.caption).padding()
         }
-        .navigationTitle("Spot \(spot.spot)").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Preview").navigationBarTitleDisplayMode(.inline)
         .toolbar { Button("Done") { preview = nil } }
       }
     }
@@ -234,19 +236,17 @@ struct PropertyDetailView: View {
 
   private var scanSection: some View {
     Section("Scan on this iPhone") {
-      SpotMapCanvas(cells: [], spots: spots, you: nil, patches: patches, onMove: move)
-        .frame(height: 280).listRowBackground(Color.black)
+      SpotMapCanvas(
+        cells: [], spots: spots, you: nil, patches: patches, selected: $picked, onMove: move
+      )
+      .frame(height: 280).listRowBackground(Color.black)
       Text(
         moved
           ? "Spot moved. Generate again to update the tour."
-          : "A rough sketch of what each spot captured, from above. Drag a marker if a spot is in the wrong place."
+          : "A rough sketch of what each spot captured, from above. Tap a spot to preview it. Drag a spot that is in the wrong place."
       ).font(.footnote).foregroundStyle(moved ? Color.cuseOrange : .secondary)
-      ForEach(spots, id: \.spot) { spot in
-        HStack {
-          Text("Spot \(spot.spot)")
-          Spacer()
-          Button("Preview 360") { preview = spot }.buttonStyle(.bordered)
-        }
+      if let spot = spots.first(where: { $0.spot == picked }) {
+        Button("Preview 360") { preview = spot }.buttonStyle(.bordered)
       }
       Button {
         Task { await generate() }

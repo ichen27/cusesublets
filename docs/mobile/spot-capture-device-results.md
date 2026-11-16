@@ -64,6 +64,13 @@ The fourth run (2026-11-15), the first with six level dots, stitched cleanly but
 - The viewer now opens looking at the middle of what a spot photographed (15° down for these spots), so the fill above is off screen until the viewer looks up.
 - **Not yet run on a device.** The floor near the feet is the closest thing in the picture, so the arm's swing shifts it most between shots; patterned floors (boards, tiles) may kink where shots meet. The gain at the floor cannot be previewed from an earlier scan.
 
+**Capture flow reworked** (2026-11-15, on the owner's feedback after comparing with a similar app):
+
+- One tap on the map now opens the camera with the turn already begun. Before, the camera opened for framing and a second button started the turn. The dot is drawn at once and no longer waits for the camera's first picture.
+- The map can be zoomed and moved, spots are not numbered, and a tapped spot can be previewed, captured again, deleted or dragged, on the capture map itself.
+- **Not measured:** where the reported waits came from. The code suggests two: starting the 0.5× camera at its largest format, and loading the depth model for the first spot's sketch (now loaded when capture starts). Each spot now records `camera_delay` (seconds from the tap to the camera's first picture) and `sketch_delay` (seconds from its last shot to its sketch) in the take, so the next scan gives real numbers.
+- **Not yet run on a device.** None of this can run in the simulator, which has no ARKit world tracking. Check on the phone: zoom and drag on the map, tapping and dragging spots, and that the first shot's exposure is right now that it can be taken soon after the camera opens.
+
 The lens measured 103° × 87° after correction (focal 763 px at 1920 × 1440), slightly narrower than the 108° × 92° assumed below, with holes still under 0.1%. The 4° alignment tolerance and 0.5 s hold are unchanged starting values. Tune them from the next device run, and update `SpotLayout.standard` and `SpotTurnTests` together.
 
 ## Synthetic baseline (2026-11-12, Mac mini)

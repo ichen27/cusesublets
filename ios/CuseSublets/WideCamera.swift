@@ -72,6 +72,9 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     }
   }
 
+  /// Whether the camera is still changing its exposure.
+  var adjustingExposure: Bool { device?.isAdjustingExposure ?? false }
+
   /// Fixes exposure and white balance where they are now; returns the locked values.
   func lockExposure() -> (duration: Double, iso: Double) {
     guard let device, (try? device.lockForConfiguration()) != nil else { return (0, 0) }
