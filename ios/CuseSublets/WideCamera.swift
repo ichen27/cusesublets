@@ -103,8 +103,8 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   ///
   /// The session is started before the camera's picture size is set. ARKit uses this lens too
   /// and holds on to it for a while after it is paused: setting the size first waited about
-  /// nine seconds for it on an iPhone 17 (0.3 s with no ARKit before). Starting takes the
-  /// camera, so its preview shows straight away, and frames are delivered once the size is set.
+  /// nine seconds for it on an iPhone 17. Starting first takes the camera, and the first
+  /// full-size frame then arrives in about 0.8 s. Frames are delivered once the size is set.
   func start(completion: @escaping (String?) -> Void) {
     queue.async {
       func ms(_ from: Double) -> Int { Int(((CACurrentMediaTime() - from) * 1000).rounded()) }
