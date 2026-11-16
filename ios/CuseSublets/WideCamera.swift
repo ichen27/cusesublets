@@ -24,12 +24,21 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   let previewLayer = AVCaptureVideoPreviewLayer()
   /// Called on the main queue for each delivered frame.
   var onFrame: ((WideFrame) -> Void)?
+  /// Called, on any queue, with what the camera did and how long it took: for finding out why
+  /// a start was slow or failed.
+  var onEvent: ((String) -> Void)?
 
   private let session = AVCaptureSession()
   private let queue = DispatchQueue(label: "cuse.wide-camera")
   private var device: AVCaptureDevice?
   private var configured = false
   private var delivering = false
+  /// The camera has been asked to run and not yet to stop.
+  private var wanted = false
+  /// Width of the pictures asked for, once the camera has been set to it. Until then, and for
+  /// pictures of another size still on their way, nothing is delivered.
+  private var wantedWidth: Int?
+  private var watchers = [NSObjectProtocol]()
 
   static var isAvailable: Bool {
     AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) != nil
@@ -41,24 +50,90 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     // Show the whole frame, as the Camera app does at 0.5×. Filling a tall screen would crop
     // the sides to about the 1× camera's view.
     previewLayer.videoGravity = .resizeAspect
+    let center = NotificationCenter.default
+    watchers = [
+      center.addObserver(
+        forName: AVCaptureSession.wasInterruptedNotification, object: session, queue: nil
+      ) { [weak self] note in
+        let reason = note.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int
+        self?.onEvent?("interrupted, reason \(reason.map(String.init) ?? "unknown")")
+      },
+      center.addObserver(
+        forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil
+      ) { [weak self] _ in
+        self?.onEvent?("interruption ended")
+        self?.resume()
+      },
+      center.addObserver(
+        forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil
+      ) { [weak self] note in
+        let error = note.userInfo?[AVCaptureSessionErrorKey] as? NSError
+        self?.onEvent?("runtime error \(error?.code ?? 0)")
+        self?.resume()
+      },
+    ]
+  }
+  deinit { watchers.forEach(NotificationCenter.default.removeObserver) }
+
+  /// Starts the session again if it should be running and is not, as after an interruption.
+  private func resume() {
+    queue.async {
+      guard self.wanted, !self.session.isRunning else { return }
+      self.wantedWidth = nil
+      self.session.startRunning()
+      let format = (try? self.chooseFormat()) ?? "format not set"
+      self.onEvent?("started again, running: \(self.session.isRunning); \(format)")
+    }
   }
 
-  /// Starts the camera; `completion` gets an error message, or nil once frames are flowing.
+  /// Stops and starts a camera that is showing nothing.
+  func restart() {
+    queue.async {
+      guard self.wanted else { return }
+      if self.session.isRunning { self.session.stopRunning() }
+      self.wantedWidth = nil
+      self.session.startRunning()
+      let format = (try? self.chooseFormat()) ?? "format not set"
+      self.onEvent?(
+        "restarted, running: \(self.session.isRunning), interrupted: \(self.session.isInterrupted); \(format)")
+    }
+  }
+
+  /// Starts the camera; `completion` gets an error message, or nil once it is running.
+  ///
+  /// The session is started before the camera's picture size is set. ARKit uses this lens too
+  /// and holds on to it for a while after it is paused: setting the size first waited about
+  /// nine seconds for it on an iPhone 17 (0.3 s with no ARKit before). Starting takes the
+  /// camera, so its preview shows straight away, and frames are delivered once the size is set.
   func start(completion: @escaping (String?) -> Void) {
     queue.async {
+      func ms(_ from: Double) -> Int { Int(((CACurrentMediaTime() - from) * 1000).rounded()) }
       do {
+        self.wanted = true
+        var mark = CACurrentMediaTime()
         try self.configure()
-        try self.chooseFormat()
+        let configuring = ms(mark)
+        self.wantedWidth = nil
+        mark = CACurrentMediaTime()
         self.session.startRunning()
+        let starting = ms(mark)
+        // An interrupted session starts by itself when the interruption ends, so that is not
+        // yet a failure: whoever started the camera decides how long to wait for a picture.
+        let running = self.session.isRunning
+        let interrupted = self.session.isInterrupted
+        self.onEvent?(
+          "set up \(configuring) ms, start \(starting) ms, running: \(running), interrupted: \(interrupted)")
+        if running || interrupted { self.onEvent?(try self.chooseFormat()) }
         DispatchQueue.main.async {
           if let connection = self.previewLayer.connection,
             connection.isVideoRotationAngleSupported(90)
           {
             connection.videoRotationAngle = 90
           }
-          completion(self.session.isRunning ? nil : "The 0.5× camera could not start.")
+          completion(running || interrupted ? nil : "The 0.5× camera could not start.")
         }
       } catch {
+        self.onEvent?("could not be set up: \(error.localizedDescription)")
         DispatchQueue.main.async { completion(error.localizedDescription) }
       }
     }
@@ -66,6 +141,7 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
   func stop(completion: (() -> Void)? = nil) {
     queue.async {
+      self.wanted = false
       if self.session.isRunning { self.session.stopRunning() }
       self.unlockExposure()
       if let completion { DispatchQueue.main.async(execute: completion) }
@@ -128,10 +204,13 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     configured = true
   }
 
-  /// Sets the camera's format before every start, not once: between turns ARKit runs this
-  /// same lens at 640 × 480 for its own tracking and leaves it that way.
-  private func chooseFormat() throws {
-    guard let device else { return }
+  /// Sets the camera's format at every start, not once: between turns ARKit runs this same
+  /// lens at 640 × 480 for its own tracking and leaves it that way. Returns how long each step
+  /// took, for the diagnostics.
+  @discardableResult
+  private func chooseFormat() throws -> String {
+    guard let device else { return "no camera" }
+    func ms(_ from: Double) -> Int { Int(((CACurrentMediaTime() - from) * 1000).rounded()) }
     func width(_ format: AVCaptureDevice.Format) -> Int32 {
       CMVideoFormatDescriptionGetDimensions(format.formatDescription).width
     }
@@ -143,9 +222,15 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     }.sorted { width($0) < width($1) }
     // The smallest that is wide enough, or failing that the widest there is.
     let chosen = formats.first { width($0) >= Self.targetWidth } ?? formats.last
+    var mark = CACurrentMediaTime()
     try device.lockForConfiguration()
     defer { device.unlockForConfiguration() }
-    if let chosen, device.activeFormat != chosen { device.activeFormat = chosen }
+    let locking = ms(mark)
+    mark = CACurrentMediaTime()
+    let changed = chosen != nil && device.activeFormat != chosen
+    if let chosen, changed { device.activeFormat = chosen }
+    let sizing = ms(mark)
+    mark = CACurrentMediaTime()
     // Straight lines must stay straight for the stitcher's pinhole model.
     if device.isGeometricDistortionCorrectionSupported {
       device.isGeometricDistortionCorrectionEnabled = true
@@ -153,13 +238,18 @@ final class WideCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     if device.isFocusModeSupported(.continuousAutoFocus) {
       device.focusMode = .continuousAutoFocus
     }
+    let size = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+    wantedWidth = Int(size.width)
+    return "format: lock \(locking) ms, size \(sizing) ms (changed: \(changed)), correction and focus \(ms(mark)) ms, now \(size.width)×\(size.height)"
   }
 
   func captureOutput(
     _ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
     from connection: AVCaptureConnection
   ) {
-    guard !delivering, let image = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+    guard !delivering, let image = CMSampleBufferGetImageBuffer(sampleBuffer),
+      CVPixelBufferGetWidth(image) == wantedWidth
+    else { return }
     let width = CVPixelBufferGetWidth(image)
     let height = CVPixelBufferGetHeight(image)
     var fx: Float = 0

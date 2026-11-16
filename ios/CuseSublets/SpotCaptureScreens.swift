@@ -96,7 +96,7 @@ struct SpotTurnView: View {
             let target = projectedTarget(in: geometry.size)
             let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
             ZStack {
-              if let target {
+              if let target, recorder.cameraLive {
                 Path { path in
                   path.move(to: center)
                   path.addLine(to: target.point)
@@ -130,11 +130,6 @@ struct SpotTurnView: View {
             .labelStyle(.iconOnly).font(.title2).padding().foregroundStyle(.white)
         }
         Spacer()
-        if let hint = recorder.hint {
-          Text(hint.message).font(.callout.weight(.semibold)).padding(.horizontal, 14)
-            .padding(.vertical, 8).background(.ultraThinMaterial, in: Capsule())
-            .accessibilityIdentifier("capture-hint")
-        }
         ProgressView(value: recorder.turn?.progress ?? 0).tint(.green).padding(.horizontal, 24)
           .accessibilityLabel("Spot progress")
         Button("Undo", systemImage: "arrow.uturn.backward") { recorder.undoSlice() }
@@ -148,11 +143,19 @@ struct SpotTurnView: View {
     let away = offScreenSince.map { now.timeIntervalSince($0) >= 1.5 } ?? false
     let first = recorder.turn?.captured.isEmpty ?? true
     return VStack(spacing: 4) {
-      Text(away ? "Turn to the dot" : "Point the camera at the dot")
-        .font(.title3.weight(.semibold))
-      if first {
-        Text("Hold still until the ring fills, then turn on the spot to the next dot.")
-          .font(.footnote).multilineTextAlignment(.center)
+      if !recorder.cameraLive {
+        // The 0.5× camera takes a moment to take over from the one that tracks the walk.
+        HStack(spacing: 10) {
+          ProgressView().tint(.black)
+          Text("Starting the camera…").font(.title3.weight(.semibold))
+        }
+      } else {
+        Text(away ? "Turn to the dot" : "Point the camera at the dot")
+          .font(.title3.weight(.semibold))
+        if first {
+          Text("Hold still until the ring fills, then turn on the spot to the next dot.")
+            .font(.footnote).multilineTextAlignment(.center)
+        }
       }
     }
     .foregroundStyle(.black).padding(.horizontal, 24).padding(.vertical, 14)
@@ -188,8 +191,8 @@ struct SpotTurnView: View {
 // MARK: - Between spots
 
 /// Between spots: the rooms captured so far, drawn from above, and the button that captures
-/// where the person stands. ARKit tracks the walk with the 1× camera, which is kept off
-/// screen: the only camera the person sees is the 0.5× one that takes the pictures.
+/// where the person stands. ARKit follows the walk with the 1× camera, which is kept off
+/// screen and takes no pictures: the only capture is the turn at a spot.
 struct SpotMapView: View {
   @ObservedObject var recorder: SpotRecorder
   let review: () -> Void
@@ -217,10 +220,6 @@ struct SpotMapView: View {
           empty: "Stand where you want the first view, then tap Capture Here.",
           redo: { recorder.redoSpot($0) })
         VStack(spacing: 10) {
-          if let hint = recorder.hint {
-            Text(hint.message).font(.callout.weight(.semibold))
-              .accessibilityIdentifier("capture-hint")
-          }
           if !recorder.message.isEmpty {
             Text(recorder.message).font(.callout).multilineTextAlignment(.center)
               .accessibilityIdentifier("spot-message")
@@ -275,7 +274,7 @@ struct SpotMapEditor: View {
   var body: some View {
     VStack(spacing: 10) {
       SpotMapCanvas(
-        cells: recorder.mapCells, spots: recorder.spots, you: you, patches: recorder.patches,
+        spots: recorder.spots, you: you, patches: recorder.patches,
         drawing: recorder.sketching, selected: $selected,
         onMove: { recorder.moveSpot($0, to: $1) }, movable: movable
       )
@@ -378,6 +377,12 @@ struct SpotMapLayout: Equatable {
     self.pose = pose
   }
 
+  /// Metres between the map's grid lines when a metre is this many screen points: one metre
+  /// while the lines stay apart, then 2, 5, 10 and so on.
+  static func gridStep(metre: CGFloat) -> Int {
+    [1, 2, 5, 10, 20, 50].first { CGFloat($0) * metre >= 24 } ?? 100
+  }
+
   func screen(_ p: SIMD2<Float>) -> CGPoint {
     CGPoint(
       x: size.width / 2 + pose.pan.width + CGFloat(p.x - middle.x) * metre,
@@ -392,12 +397,11 @@ struct SpotMapLayout: Equatable {
   }
 }
 
-/// The captured room from above: each spot's sketch of the room around it, the walked floor in
-/// its colours, the spots, and where the phone is now. It opens with everything fitted in.
+/// The captured room from above, on a grid: each spot's sketch of the room around it, the
+/// spots, and where the phone is now. It opens with everything fitted in.
 /// With `movable` it can be pinched and dragged, and a double tap fits everything again. With
 /// `selected`, a tap picks a spot; with `onMove`, a spot can be dragged to where it really was.
 struct SpotMapCanvas: View {
-  let cells: [TopDownCell]
   let spots: [SpotRecord]
   let you: SIMD2<Float>?
   var patches: [Int: UIImage] = [:]
@@ -429,8 +433,7 @@ struct SpotMapCanvas: View {
 
   private func layout(in size: CGSize) -> SpotMapLayout {
     if let drag, drag.layout.size == size { return drag.layout }
-    let size2 = CoverageMap.voxelSize
-    var points = cells.map { (SIMD2<Float>(Float($0.x), Float($0.z)) + 0.5) * size2 }
+    var points = [SIMD2<Float>]()
     for spot in spots {
       let p = SIMD2(Float(spot.position[0]), Float(spot.position[2]))
       points.append(p)
@@ -473,8 +476,27 @@ struct SpotMapCanvas: View {
       let layout = layout(in: geometry.size)
       let picked = selected?.wrappedValue
       ZStack {
-        Canvas { context, _ in
-          guard !spots.isEmpty || !cells.isEmpty || you != nil else { return }
+        Canvas { context, size in
+          // A grid, so the map reads as a floor and shows how far it has been zoomed and moved.
+          let step = Float(SpotMapLayout.gridStep(metre: layout.metre))
+          let low = layout.world(.zero)
+          let high = layout.world(CGPoint(x: size.width, y: size.height))
+          var grid = Path()
+          var x = (low.x / step).rounded(.down) * step
+          while x <= high.x {
+            let across = layout.screen(SIMD2(x, 0)).x
+            grid.move(to: CGPoint(x: across, y: 0))
+            grid.addLine(to: CGPoint(x: across, y: size.height))
+            x += step
+          }
+          var z = (low.y / step).rounded(.down) * step
+          while z <= high.y {
+            let down = layout.screen(SIMD2(0, z)).y
+            grid.move(to: CGPoint(x: 0, y: down))
+            grid.addLine(to: CGPoint(x: size.width, y: down))
+            z += step
+          }
+          context.stroke(grid, with: .color(.white.opacity(0.12)), lineWidth: 1)
           // Floor pictures first, the spot being dragged last so it stays on top.
           let order = spots.sorted { a, b in
             (drag?.spot == a.spot ? 1 : 0, a.spot) < (drag?.spot == b.spot ? 1 : 0, b.spot)
@@ -486,19 +508,6 @@ struct SpotMapCanvas: View {
             context.draw(
               Image(uiImage: picture),
               in: CGRect(x: centre.x - half, y: centre.y - half, width: half * 2, height: half * 2))
-          }
-          let size2 = CoverageMap.voxelSize
-          let side = CGFloat(size2) * layout.metre + 0.5
-          for cell in cells {
-            let c = (SIMD2<Float>(Float(cell.x), Float(cell.z)) + 0.5) * size2
-            let shade: Float = cell.obstacle ? 0.55 : 1
-            let color = Color(
-              red: Double(cell.color.x * shade), green: Double(cell.color.y * shade),
-              blue: Double(cell.color.z * shade))
-            let p = layout.screen(c)
-            context.fill(
-              Path(CGRect(x: p.x - side / 2, y: p.y - side / 2, width: side, height: side)),
-              with: .color(color.opacity(patches.isEmpty ? 1 : 0.5)))
           }
           for spot in spots {
             let p = layout.screen(place(of: spot))

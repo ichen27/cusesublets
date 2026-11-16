@@ -161,3 +161,47 @@ enum SpotTake {
     try handle.synchronize()
   }
 }
+
+/// Times and camera states of the capture flow, kept in a small file on the phone so that a
+/// slow or failed step can be found afterwards. It holds no pictures, places or names.
+final class SpotDiagnostics {
+  static let shared = SpotDiagnostics(
+    file: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("spot-diagnostics.log"))
+
+  private let file: URL
+  /// Bytes kept: when a new line would pass this, the oldest lines are dropped.
+  private let limit: Int
+  private let queue = DispatchQueue(label: "cuse.spot-diagnostics", qos: .utility)
+  private let clock: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    return formatter
+  }()
+
+  init(file: URL, limit: Int = 100_000) {
+    self.file = file
+    self.limit = limit
+  }
+
+  /// Adds a line with the time it was noted. Safe from any queue.
+  func note(_ text: String) {
+    let now = Date()
+    queue.async {
+      let line = Data((self.clock.string(from: now) + " " + text + "\n").utf8)
+      var kept = (try? Data(contentsOf: self.file)) ?? Data()
+      kept.append(line)
+      while kept.count > self.limit, let end = kept.firstIndex(of: UInt8(ascii: "\n")) {
+        kept.removeSubrange(kept.startIndex...end)
+      }
+      try? FileManager.default.createDirectory(
+        at: self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
+      // Readable while the phone is locked: it is read from a computer, and holds no content.
+      try? kept.write(to: self.file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+  }
+
+  /// Returns once every line noted so far is written.
+  func wait() { queue.sync {} }
+}

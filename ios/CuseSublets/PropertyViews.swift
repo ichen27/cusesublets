@@ -237,7 +237,7 @@ struct PropertyDetailView: View {
   private var scanSection: some View {
     Section("Scan on this iPhone") {
       SpotMapCanvas(
-        cells: [], spots: spots, you: nil, patches: patches, selected: $picked, onMove: move
+        spots: spots, you: nil, patches: patches, selected: $picked, onMove: move
       )
       .frame(height: 280).listRowBackground(Color.black)
       Text(

@@ -4,8 +4,9 @@ import CoreImage
 import CoreMotion
 import SwiftUI
 
-/// Records a spot tour in one ARKit session: walk frames on the capture map, guided slices
-/// while turning at a spot. ARKit only offers the 1× camera, so during a turn it is paused and
+/// Records a spot tour in one ARKit session. The only pictures taken are the guided slices of
+/// a turn at a spot; between spots ARKit follows the phone, so each spot is placed on the map,
+/// and nothing is photographed. ARKit only offers the 1× camera, so during a turn it is paused and
 /// the 0.5× camera takes the slices, with the motion sensors supplying each slice's rotation. Rules live in `SpotSession`, `SpotTurn` and `SpotTake`; this class
 /// connects them to the camera.
 final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
@@ -14,7 +15,12 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   static let estimatedSliceBytes = 1_500_000
   /// Radians per second; faster than this, a slice would blur.
   static let steadyRotation = 0.35
-  static let walkWidth: CGFloat = 1920
+  /// ARKit only tracks between spots, so it runs its camera no larger than this.
+  static let trackingWidth: CGFloat = 1920
+  /// Seconds without a picture after which the 0.5× camera is started again, and after which
+  /// the spot is given up.
+  static let cameraRetry = 5.0
+  static let cameraTimeout = 15.0
   /// Used when no floor has been seen yet: typical phone height above the floor.
   static let assumedEyeHeight = 1.45
   /// Metres from the person's pivot to the phone held out in front of them.
@@ -25,14 +31,13 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   @Published private(set) var phase = SpotPhase.map
   @Published private(set) var turn: SpotTurn?
   @Published private(set) var spots: [SpotRecord] = []
-  @Published private(set) var mapCells: [TopDownCell] = []
-  @Published private(set) var coverage: Double = 0
-  @Published private(set) var hint: CaptureHint?
   @Published private(set) var you: SIMD2<Float>?
   @Published private(set) var running = false
   @Published private(set) var requestingPermission = false
   /// A spot was asked for and opens as soon as the camera knows where it is.
   @Published private(set) var opening = false
+  /// The 0.5× camera has delivered a picture in this turn. Until then its screen is black.
+  @Published private(set) var cameraLive = false
   /// Spots whose sketch for the map is still being drawn.
   @Published private(set) var sketching: Set<Int> = []
   /// The shots of the turn in progress, for showing them where they were taken.
@@ -50,11 +55,9 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
 
   private var session: SpotSession
   private let writer: CaptureWriter
-  private let coverageEngine = CaptureCoverageEngine()
-  private var walkPolicy = CapturePolicy(
-    maximumViews: SpotTake.maximumWalkFrames, maximumDuration: .infinity)
-  private var hints = CaptureHintFilter()
-  private var lastPaint = -Double.infinity
+  private let log = SpotDiagnostics.shared
+  /// Counts turns, so a check scheduled for one turn does nothing in a later one.
+  private var turnSerial = 0
   private var startTime: TimeInterval?
   private var floorY: Float?
   private var planes = [UUID: Float]()
@@ -112,12 +115,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     }
     view.session.delegate = self
     view.session.delegateQueue = .main
-    coverageEngine.onMap = { [weak self] cells, floor in
-      guard let self else { return }
-      self.floorY = floor
-      self.mapCells = cells
-      self.refreshCoverage()
-    }
+    wide.onEvent = { [log] text in log.note("camera: " + text) }
     observer = NotificationCenter.default.addObserver(
       forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
     ) { [weak self] _ in self?.end() }
@@ -177,7 +175,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     config.planeDetection = [.horizontal]
     if let format = ARWorldTrackingConfiguration.supportedVideoFormats.filter({
       let size = $0.imageResolution
-      return size.width <= Self.walkWidth && $0.framesPerSecond == 30
+      return size.width <= Self.trackingWidth && $0.framesPerSecond == 30
         && abs(size.width * 3 - size.height * 4) < 1
     }).max(by: { $0.imageResolution.width < $1.imageResolution.width }) {
       config.videoFormat = format
@@ -187,7 +185,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     motion.deviceMotionUpdateInterval = 1.0 / 60
     motion.startDeviceMotionUpdates(using: .xArbitraryZVertical)
     wide.onFrame = { [weak self] frame in self?.turnFrame(frame) }
-    coverageEngine.reset(view: view)
+    log.note("capture started")
     // Loading the depth model takes a while; do it now, not when the first spot's sketch waits.
     DispatchQueue.global(qos: .utility).async { _ = DepthEstimator.shared }
     running = true
@@ -219,6 +217,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       opening = true
       askedAt = CACurrentMediaTime()
       message = ""
+      log.note("spot asked for, position known: \(trackedPose() != nil)")
     }
     // Without a tracked pose there is nowhere to put the spot; the next tracked frame tries again.
     guard trackedPose() != nil else { return }
@@ -271,19 +270,47 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     exposureLocked = false
     firstWideFrame = nil
     cameraDelay = nil
-    coverageEngine.setOverlayHidden(true)
+    cameraLive = false
     trackingPaused = true
     view.session.pause()
     turn = SpotTurn(startYaw: atan2(-ahead.x, -ahead.z))
     opening = false
     message = ""
     phase = session.phase
+    turnSerial += 1
+    log.note("turn begun \(sinceAsked()) after asking; tracking paused, starting the 0.5× camera")
     wide.start { [weak self] problem in
       guard let self, let problem, case .turning = self.phase else { return }
-      self.abandonTurn(message: problem)
-      self.session.abandonSpot()
-      self.phase = self.session.phase
+      self.giveUpTurn(message: problem)
     }
+    watchCamera(turn: turnSerial, after: Self.cameraRetry)
+  }
+
+  private func sinceAsked() -> String {
+    askedAt.map { "\(Int(((CACurrentMediaTime() - $0) * 1000).rounded())) ms" } ?? "?"
+  }
+
+  /// A camera that shows nothing is started once more, then the spot is given up, so the
+  /// person is never left on a black screen.
+  private func watchCamera(turn serial: Int, after seconds: Double) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+      guard let self, self.turnSerial == serial, case .turning = self.phase, !self.cameraLive
+      else { return }
+      if seconds < Self.cameraTimeout {
+        self.log.note("no picture \(self.sinceAsked()) after asking; starting the camera again")
+        self.wide.restart()
+        self.watchCamera(turn: serial, after: Self.cameraTimeout - Self.cameraRetry)
+      } else {
+        self.log.note("no picture \(self.sinceAsked()) after asking; giving up")
+        self.giveUpTurn(message: "The camera did not start. Tap Capture Here to try again.")
+      }
+    }
+  }
+
+  private func giveUpTurn(message text: String) {
+    abandonTurn(message: text)
+    session.abandonSpot()
+    phase = session.phase
   }
 
   func undoSlice() {
@@ -300,6 +327,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
   func cancelSpot() {
     guard case .turning = phase else { return }
     let taken = !slicePaths.isEmpty || pendingSlices > 0
+    log.note("spot cancelled \(sinceAsked()) after asking, camera live: \(cameraLive)")
     abandonTurn(message: taken ? "Cancelled. Its views still help the 3D model." : "")
     session.abandonSpot()
     phase = session.phase
@@ -311,7 +339,6 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       session.deleteSpot(number)
       spots.removeAll { $0.spot == number }
       patches[number] = nil
-      refreshCoverage()
     } catch { message = error.localizedDescription }
   }
 
@@ -323,7 +350,6 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
         spots[index].position[0] = Double(place.x)
         spots[index].position[2] = Double(place.y)
       }
-      refreshCoverage()
     } catch { message = error.localizedDescription }
   }
 
@@ -347,7 +373,6 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     UIApplication.shared.isIdleTimerDisabled = false
     session.interrupted()
     phase = session.phase
-    hint = nil
     // Writes may still be in flight; discard only after they finish.
     let folder = self.folder
     writer.afterPendingWrites { _ in
@@ -366,7 +391,6 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       // ARKit restarted with a new origin. Once it tracks, line it up with the tour's world:
       // the motion sensors kept the phone's heading through the turn.
       guard case .normal = frame.camera.trackingState, let sample = motion.deviceMotion else {
-        show(.establishTracking, at: frame.timestamp - (startTime ?? frame.timestamp))
         return
       }
       let expected = pending.orientation.cameraToWorld(SpotOrientation.deviceToReference(sample))
@@ -383,54 +407,21 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       )
       realign = nil
       settleUntil = frame.timestamp + Self.settleTime
+      log.note("tracking found its place again")
       return
     }
     guard frame.timestamp >= settleUntil else { return }
-    coverageEngine.frameDidUpdate(view: view)
     if startTime == nil { startTime = frame.timestamp }
-    let elapsed = frame.timestamp - (startTime ?? frame.timestamp)
     var tracked = false
     if case .normal = frame.camera.trackingState { tracked = true }
-    let wasTurning = phase != .map && phase != .relocating
     self.session.trackingChanged(normal: tracked)
-    if wasTurning, self.session.phase == .relocating {
-      abandonTurn(message: "Tracking was lost, so this spot was discarded. Look around slowly.")
-    }
     if phase != self.session.phase { phase = self.session.phase }
-
+    guard tracked else { return }
     let pose = frame.camera.transform
-    let position = SIMD3(pose.columns.3.x, pose.columns.3.y, pose.columns.3.z)
-    let forward = -SIMD3(pose.columns.2.x, pose.columns.2.y, pose.columns.2.z)
-    let here = SIMD2(position.x, position.z)
+    let here = SIMD2(pose.columns.3.x, pose.columns.3.z)
     if you.map({ simd_distance($0, here) > 0.05 }) ?? true { you = here }
-    let points = frame.rawFeaturePoints?.points ?? []
-    let source = CIImage(cvPixelBuffer: frame.capturedImage)
-    let k = frame.camera.intrinsics
-    let dark = (frame.lightEstimate?.ambientIntensity ?? 1000) < 150
-    func sample(width: CGFloat) -> CaptureSample {
-      let scale = min(1, width / source.extent.width)
-      return CaptureSample(
-        time: elapsed, position: position, forward: forward, tracking: tracked,
-        exposure: frame.camera.exposureDuration, focalLength: k[0][0] * Float(scale),
-        sceneDepth: CaptureSample.medianDepth(points, camera: pose), featureCount: points.count)
-    }
-
-    switch phase {
-    case .map:
-      let decision =
-        dark
-        ? CaptureDecision(reason: .dark)
-        : walkPolicy.evaluate(sample(width: Self.walkWidth), canSave: !writer.busy)
-      show(decision.reason == .limitReached ? nil : decision.hint, at: elapsed)
-      paint(frame, usable: decision.usable, saved: decision.save, at: elapsed)
-      if decision.save { saveWalk(frame, source: source) }
-      // A spot asked for before the camera knew where it was opens now.
-      if tracked, opening { openSpot() }
-    case .turning: break
-    case .relocating:
-      show(.establishTracking, at: elapsed)
-    case .ended: break
-    }
+    // A spot asked for before the camera knew where it was opens now.
+    if phase == .map, opening { openSpot() }
   }
 
   func session(_ session: ARSession, didAdd anchors: [ARAnchor]) { updatePlanes(anchors) }
@@ -445,34 +436,17 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
 
   // MARK: Private
 
+  /// The floor is the lowest level surface ARKit has found. It is kept through a turn, when
+  /// tracking starts afresh and has found no surfaces yet.
   private func updatePlanes(_ anchors: [ARAnchor]) {
-    var changed = false
+    // Until restarted tracking is lined up with the tour's world, its heights are not the tour's.
+    guard realign == nil else { return }
     for case let plane as ARPlaneAnchor in anchors where plane.alignment == .horizontal {
       planes[plane.identifier] = plane.transform.columns.3.y
-      changed = true
     }
-    if changed { coverageEngine.setFloorPlanes(Array(planes.values)) }
-  }
-
-  private func paint(_ frame: ARFrame, usable: Bool, saved: Bool, at time: Double) {
-    guard usable, saved || time - lastPaint >= PhotoRecorder.paintInterval else { return }
-    lastPaint = time
-    coverageEngine.submit(frame)
-  }
-
-  private func saveWalk(_ frame: ARFrame, source: CIImage) {
-    let scale = min(1, Self.walkWidth / source.extent.width)
-    let image = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-    let k = frame.camera.intrinsics
-    let pose = frame.camera.transform
-    let record = CaptureFrameRecord(
-      filePath: "", timestamp: frame.timestamp - (startTime ?? frame.timestamp),
-      width: Int(image.extent.width.rounded()), height: Int(image.extent.height.rounded()),
-      fx: Double(k[0][0]) * Double(scale), fy: Double(k[1][1]) * Double(scale),
-      cx: Double(k[2][0]) * Double(scale), cy: Double(k[2][1]) * Double(scale),
-      transformMatrix: (0..<4).map { row in (0..<4).map { column in Double(pose[column][row]) } },
-      points: CaptureFrameRecord.points(frame.rawFeaturePoints?.points ?? []))
-    save(image, record: record, spot: nil)
+    if let lowest = FloorCoverage.estimateFloorY(planes: Array(planes.values), cells: []) {
+      floorY = lowest
+    }
   }
 
   /// One 0.5× frame while turning: advances the turn and saves the frame when a dot is held.
@@ -484,6 +458,8 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     if firstWideFrame == nil {
       firstWideFrame = frame.timestamp
       cameraDelay = askedAt.map { CACurrentMediaTime() - $0 }
+      cameraLive = true
+      log.note("first picture \(sinceAsked()) after asking, \(frame.width)×\(frame.height)")
     }
     let attitude = SpotOrientation.deviceToReference(sample)
     let rate = sample.rotationRate
@@ -503,6 +479,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       if !exposureLocked {
         lockedExposure = wide.lockExposure()
         exposureLocked = true
+        log.note("exposure locked \(sinceAsked()) after asking")
       }
     case .capture, .complete:
       if event == .complete { finishing = true }
@@ -608,6 +585,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
       spots.append(record)
       session.spotFinished()
       message = "Captured. Walk to where you want the next view, then tap Capture Here."
+      log.note("spot finished \(sinceAsked()) after asking")
       drawFloor(of: record)
     } catch {
       message = error.localizedDescription
@@ -617,31 +595,17 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
     turn = nil
     pinned = []
     finishing = false
-    coverageEngine.setOverlayHidden(false)
     phase = session.phase
-    refreshCoverage()
   }
 
-  /// Leaves a turn: returns the camera to ARKit and forgets its slices (they remain walk-only data).
+  /// Leaves a turn: returns the camera to ARKit and forgets its slices.
   private func abandonTurn(message text: String) {
     resumeTracking()
     turn = nil
     pinned = []
     finishing = false
     slicePaths = []
-    coverageEngine.setOverlayHidden(false)
     message = text
-  }
-
-  private func refreshCoverage() {
-    coverage = FloorCoverage.fraction(
-      cells: mapCells,
-      spots: spots.map { SIMD2(Float($0.position[0]), Float($0.position[2])) })
-  }
-
-  private func show(_ problem: CaptureHint?, at time: Double) {
-    let shown = hints.update(problem, at: time)
-    if hint != shown { hint = shown }
   }
 
   /// Makes the top-down sketch of the room around a finished spot, off the main thread, and
@@ -660,6 +624,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
           guard let index = self.spots.firstIndex(where: { $0.spot == spot.spot }) else { return }
           self.patches[spot.spot] = picture
           self.spots[index].sketchDelay = CACurrentMediaTime() - asked
+          self.log.note("sketch drawn \(Int(((CACurrentMediaTime() - asked) * 1000).rounded())) ms after the spot")
           try? SpotTake.appendSpot(self.spots[index], to: folder)
         }
       }

@@ -254,6 +254,27 @@ final class SpotTakeTests: XCTestCase {
     XCTAssertNil(try JSONDecoder().decode(SpotRecord.self, from: old).cameraDelay)
   }
 
+  func testTheMapGridKeepsItsLinesApart() {
+    // A line every metre while a metre is wide enough on screen, then every 2, 5, 10 metres.
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 60), 1)
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 20), 2)
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 8), 5)
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 3), 10)
+  }
+
+  func testDiagnosticsKeepOnlyTheirLatestLines() throws {
+    let file = folder.appendingPathComponent("log/diagnostics.log")
+    let log = SpotDiagnostics(file: file, limit: 400)
+    for index in 0..<60 { log.note("event \(index)") }
+    log.wait()
+    let lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n")
+    XCTAssertLessThanOrEqual(lines.joined(separator: "\n").utf8.count, 400)
+    XCTAssertTrue(try XCTUnwrap(lines.last).hasSuffix("event 59"))
+    XCTAssertFalse(lines.contains { $0.hasSuffix("event 0") })
+    // Whole lines only, each with the time it was written.
+    XCTAssertTrue(lines.allSatisfy { $0.contains(" event ") && $0.first?.isNumber == true })
+  }
+
   func testTheFirstShotWaitsForTheCameraToSettleItsExposure() {
     // A camera that has just opened is still finding its exposure, which a spot then keeps.
     XCTAssertFalse(SpotRecorder.exposureSettled(after: 0.2, adjusting: false))
