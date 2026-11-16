@@ -23,7 +23,9 @@ LIMIT = 64 * 1024 * 1024
 SPOT_LIMIT = 96 * 1024 * 1024
 FORWARDED = ('capture_invalid', 'timeout', 'model_too_large', 'spot_incomplete')
 CAPTURE_NAME = re.compile(r'^(manifest\.json|mesh\.json|images/\d{5}\.jpg)$')
-PANORAMA_QUALITY = 85
+PANORAMA_QUALITY = 88
+# Twice the detail of the level shots' 2880 pixels across 103°, so the viewer has it to show.
+PANORAMA_WIDTH = 8192
 
 
 def input_limit(job):
@@ -191,24 +193,65 @@ def write_bundle(path, panoramas, spots_json):
 
 
 def mesh_candidates(manifest):
-    """Walk frames plus level-ring slices: the views with the most parallax between them."""
+    """Walk frames plus each spot's ring of slices: the views with the most parallax between
+    them. Earlier builds' ceiling and floor shots are left out."""
     picked = []
     for index, frame in enumerate(manifest.get('frames', [])):
         if frame.get('role', 'walk') == 'walk':
             picked.append(index)
             continue
         forward_y = -float(frame['transform_matrix'][1][2])  # ARKit looks along −Z
-        if abs(forward_y) < 0.26:  # within 15° of level
+        if abs(forward_y) < 0.5:  # within 30° of level; the ring is tipped 15° down
             picked.append(index)
     return picked
 
 
-def reconstruct_spots(capture, work):
+def optional_enhancer():
+    """The slice enhancer for the model file named by CUSE_ENHANCE_MODEL, or None when that is
+    not set. It is an addition to the tour: if it cannot be loaded, tours are stitched
+    without it."""
+    path = os.environ.get('CUSE_ENHANCE_MODEL')
+    if not path:
+        return None
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from spot_enhance import load
+        return load(path)
+    except Exception as error:
+        # Only the error type is logged; messages can include private paths.
+        print('Enhancement unavailable:', type(error).__name__, flush=True)
+        return None
+
+
+def enhanced_panorama(enhancer, slices, images, number):
+    """The spot's panorama stitched from slices the enhancer has been over, finished, or None
+    if that fails in any way: the tour then keeps the panorama from the slices as captured."""
+    from spot_stitch import MAX_HOLES, enhance, stitch
+    try:
+        prepared = enhancer.prepare(slices, images, PANORAMA_WIDTH)
+        if prepared is None:
+            print(f'spot {number}: too large to enhance', flush=True)
+            return None
+        report = {}
+        image, holes = stitch(prepared[0], width=PANORAMA_WIDTH, report=report, images=prepared[1])
+        if holes > MAX_HOLES:
+            return None
+        # The model has sharpened the slices already; sharpening again makes them harsh.
+        return enhance(image, report.pop('covered', None), sharpen=False)
+    except Exception as error:
+        print(f'spot {number}: enhancement skipped:', type(error).__name__, flush=True)
+        return None
+
+
+def reconstruct_spots(capture, work, enhancer=None):
     """Stitches every finished spot, optionally builds the mesh, and writes the bundle and its
-    display metadata under WORK/result."""
+    display metadata under WORK/result.
+
+    With an `enhancer` (see spot_enhance), each spot's shown panorama is stitched from
+    enhanced slices, and the one from the slices as captured is kept as WORK/result/plain."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     # spot_stitch sets OpenCV's decode pixel cap, so it is imported before OpenCV.
-    from spot_stitch import MAX_HOLES, load_spot_slices, stitch
+    from spot_stitch import MAX_HOLES, enhance, load_spot_slices, read_images, stitch
     import cv2
     work = Path(work)
     frames = work / 'frames'
@@ -219,29 +262,44 @@ def reconstruct_spots(capture, work):
     records = {s['spot']: s for s in manifest['spots']}
     result = work / 'result'
     (result / 'panos').mkdir(parents=True)
-    panoramas, described = [], []
+    panoramas, described, enhanced = [], [], 0
     for number in sorted(spots):
-        image, holes = stitch(spots[number])
+        report = {}
+        images = read_images(spots[number])
+        image, holes = stitch(spots[number], width=PANORAMA_WIDTH, report=report, images=images)
         print(f'spot {number}: {len(spots[number])} slices, holes {holes:.4f}', flush=True)
         if holes > MAX_HOLES:
             raise ValueError('spot_incomplete')
+        enhance(image, report.pop('covered', None))
         name = f'panos/{number:02d}.jpg'
+        better = enhanced_panorama(enhancer, spots[number], images, number) if enhancer else None
+        del images
+        if better is not None:
+            (result / 'plain').mkdir(exist_ok=True)
+            plain = result / f'plain/{number:02d}.jpg'
+            if not cv2.imwrite(str(plain), image, [cv2.IMWRITE_JPEG_QUALITY, PANORAMA_QUALITY]):
+                raise ValueError('processing_failed')
+            image, enhanced = better, enhanced + 1
+            print(f'spot {number}: enhanced', flush=True)
         if not cv2.imwrite(str(result / name), image, [cv2.IMWRITE_JPEG_QUALITY, PANORAMA_QUALITY]):
             raise ValueError('processing_failed')
         panoramas.append((name, result / name))
         record = records[number]
         described.append((number, name, [round(float(x), 4) for x in record['position']],
-                          round(float(record['floor_y']), 4)))
+                          round(float(record['floor_y']), 4),
+                          [round(x, 1) for x in report.get('band', (-90.0, 90.0))]))
     if os.environ.get('CUSE_ROOM_MESH') == '1':
         build_optional_mesh(frames, result / 'mesh', mesh_candidates(manifest))
-    summary = {'spots': [{'spot': n, 'position': p, 'floorY': f, 'panorama': name} for n, name, p, f in described]}
+    summary = {'spots': [{'spot': n, 'position': p, 'floorY': f, 'panorama': name} for n, name, p, f, _ in described]}
     ranges = write_bundle(result / 'spots.bundle', panoramas, json.dumps(summary).encode())
     display = {
-        'method': 'ARKit guided slices, ORB-refined rotations, feathered equirect stitching',
+        'method': 'ARKit guided slices, ORB-refined rotations, seam-cut equirect stitching'
+                  + (', slices enhanced by a super-resolution model' if enhanced else ''),
         'slices': sum(len(s) for s in spots.values()),
-        'spots': [{'spot': n, 'position': p, 'floorY': f,
-                   'panorama': {'offset': ranges[name][0], 'length': ranges[name][1], 'width': 4096, 'height': 2048}}
-                  for n, name, p, f in described],
+        'spots': [{'spot': n, 'position': p, 'floorY': f, 'band': band,
+                   'panorama': {'offset': ranges[name][0], 'length': ranges[name][1],
+                                'width': PANORAMA_WIDTH, 'height': PANORAMA_WIDTH // 2}}
+                  for n, name, p, f, band in described],
     }
     (result / 'display.json').write_text(json.dumps(display))
 
@@ -347,7 +405,7 @@ def main():
     if args.reconstruct_spots:
         capture, work = args.reconstruct_spots
         try:
-            reconstruct_spots(capture, work)
+            reconstruct_spots(capture, work, optional_enhancer())
         except ValueError as error:
             if str(error) in FORWARDED:
                 Path(work).mkdir(parents=True, exist_ok=True)

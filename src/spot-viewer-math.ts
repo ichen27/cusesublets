@@ -49,7 +49,33 @@ export function lookDirection(yaw: number, pitch: number): Vec3 {
   ];
 }
 
+/** Looking up and down is free, to just short of straight up or down. Above and below what a
+ * spot photographed the panorama is streaks of the colours at its edge. */
 export const clampPitch = (p: number) => Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, p));
+
+/** The view opens no further from level than this, in degrees. */
+const OPENING_LIMIT = 25;
+
+/** Pitch, in radians, a spot's view opens at: the middle of what it photographed, so shots
+ * tipped towards the floor open showing the floor and not the fill above them. */
+export function openingPitch(band?: [number, number]): number {
+  if (!band) return 0;
+  const middle = Math.max(-OPENING_LIMIT, Math.min(OPENING_LIMIT, (band[0] + band[1]) / 2));
+  return (middle * Math.PI) / 180;
+}
+
+/** Vertical field of view on a tall screen, when the photographed band allows it. */
+export const TALL_FOV = 100;
+export const WIDE_FOV = 75;
+
+/** Vertical field of view, in degrees. A tall screen shows about as much up and down as the
+ * spot photographed, so the whole band is in view at once and none of it is wasted. */
+export function viewFov(width: number, height: number, band?: [number, number]): number {
+  if (height <= width) return WIDE_FOV;
+  const span = band ? band[1] - band[0] : 180;
+  return Math.max(WIDE_FOV, Math.min(TALL_FOV, span));
+}
+
 
 /** Centre and horizontal extent to frame in the overview: the mesh when there is one, else the spots. */
 export function overviewBounds(

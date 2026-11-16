@@ -1,0 +1,5 @@
+# Optional slice enhancement (processing/spot_enhance.py), on top of requirements-spots.txt.
+# Pinned to the versions tried on 2026-11-15 (Apple M4, Python 3.14). The model file is not
+# installed by this: see docs/mobile/photographic-tours.md.
+torch==2.15.0
+spandrel==0.4.2

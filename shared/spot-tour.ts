@@ -3,22 +3,29 @@ export type TourKind = "splat" | "spots";
 export const TOUR_KINDS: readonly TourKind[] = ["splat", "spots"];
 export const SPOT_TOUR_LIMIT = 96 * 1024 * 1024;
 export const MAX_SPOTS = 8;
-export const PANORAMA_WIDTH = 4096;
-export const PANORAMA_HEIGHT = 2048;
+/** Panoramas are equirectangular, twice as wide as high. 8192 is the current size; tours
+ * stitched before the sharper capture are 4096. */
+export const PANORAMA_WIDTHS: readonly number[] = [4096, 8192];
+export const PANORAMA_WIDTH = 8192;
+export const PANORAMA_HEIGHT = 4096;
 export const PANORAMA_LIMIT = 16 * 1024 * 1024;
 
 export interface SpotPanorama {
   /** Byte offset of the JPEG inside the bundle object; USTAR data starts on 512-byte blocks. */
   offset: number;
   length: number;
-  width: typeof PANORAMA_WIDTH;
-  height: typeof PANORAMA_HEIGHT;
+  width: number;
+  height: number;
 }
 export interface TourSpot {
   spot: number;
   /** Where the camera stood, ARKit world metres (+Y up). */
   position: [number, number, number];
   floorY: number;
+  /** Lowest and highest pitch, in degrees, that the spot photographed. Above and below it the
+   * panorama is streaks of the colours at its edge. Absent on tours stitched before level-only
+   * capture. */
+  band?: [number, number];
   panorama: SpotPanorama;
 }
 export interface SpotTourResult {
@@ -63,8 +70,13 @@ export function validateSpotTourResult(value: unknown, bundleSize: number): Spot
       p.offset % 512 !== 0 ||
       !integer(p.length, 1, PANORAMA_LIMIT) ||
       p.offset + p.length > bundleSize ||
-      p.width !== PANORAMA_WIDTH ||
-      p.height !== PANORAMA_HEIGHT
+      !PANORAMA_WIDTHS.includes(p.width as number) ||
+      p.height !== (p.width as number) / 2 ||
+      (s.band !== undefined &&
+        (!Array.isArray(s.band) ||
+          s.band.length !== 2 ||
+          !s.band.every((x) => typeof x === "number" && x >= -90 && x <= 90) ||
+          s.band[0] >= s.band[1]))
     )
       throw new Error("Invalid spot");
     seen.add(s.spot);
@@ -72,7 +84,8 @@ export function validateSpotTourResult(value: unknown, bundleSize: number): Spot
       spot: s.spot,
       position: [s.position[0], s.position[1], s.position[2]],
       floorY: s.floorY,
-      panorama: { offset: p.offset, length: p.length, width: PANORAMA_WIDTH, height: PANORAMA_HEIGHT },
+      ...(s.band ? { band: [s.band[0], s.band[1]] as [number, number] } : {}),
+      panorama: { offset: p.offset, length: p.length, width: p.width!, height: p.height! },
     };
   });
   const ranges = spots.map((s) => s.panorama).sort((a, b) => a.offset - b.offset);

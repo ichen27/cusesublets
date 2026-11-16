@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 import sys
 import tarfile
-from PIL import Image
 
 def write(path):
+    from PIL import Image  # only the walk-around fixture needs Pillow
     frames=[]
     image=io.BytesIO();Image.new('RGB',(96,64),(70,120,160)).save(image,format='JPEG')
     for i in range(30):
@@ -21,7 +21,7 @@ def write(path):
         for name,data in [('manifest.json',json.dumps(manifest).encode())]+[(f['file_path'],image.getvalue()) for f in frames]:
             info=tarfile.TarInfo(name);info.size=len(data);info.mode=0o600;archive.addfile(info,io.BytesIO(data))
 def write_spots(path, spots=((0.0, 0.0, 0.0), (1.5, 0.0, -0.5))):
-    """A version 2 spot archive: every spot's 29 slices rendered from a synthetic sphere."""
+    """A version 2 spot archive: every spot's slices rendered from a synthetic sphere."""
     import cv2
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import spot_synthetic as syn

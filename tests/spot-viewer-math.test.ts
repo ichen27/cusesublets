@@ -3,6 +3,8 @@ import {
   CIRCLE_RANGE,
   PICK_RADIUS,
   clampPitch,
+  openingPitch,
+  viewFov,
   floorHit,
   lookDirection,
   nearbySpots,
@@ -58,6 +60,28 @@ describe("spot viewer geometry", () => {
     expect(clampPitch(2)).toBeCloseTo(limit);
     expect(clampPitch(-2)).toBeCloseTo(-limit);
     expect(clampPitch(0.3)).toBe(0.3);
+  });
+  it("shows about the whole photographed band on a tall screen", () => {
+    // A level-only spot photographs about 48° up and down.
+    expect(viewFov(390, 760, [-47.8, 48.1])).toBeCloseTo(95.9);
+    // Never wider than 100° or narrower than the landscape view, whatever the band.
+    expect(viewFov(390, 760, [-90, 90])).toBe(100);
+    expect(viewFov(390, 760)).toBe(100);
+    expect(viewFov(390, 760, [-20, 20])).toBe(75);
+    // A wide screen keeps the ordinary view.
+    expect(viewFov(1200, 560, [-47.8, 48.1])).toBe(75);
+  });
+  it("opens looking at the middle of what was photographed", () => {
+    const degrees = (r: number) => (r * 180) / Math.PI;
+    // Shots tipped down photograph more floor than ceiling; the view opens tipped the same way.
+    expect(degrees(openingPitch([-63.9, 33.3]))).toBeCloseTo(-15.3);
+    expect(degrees(openingPitch([-47.8, 48.1]))).toBeCloseTo(0.15);
+    // A spot photographed all round, or one that does not say, opens level.
+    expect(openingPitch([-90, 90])).toBe(0);
+    expect(openingPitch()).toBe(0);
+    // Never far from level, whatever the band says.
+    expect(degrees(openingPitch([-90, 10]))).toBeCloseTo(-25);
+    expect(degrees(openingPitch([0, 90]))).toBeCloseTo(25);
   });
   it("frames the mesh bounds when there is a mesh", () => {
     const b = overviewBounds([spot(1, 0, 0)], {

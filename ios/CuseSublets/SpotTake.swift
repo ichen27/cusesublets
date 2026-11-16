@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import simd
 
 /// One finished spot: the slices to stitch and where the person stood.
 struct SpotRecord: Codable, Equatable {
@@ -14,12 +15,31 @@ struct SpotRecord: Codable, Equatable {
   /// The locked exposure for every slice of this spot.
   var exposureDuration: Double
   var iso: Double
+  /// `"ultrawide"` when the slices came from the 0.5× camera with motion-sensor rotations.
+  var lens: String? = nil
+  /// Degrees between ARKit's and the motion sensors' idea of "up" when the spot started.
+  var gravityMismatch: Double? = nil
+  /// How far tracking had to be turned (degrees) and shifted (metres) to line up again after
+  /// the turn before this spot. Kept to judge how well spots are placed.
+  var resumeYaw: Double? = nil
+  var resumeShift: Double? = nil
+  /// True once the person has dragged this spot to a new place on the map.
+  var moved: Bool? = nil
+  /// Seconds from asking for this spot to the 0.5× camera's first picture, and from its last
+  /// shot to its sketch on the map. Kept to judge how long the person waits.
+  var cameraDelay: Double? = nil
+  var sketchDelay: Double? = nil
 
   enum CodingKeys: String, CodingKey {
     case floorY = "floor_y"
     case startYaw = "start_yaw"
     case exposureDuration = "exposure_duration"
-    case spot, slices, position, iso
+    case gravityMismatch = "gravity_mismatch"
+    case resumeYaw = "resume_yaw"
+    case resumeShift = "resume_shift"
+    case cameraDelay = "camera_delay"
+    case sketchDelay = "sketch_delay"
+    case spot, slices, position, iso, lens, moved
   }
 }
 
@@ -31,7 +51,9 @@ enum SpotTake {
   static let maximumWalkFrames = 90
   /// Below the Workers request-body limit.
   static let archiveLimit = 96 * 1024 * 1024
-  static let sliceWidth: CGFloat = 1440
+  /// 2880 pixels across the lens's 103°: about 28 to a degree, more than the 8192-wide
+  /// panorama's 23, so stitching does not lose detail the camera captured.
+  static let sliceWidth: CGFloat = 2880
   static let spotsName = "spots.jsonl"
   static let archiveName = "spots.roomcapture"
   static var maximumViews: Int { maximumSpots * SpotLayout.standard.count + maximumWalkFrames }
@@ -57,6 +79,18 @@ enum SpotTake {
 
   static func deleteSpot(_ spot: Int, in folder: URL) throws {
     try append(JSONEncoder().encode(Tombstone(spot: spot, deleted: true)), to: folder)
+  }
+
+  /// Records a spot's new place on the map (world x and z, metres). Its height is kept.
+  static func moveSpot(_ number: Int, to place: SIMD2<Float>, in folder: URL) throws {
+    let frames = try PhotoRecorder.savedFrames(in: folder)
+    guard var spot = savedSpots(in: folder, frames: frames).first(where: { $0.spot == number }),
+      spot.position.count == 3, place.x.isFinite, place.y.isFinite
+    else { throw CaptureFailure.message("That spot could not be moved.") }
+    spot.position[0] = Double(place.x)
+    spot.position[2] = Double(place.y)
+    spot.moved = true
+    try appendSpot(spot, to: folder)
   }
 
   /// Finished, undeleted spots whose every slice is among the complete frames, by number.
@@ -126,4 +160,48 @@ enum SpotTake {
     try handle.write(contentsOf: line + Data("\n".utf8))
     try handle.synchronize()
   }
+}
+
+/// Times and camera states of the capture flow, kept in a small file on the phone so that a
+/// slow or failed step can be found afterwards. It holds no pictures, places or names.
+final class SpotDiagnostics {
+  static let shared = SpotDiagnostics(
+    file: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("spot-diagnostics.log"))
+
+  private let file: URL
+  /// Bytes kept: when a new line would pass this, the oldest lines are dropped.
+  private let limit: Int
+  private let queue = DispatchQueue(label: "cuse.spot-diagnostics", qos: .utility)
+  private let clock: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    return formatter
+  }()
+
+  init(file: URL, limit: Int = 100_000) {
+    self.file = file
+    self.limit = limit
+  }
+
+  /// Adds a line with the time it was noted. Safe from any queue.
+  func note(_ text: String) {
+    let now = Date()
+    queue.async {
+      let line = Data((self.clock.string(from: now) + " " + text + "\n").utf8)
+      var kept = (try? Data(contentsOf: self.file)) ?? Data()
+      kept.append(line)
+      while kept.count > self.limit, let end = kept.firstIndex(of: UInt8(ascii: "\n")) {
+        kept.removeSubrange(kept.startIndex...end)
+      }
+      try? FileManager.default.createDirectory(
+        at: self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
+      // Readable while the phone is locked: it is read from a computer, and holds no content.
+      try? kept.write(to: self.file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+  }
+
+  /// Returns once every line noted so far is written.
+  func wait() { queue.sync {} }
 }

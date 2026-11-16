@@ -1,9 +1,10 @@
 """Stitches one spot's guided slices into an equirectangular 360° panorama.
 
 ARKit's camera rotations place each slice; ORB matches between overlapping slices refine them
-by a few degrees, per-slice gains even out exposure, and feathered blending hides seams. Yaw 0
-is ARKit world −Z, +Y is up, and columns grow clockwise seen from above. No customer data is
-logged here.
+by a few degrees and per-slice gains even out exposure. Each pixel is then taken from one
+slice, with the slices meeting along lines where they agree, so that something two slices
+place differently is drawn once and not as a ghost. Yaw 0 is ARKit world −Z, +Y is up, and
+columns grow clockwise seen from above. No customer data is logged here.
 """
 from dataclasses import dataclass
 import os
@@ -13,13 +14,17 @@ import re
 import numpy as np
 
 # Bounds on what a manifest may ask for, so a crafted capture cannot amplify the work. The app
-# saves 29 slices per spot at 1440 × 1080 (walk frames are 1920 wide); 64 slices and the pixel
+# saves 6 slices per spot at 2880 × 2160 (walk frames are 1920 wide); 64 slices and the pixel
 # budget leave room to tune the layout. The decoder enforces the per-image cap itself, so a
 # header that lies to jpeg_size cannot reach a larger decode. Set before OpenCV is imported.
 MAX_SPOTS = 8
 MAX_SLICES = 64
-MAX_SIDE = 1920
+MAX_SIDE = 4096
 MAX_SPOT_PIXELS = 48 * 1440 * 1080
+# Each slice is compared with at most this many of its nearest neighbours when refining.
+MAX_NEIGHBOURS = 6
+# The widest half field of view a slice may claim, in degrees (the 0.5× lens is about 54).
+MAX_HALF_VIEW = 70.0
 os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'] = str(MAX_SIDE * MAX_SIDE)
 
 FLIP = np.diag([1.0, -1.0, -1.0])  # ARKit camera (+Y up, −Z forward) <-> OpenCV camera
@@ -27,6 +32,67 @@ NADIR_BGR = (43, 43, 43)
 NADIR_PITCH = np.radians(-80)
 NADIR_FEATHER = np.radians(2)
 MAX_HOLES = 0.02
+# A slice aimed below this pitch is the floor shot. The person holding the phone stands on the
+# side its bottom edge points to (camera +x), so that side of the shot shows their legs.
+DOWN_PITCH = np.radians(-60)
+# Floor distance towards the person, per metre of camera height, where the floor shot starts
+# to be dropped and where it is dropped entirely (about 2° and 5° past straight down).
+BODY_START, BODY_FULL = 0.03, 0.09
+# Feather weight of the other slices at which they fully replace the floor shot. They are
+# taken with the person behind the camera, so they win wherever they reach.
+LEVEL_FULL = 0.25
+# Unphotographed areas are filled from a copy this many times smaller, then blurred.
+FILL_SHRINK = 8
+# The fill is blurred sideways by this angle. Near the poles a panorama's rows are stretched,
+# so the blur widens there and the top and bottom close smoothly.
+FILL_BLUR = np.radians(6)
+# The unphotographed ceiling and floor are drawn as streaks: each direction keeps the colour at
+# the edge of what was photographed there, blurred sideways more and more towards the pole,
+# where every direction meets. Rows of this many pixels inside the edge give the colour.
+CAP_EDGE_ROWS = 12
+# The streaks are worked out on a strip this wide and enlarged.
+CAP_WIDTH = 1024
+# Sideways blur, in degrees of arc, gained per degree of distance from the edge.
+CAP_SPREAD = 0.12
+# Sharpening restores fine detail the stitch softened: (sigma as a share of the panorama's
+# width, strength).
+SHARPEN_DETAIL = (1.4 / 8192, 0.7)
+# A spot has one exposure, so its dim corners come out murky and its windows glaring. Each
+# area is pulled towards TONE_TARGET by this share of the way (in stops), judged over a
+# neighbourhood TONE_AREA of the panorama's width across, and by no more than TONE_LIMITS.
+# Bright areas are barely darkened: where a window has burnt out there is no detail to bring
+# back, and darkening it only turns white walls grey.
+TONE_TARGET = 150.0
+TONE_STRENGTH = 0.45
+TONE_AREA = 0.03
+TONE_LIMITS = (0.92, 1.9)
+# A spot may be level shots only, leaving the ceiling and floor unphotographed. Rows of the
+# panorama at least this covered are the band the shots were meant to cover, and holes are
+# counted there. The open top and bottom are then not holes, while a missing level shot
+# either leaves a counted gap in the band or leaves no band at all, and fails both ways.
+BAND_SHARE = 0.9
+# A hand-held phone swings on the arm between shots, so neighbouring shots show the same thing
+# several degrees apart; mixing them draws it twice. Each panorama pixel is therefore taken
+# from one shot. Which one is settled on a panorama SEAM_WIDTH wide, and the shots are mixed
+# only across SEAM_SOFT of arc where two of them meet.
+SEAM_WIDTH = 1024
+SEAM_SOFT = np.radians(0.5)
+# Neighbouring shots are rarely lit quite alike, and a meeting line that narrow would show as
+# a step on a plain wall. So the broad light and shade of the shots (what is left of them when
+# blurred by SEAM_TONE of arc) is mixed across that much instead, and only the detail meets
+# sharply.
+SEAM_TONE = np.radians(2.0)
+# What it costs to let two shots meet between a pair of neighbouring pixels: SEAM_EVEN where
+# the shots look alike, more by SEAM_COLOUR per unit they differ in colour there, up to
+# SEAM_MOST. So shots meet where they agree, and an object they place differently is left
+# whole in one of them.
+SEAM_EVEN, SEAM_COLOUR, SEAM_MOST = 8, 2.0, 400
+# What it costs to give a pixel to the shot that sees it nearer its edge, per unit of
+# difference in feather weight. It keeps the meeting line near the middle of an overlap,
+# where both shots are sharpest, unless the picture gives a reason to move it.
+SEAM_MIDDLE = 32
+# Where the shot a pixel belongs to turns out not to see it, the others fill in at this weight.
+SEAM_LEAK = 1e-3
 BLOCK_ROWS = 256
 SLICE_NAME = re.compile(r'^images/\d{5}\.jpg$')
 
@@ -64,9 +130,20 @@ def load_spot_slices(manifest, root):
             frame = frames[name]
             if not all(isinstance(frame.get(k), int) and 1 <= frame[k] <= MAX_SIDE for k in ('width', 'height')):
                 raise ValueError('capture_invalid')
-            transform = np.asarray(frame['transform_matrix'], np.float64)
-            K = np.array([[frame['fx'], 0, frame['cx']], [0, frame['fy'], frame['cy']], [0, 0, 1]],
-                         np.float64)
+            try:
+                transform = np.asarray(frame['transform_matrix'], np.float64)
+                fx, fy, cx, cy = (float(frame[k]) for k in ('fx', 'fy', 'cx', 'cy'))
+            except (KeyError, TypeError, ValueError):
+                raise ValueError('capture_invalid')
+            # A pinhole no wider than a real phone lens, with its centre inside the image.
+            narrowest = 0.5 / np.tan(np.radians(MAX_HALF_VIEW))
+            if (transform.shape != (4, 4) or not np.all(np.isfinite(transform))
+                    or not all(np.isfinite(v) for v in (fx, fy, cx, cy))
+                    or fx < narrowest * frame['width'] or fy < narrowest * frame['height']
+                    or fx > 1e5 or fy > 1e5
+                    or not 0 <= cx <= frame['width'] or not 0 <= cy <= frame['height']):
+                raise ValueError('capture_invalid')
+            K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], np.float64)
             slices.append(Slice(path, K, transform[:3, :3] @ FLIP, int(frame['width']),
                                 int(frame['height'])))
         if not slices or sum(s.width * s.height for s in slices) > MAX_SPOT_PIXELS:
@@ -136,7 +213,8 @@ def jpeg_size(path):
         return jpeg_size_bytes(source.read(1 << 20))
 
 
-def _images(slices):
+def read_images(slices):
+    """Decodes every slice, refusing any whose file is not the size its record declares."""
     import cv2
     images = []
     for s in slices:
@@ -157,41 +235,77 @@ def _rotation(vector):
 
 
 def refine_rotations(slices, max_correction_deg=3.0, images=None):
-    """Corrects each slice's rotation by at most `max_correction_deg` so ORB matches between
-    overlapping slices point the same way. A weak prior keeps the set anchored to ARKit (whose
-    gravity is reliable); with fewer than 20 matches the input rotations are returned."""
+    """Corrects each slice's rotation so ORB matches between overlapping slices point the same
+    way. A weak prior keeps the set anchored to ARKit (whose gravity is reliable).
+
+    This undoes small errors in the sensed rotations and nothing else. The input rotations
+    are returned with fewer than 20 matches, and also when any slice would have to turn more
+    than `max_correction_deg`: the sensors are not that wrong, so the slices disagree for
+    another reason (a phone swung on the arm sees the room from a different place in each
+    shot), and turning them to chase it only tilts the panorama."""
     import cv2
     from scipy.optimize import least_squares
     from scipy.sparse import lil_matrix
-    images = _images(slices) if images is None else images
+    images = read_images(slices) if images is None else images
     # A low corner threshold finds features on plain walls and soft furniture.
-    orb = cv2.ORB_create(2000, fastThreshold=7)
-    features = []
-    for s, image in zip(slices, images):
-        points, descriptors = orb.detectAndCompute(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), None)
-        if descriptors is None:
-            features.append((np.zeros((0, 3)), None))
-            continue
-        pixels = np.array([p.pt for p in points]) + 0.5
-        rays = np.c_[pixels, np.ones(len(pixels))] @ np.linalg.inv(s.K).T
-        rays /= np.linalg.norm(rays, axis=1, keepdims=True)
-        features.append((rays @ s.R.T, descriptors))
+    orb = cv2.ORB_create(1500, fastThreshold=7)
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    grays = [cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) for image in images]
+    # Half the view along each slice's longer side, in degrees.
+    half_views = [np.degrees(np.arctan(max(s.width / s.K[0, 0], s.height / s.K[1, 1]) / 2))
+                  for s in slices]
     limit = np.cos(np.radians(max(8.0, 2.5 * max_correction_deg)))
-    pairs, left, right = [], [], []
+    # Wide slices stretch the same wall differently at their edges, so features are not compared
+    # in the slices themselves. Each overlapping pair is redrawn through one shared pinhole view
+    # aimed between them; there the two look alike apart from the pose error being solved.
+    side, view_focal = 720, 360 / np.tan(np.radians(35))
+    grid = (np.arange(side) + 0.5 - side / 2) / view_focal
+    view_rays = np.stack([*np.meshgrid(grid, grid), np.ones((side, side))], -1)
+    view_rays /= np.linalg.norm(view_rays, axis=-1, keepdims=True)
+
+    def redraw(index, view):
+        s = slices[index]
+        u, v, inside = _project(view_rays @ view.T, s.K, s.R, s.width, s.height)
+        patch = cv2.remap(grays[index], (u - 0.5).astype(np.float32), (v - 0.5).astype(np.float32),
+                          cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        # Keep features away from the slice's edge, where the redraw has no neighbours.
+        mask = cv2.erode(inside.astype(np.uint8) * 255, np.ones((15, 15), np.uint8))
+        points, descriptors = orb.detectAndCompute(patch, mask)
+        if descriptors is None:
+            return np.zeros((0, 3)), None
+        pixels = np.array([p.pt for p in points])
+        rays = np.c_[(pixels + 0.5 - side / 2) / view_focal, np.ones(len(pixels))]
+        rays /= np.linalg.norm(rays, axis=1, keepdims=True)
+        return rays @ view.T, descriptors
+
+    # Only slices that can overlap (optical axes closer than their views reach), and for each
+    # slice only its nearest few, so the work grows with the slice count and not its square.
+    axes = np.stack([s.R[:, 2] for s in slices])
+    closeness = axes @ axes.T
+    candidates = set()
     for i in range(len(slices)):
-        for j in range(i + 1, len(slices)):
-            if slices[i].R[:, 2] @ slices[j].R[:, 2] < np.cos(np.radians(70)):
-                continue
-            (wi, di), (wj, dj) = features[i], features[j]
-            if di is None or dj is None:
-                continue
-            for m in matcher.match(di, dj):
-                a, b = wi[m.queryIdx], wj[m.trainIdx]
-                if a @ b > limit:
-                    pairs.append((i, j))
-                    left.append(a)
-                    right.append(b)
+        near = [j for j in np.argsort(-closeness[i]) if j != i
+                and closeness[i, j] >= np.cos(np.radians(min(160.0, half_views[i] + half_views[j] - 10.0)))]
+        candidates.update((min(i, j), max(i, j)) for j in near[:MAX_NEIGHBOURS])
+    pairs, left, right = [], [], []
+    for i, j in sorted(candidates):
+        fi, fj = slices[i].R[:, 2], slices[j].R[:, 2]
+        forward = fi + fj
+        forward /= np.linalg.norm(forward)
+        x = np.cross(fi, fj)
+        if np.linalg.norm(x) < 1e-6:
+            x = slices[i].R[:, 0]
+        x /= np.linalg.norm(x)
+        view = np.stack([x, np.cross(forward, x), forward], 1)
+        (wi, di), (wj, dj) = redraw(i, view), redraw(j, view)
+        if di is None or dj is None:
+            continue
+        for m in matcher.match(di, dj):
+            a, b = wi[m.queryIdx], wj[m.trainIdx]
+            if a @ b > limit:
+                pairs.append((i, j))
+                left.append(a)
+                right.append(b)
     rotations = [s.R for s in slices]
     if len(pairs) < 20:
         return rotations
@@ -222,12 +336,15 @@ def refine_rotations(slices, max_correction_deg=3.0, images=None):
     if fit.status < 0 or not np.all(np.isfinite(fit.x)):
         return rotations
     largest = np.radians(max_correction_deg)
+    # The matches only fix the slices relative to each other; turning them all together fits
+    # just as well. Undo that shared turn, so on average the set stays where the sensors put it.
+    shared = _rotation(fit.x.reshape(n, 3).mean(0)).T
     corrected = []
     for vector, s in zip(fit.x.reshape(n, 3), slices):
-        angle = np.linalg.norm(vector)
-        if angle > largest:
-            vector = vector * (largest / angle)
-        corrected.append(_rotation(vector) @ s.R)
+        turn = shared @ _rotation(vector)
+        if np.arccos(np.clip((np.trace(turn) - 1) / 2, -1, 1)) > largest:
+            return rotations
+        corrected.append(turn @ s.R)
     return corrected
 
 
@@ -235,7 +352,7 @@ def exposure_gains(slices, rotations, images=None, sigma_n=10.0, sigma_g=0.5):
     """Per-slice brightness gains that make overlaps agree (least squares on mean luminance in
     each pairwise overlap, Brown & Lowe), normalised to mean 1 and kept within 0.5–2."""
     import cv2
-    images = _images(slices) if images is None else images
+    images = read_images(slices) if images is None else images
     d = directions(256, 128)
     lum, seen = [], []
     for s, image, R in zip(slices, images, rotations):
@@ -271,46 +388,355 @@ def exposure_gains(slices, rotations, images=None, sigma_n=10.0, sigma_g=0.5):
     return gains / gains.mean()
 
 
-def stitch(slices, width=4096, refine=True):
+def _seams(colours, weights):
+    """Which shot each panorama pixel is taken from: an index into `colours` (BGR pictures of
+    each shot laid out on the panorama, all the same size), or −1 where no shot sees it.
+    `weights` are the shots' feather weights, 0 where a shot does not see a pixel. Columns
+    wrap around, as a panorama's do.
+
+    Each pair of shots that overlap is split by the cheapest line (see SEAM_EVEN and
+    SEAM_MIDDLE) through their overlap, found as a minimum cut."""
+    from scipy.sparse import csr_matrix
+    from scipy.sparse.csgraph import breadth_first_order, maximum_flow
+    height, width = weights[0].shape
+    masks = [w > 0 for w in weights]
+    # More than every other cost in a graph together, yet small enough that sums fit in 32 bits.
+    hard = 1 << 29
+
+    def beside(mask):
+        near = mask | np.roll(mask, 1, 1) | np.roll(mask, -1, 1)
+        near[1:] |= mask[:-1]
+        near[:-1] |= mask[1:]
+        return near
+
+    for i in range(len(masks)):
+        for j in range(i + 1, len(masks)):
+            both = masks[i] & masks[j]
+            count = int(both.sum())
+            if not count:
+                continue
+            index = np.full((height, width), -1, np.int64)
+            index[both] = np.arange(count)
+            differ = np.linalg.norm(colours[i].astype(np.float32) - colours[j].astype(np.float32), axis=-1)
+            source, sink = count, count + 1
+            starts, ends, costs = [], [], []
+            for a, b, da, db in ((index, np.roll(index, -1, 1), differ, np.roll(differ, -1, 1)),
+                                 (index[:-1], index[1:], differ[:-1], differ[1:])):
+                joined = (a >= 0) & (b >= 0)
+                cost = np.minimum(SEAM_EVEN + SEAM_COLOUR * (da[joined] + db[joined]), SEAM_MOST)
+                starts += [a[joined], b[joined]]
+                ends += [b[joined], a[joined]]
+                costs += [cost, cost]
+            # Pixels next to where only one of the two shots reaches stay with that shot.
+            by_i, by_j = beside(masks[i] & ~masks[j])[both], beside(masks[j] & ~masks[i])[both]
+            prefer = SEAM_MIDDLE * (weights[i][both] - weights[j][both])
+            to_i = np.where(by_i & ~by_j, hard, np.maximum(prefer, 0))
+            to_j = np.where(by_j & ~by_i, hard, np.maximum(-prefer, 0))
+            pixels = np.arange(count)
+            starts += [np.full(count, source), pixels]
+            ends += [pixels, np.full(count, sink)]
+            costs += [to_i, to_j]
+            graph = csr_matrix((np.rint(np.concatenate(costs)).astype(np.int32),
+                                (np.concatenate(starts), np.concatenate(ends))),
+                               shape=(count + 2, count + 2))
+            left = graph - maximum_flow(graph, source, sink).flow
+            left.eliminate_zeros()
+            # What the source still reaches once the flow is spent is its side of the cut.
+            reached = np.zeros(count + 2, bool)
+            reached[breadth_first_order(left, source, return_predecessors=False)] = True
+            keeps = np.zeros((height, width), bool)
+            keeps[both] = reached[:count]
+            masks[i] = masks[i] & (~both | keeps)
+            masks[j] = masks[j] & (~both | ~keeps)
+    owner = np.full((height, width), -1, np.int16)
+    for i, mask in enumerate(masks):
+        owner[mask] = i
+    return owner
+
+
+def _shares(slices, images, rotations, gains, width):
+    """Works out, on a small panorama, how the slices taken with the person behind the camera
+    are put together. Returns two things.
+
+    The first holds each such slice's share (0 to 1) of every pixel, keyed by the slice's
+    index: 1 where the pixel is taken from that slice, falling to 0 across SEAM_SOFT where it
+    meets another.
+
+    The second is a BGR picture to add to the result: the difference between mixing the
+    slices' broad light and shade across SEAM_TONE and across SEAM_SOFT. It is zero away from
+    where slices meet, and None when there are no such slices."""
+    import cv2
+    side = min(width, SEAM_WIDTH)
+    d = directions(side, side // 2)
+    level = [k for k, R in enumerate(rotations) if R[1, 2] >= np.sin(DOWN_PITCH)]
+    if not level:
+        return {}, None
+    colours, weights = [], []
+    for k in level:
+        s, image = slices[k], images[k]
+        # Shrink the slice to about twice the small panorama's detail before sampling it.
+        scale = min(1.0, 2 * side / (2 * np.pi) / s.K[0, 0])
+        if scale < 1:
+            image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        u, v, inside = _project(d, s.K, rotations[k], s.width, s.height)
+        sample = cv2.remap(image, (u * scale - 0.5).astype(np.float32), (v * scale - 0.5).astype(np.float32),
+                           cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        colours.append(np.clip(sample.astype(np.float32) * gains[k], 0, 255).astype(np.uint8))
+        weights.append(np.where(inside, _feather(u, v, s.width, s.height), 0).astype(np.float32))
+    owner = _seams(colours, weights)
+
+    def spread(picture, radians):
+        # A blur that wraps around sideways, as the panorama does.
+        sigma = max(radians / (2 * np.pi) * side, 0.5)
+        pad = int(4 * sigma) + 1
+        wrapped = np.concatenate([picture[:, -pad:], picture, picture[:, :pad]], 1)
+        return cv2.GaussianBlur(wrapped, (0, 0), sigma)[:, pad:-pad]
+
+    sharp, broad = [], []
+    for n in range(len(level)):
+        mine, sees = (owner == n).astype(np.float32), weights[n] > 0
+        sharp.append(spread(mine, SEAM_SOFT))
+        broad.append(np.where(sees, spread(mine, SEAM_TONE), 0))
+    sharp_all = np.maximum(sum(np.where(w > 0, a, 0) for a, w in zip(sharp, weights)), 1e-6)
+    broad_all = np.maximum(sum(broad), 1e-6)
+    tone = np.zeros((side // 2, side, 3), np.float32)
+    for n in range(len(level)):
+        sees = (weights[n] > 0).astype(np.float32)
+        # The slice's broad light and shade, from the pixels it sees only.
+        light = spread(colours[n] * sees[..., None], SEAM_TONE) / np.maximum(spread(sees, SEAM_TONE), 1e-3)[..., None]
+        tone += (broad[n] / broad_all - sharp[n] * sees / sharp_all)[..., None] * light
+    return dict(zip(level, sharp)), tone
+
+
+def _body_keep(d, R):
+    """Weight (0 to 1) for a floor shot's view of world directions `d`: 0 where the person
+    holding the phone is in the way. `R` is the shot's camera-to-world rotation."""
+    toward = np.array([R[0, 0], 0.0, R[2, 0]])
+    length = np.linalg.norm(toward)
+    if length < 1e-6:
+        return np.ones(d.shape[:2], np.float32)
+    drop = np.maximum(-d[..., 1], 1e-6)
+    offset = (d @ (toward / length)) / drop
+    t = np.clip((offset - BODY_START) / (BODY_FULL - BODY_START), 0, 1)
+    return np.where(d[..., 1] < 0, 1 - t * t * (3 - 2 * t), 1).astype(np.float32)
+
+
+def _fill(image, holes):
+    """Paints `holes` with the blurred colours around them. Used where nothing was
+    photographed: mostly the floor behind the person, which no shot can see."""
+    import cv2
+    height, width = holes.shape
+    small = (width // FILL_SHRINK, height // FILL_SHRINK)
+    valid = cv2.resize((~holes).astype(np.uint8) * 255, small, interpolation=cv2.INTER_AREA) / 255.0
+    # `image` is black in the holes, so shrinking it sums only photographed pixels.
+    colour = cv2.resize(image, small, interpolation=cv2.INTER_AREA).astype(np.float32)
+    colour = np.clip(colour / np.maximum(valid, 1e-3)[..., None] + 0.5, 0, 255).astype(np.uint8)
+    missing = (valid < 0.5).astype(np.uint8)
+    # The panorama wraps around, so let the fill see across the left and right edges.
+    pad = small[0] // 4
+    colour = np.concatenate([colour[:, -pad:], colour, colour[:, :pad]], 1)
+    missing = np.concatenate([missing[:, -pad:], missing, missing[:, :pad]], 1)
+    filled = cv2.inpaint(colour, missing, 5, cv2.INPAINT_TELEA)
+    filled = cv2.GaussianBlur(filled, (0, 0), 6, borderType=cv2.BORDER_REPLICATE)[:, pad:-pad]
+    rows = filled.shape[0]
+    pitch = np.pi / 2 - (np.arange(rows) + 0.5) / rows * np.pi
+    sigma = FILL_BLUR / (2 * np.pi) * small[0] / np.maximum(np.cos(pitch), 0.02)
+    for row in range(rows):
+        if sigma[row] > 6:
+            line = np.tile(filled[row][None], (1, 3, 1))  # wrap around the panorama
+            line = cv2.GaussianBlur(line, (0, 0), min(float(sigma[row]), small[0] / 2), sigmaY=0.01)
+            filled[row] = line[0, small[0]:2 * small[0]]
+    filled = cv2.resize(filled, (width, height), interpolation=cv2.INTER_CUBIC)
+    # Soften the border only on the filled side, so photographed pixels stay sharp.
+    alpha = cv2.GaussianBlur(holes.astype(np.float32), (0, 0), FILL_SHRINK)
+    alpha = np.where(holes, np.clip(alpha * 2, 0, 1), 0)[..., None]
+    # In row blocks, so a large panorama never needs several float copies of itself at once.
+    for top in range(0, height, BLOCK_ROWS):
+        rows = slice(top, top + BLOCK_ROWS)
+        if holes[rows].any():
+            image[rows] = np.clip(image[rows] * (1 - alpha[rows]) + filled[rows] * alpha[rows] + 0.5, 0, 255)
+    return image
+
+
+def _caps(image, covered):
+    """Paints the unphotographed top and bottom of a panorama in place, as streaks running from
+    the edge of what was photographed to the pole. Returns the pixels it painted."""
+    import cv2
+    height, width = covered.shape
+    painted = np.zeros_like(covered)
+    any_row = covered.any(0)
+    if not any_row.any():
+        return painted
+    strip = min(CAP_WIDTH, width)
+    pitch = 90 - (np.arange(height) + 0.5) / height * 180
+    for top in (True, False):
+        # Each column's first photographed row from this pole, and the cap beyond it.
+        edge = np.argmax(covered if top else covered[::-1], axis=0)
+        edge = np.where(any_row, edge, 0)
+        if not top:
+            edge = height - 1 - edge
+        if (edge == (0 if top else height - 1)).all():
+            continue
+        rows = np.arange(height)[:, None]
+        cap = (rows < edge[None]) if top else (rows > edge[None])
+        cap &= ~covered & any_row[None]
+        if not cap.any():
+            continue
+        # The colour just inside each column's edge.
+        inside = edge[None] + (np.arange(CAP_EDGE_ROWS)[:, None] + 1) * (1 if top else -1)
+        inside = np.clip(inside, 0, height - 1)
+        columns = np.broadcast_to(np.arange(width)[None], inside.shape)
+        known = covered[inside, columns][..., None]
+        colour = (image[inside, columns] * known).sum(0) / np.maximum(known.sum(0), 1)
+        colour[~any_row | (known.sum(0)[:, 0] == 0)] = colour[any_row].mean(0)
+        line = cv2.resize(colour[None].astype(np.float32), (strip, 1), interpolation=cv2.INTER_AREA)
+        span = np.flatnonzero(cap.any(1))
+        first, last = int(span[0]), int(span[-1]) + 1
+        step = max(1, (last - first) // 256)
+        sample = np.arange(first, last, step)
+        nearest = pitch[edge].max() if top else pitch[edge].min()
+        streaks = np.empty((len(sample), strip, 3), np.float32)
+        for i, row in enumerate(sample):
+            depth = abs(pitch[row] - nearest)
+            sigma = CAP_SPREAD * depth / max(np.cos(np.radians(pitch[row])), 0.02) * strip / 360
+            if sigma < 0.3:
+                streaks[i] = line[0]
+                continue
+            sigma = min(sigma, strip / 2)
+            wrapped = np.tile(line, (1, 3, 1))  # the panorama wraps around
+            streaks[i] = cv2.GaussianBlur(wrapped, (0, 0), sigma, sigmaY=0.01)[0, strip:2 * strip]
+        full = cv2.resize(streaks, (width, last - first), interpolation=cv2.INTER_LINEAR)
+        block = cap[first:last]
+        image[first:last][block] = np.clip(full[block] + 0.5, 0, 255)
+        painted |= cap
+    return painted
+
+
+def enhance(image, photographed=None, sharpen=True):
+    """Improves a panorama in place: brightens dim areas and calms glaring ones, then restores
+    the fine detail that resampling softened. With `photographed`, only those pixels are
+    sharpened, so the soft fill stays soft. `sharpen=False` leaves the sharpening out, for
+    slices a model has already sharpened. This does not recover detail the camera did not
+    capture."""
+    import cv2
+    height, width = image.shape[:2]
+    # Brightness of each neighbourhood, on a small copy that wraps around like the panorama.
+    small = cv2.resize(image, (width // FILL_SHRINK, height // FILL_SHRINK), interpolation=cv2.INTER_AREA)
+    light = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    pad = light.shape[1] // 4
+    light = np.concatenate([light[:, -pad:], light, light[:, :pad]], 1)
+    light = cv2.GaussianBlur(light, (0, 0), TONE_AREA * small.shape[1])[:, pad:-pad]
+    gain = np.clip((TONE_TARGET / np.maximum(light, 8)) ** TONE_STRENGTH, *TONE_LIMITS)
+    gain = cv2.resize(gain, (width, height), interpolation=cv2.INTER_CUBIC)
+    share, amount = SHARPEN_DETAIL if sharpen else (SHARPEN_DETAIL[0], 0.0)
+    sigma = max(share * width, 0.6)
+    margin = int(4 * sigma) + 1
+    # In row blocks, so a large panorama never needs float copies of itself.
+    for top in range(0, height, BLOCK_ROWS):
+        low, high = max(0, top - margin), min(height, top + BLOCK_ROWS + margin)
+        block = np.clip(image[low:high] * gain[low:high, :, None], 0, 255).astype(np.uint8)
+        sharp = cv2.addWeighted(block, 1 + amount, cv2.GaussianBlur(block, (0, 0), sigma), -amount, 0)
+        rows = slice(top - low, top - low + min(BLOCK_ROWS, height - top))
+        if photographed is None:
+            image[top:top + BLOCK_ROWS] = sharp[rows]
+        else:
+            keep = photographed[top:top + BLOCK_ROWS]
+            image[top:top + BLOCK_ROWS] = np.where(keep[..., None], sharp[rows], block[rows])
+    return image
+
+
+def stitch(slices, width=4096, refine=True, report=None, images=None):
     """Returns (equirect BGR uint8 of width × width/2, hole fraction above the nadir disc).
-    Holes above −80° pitch are inpainted and counted; below it a neutral disc hides the floor
-    under the person's feet."""
+    A dict passed as `report` gets `band`: the lowest and highest pitch, in degrees, of the
+    rows that were photographed (see BAND_SHARE), for viewers that keep the fill off screen.
+    `images` are the slices' pictures if they are already decoded (see `read_images`).
+
+    A spot of level shots only leaves the ceiling and floor unphotographed. They are drawn as
+    streaks of the colours at the edge of what was photographed (see `_caps`) and are not
+    holes: holes are counted in the band of rows the shots mostly cover (see BAND_SHARE).
+
+    A floor shot, if the spot has one, is used only where no other slice reaches and only on
+    the side away from the person holding the phone, so they stay out of the panorama. The
+    floor behind them is filled the same way and is not counted either, and a neutral disc
+    below −80° pitch hides the floor under their feet."""
     import cv2
     height = width // 2
-    images = _images(slices)
+    images = read_images(slices) if images is None else images
     rotations = refine_rotations(slices, images=images) if refine else [s.R for s in slices]
     gains = exposure_gains(slices, rotations, images=images)
-    out = np.zeros((height, width, 3), np.float32)
+    shares, tone = _shares(slices, images, rotations, gains, width)
+    small = (min(width, SEAM_WIDTH) // 2, min(width, SEAM_WIDTH))
+    out = np.zeros((height, width, 3), np.uint8)
     covered = np.zeros((height, width), bool)
+    hidden = np.zeros((height, width), bool)
     for top in range(0, height, BLOCK_ROWS):
         rows = np.arange(top, min(height, top + BLOCK_ROWS))
         d = directions(width, height, rows)
-        acc = np.zeros(d.shape, np.float32)
-        weight = np.zeros(d.shape[:2], np.float32)
-        for s, image, R, gain in zip(slices, images, rotations, gains):
+        # Where this block's pixels fall on the small panorama the shares were worked out on,
+        # which has one extra column at each side so that sampling wraps around.
+        share_x = np.tile(((np.arange(width) + 0.5) * small[1] / width + 0.5).astype(np.float32), (len(rows), 1))
+        share_y = np.repeat(((rows + 0.5) * small[0] / height - 0.5).astype(np.float32)[:, None], width, 1)
+        # [0] the slices taken with the person behind the camera, [1] floor shots.
+        acc = [np.zeros(d.shape, np.float32), np.zeros(d.shape, np.float32)]
+        weight = [np.zeros(d.shape[:2], np.float32), np.zeros(d.shape[:2], np.float32)]
+        # How well the first group reaches each pixel, whichever of its slices the pixel is from.
+        reach = np.zeros(d.shape[:2], np.float32)
+        behind = np.zeros(d.shape[:2], bool)
+        for index, (s, image, R, gain) in enumerate(zip(slices, images, rotations, gains)):
             u, v, inside = _project(d, s.K, R, s.width, s.height)
             if not inside.any():
                 continue
             w = np.where(inside, _feather(u, v, s.width, s.height), 0).astype(np.float32)
+            down = int(R[1, 2] < np.sin(DOWN_PITCH))
+            if down:
+                keep = _body_keep(d, R)
+                behind |= inside & (keep < 1)
+                w *= keep
+            else:
+                reach += w
+                share = shares[index]
+                share = np.concatenate([share[:, -1:], share, share[:, :1]], 1)
+                share = cv2.remap(share, share_x, share_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                # The slice this pixel belongs to, alone; the rest only where that one falls short.
+                w = np.where(inside, share + SEAM_LEAK * w, 0).astype(np.float32)
             # Sample the 8-bit slice and widen only this block, so peak memory stays near the
             # decoded slices themselves rather than float copies of every one.
             sample = cv2.remap(image, (u - 0.5).astype(np.float32), (v - 0.5).astype(np.float32),
                                cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-            acc += sample.astype(np.float32) * (w * gain)[..., None]
-            weight += w
-        has = weight > 1e-6
-        out[rows] = np.where(has[..., None], acc / np.maximum(weight, 1e-6)[..., None], 0)
+            acc[down] += sample.astype(np.float32) * (w * gain)[..., None]
+            weight[down] += w
+        level = acc[0] / np.maximum(weight[0], 1e-12)[..., None]
+        if tone is not None:
+            wrapped = np.concatenate([tone[:, -1:], tone, tone[:, :1]], 1)
+            level += cv2.remap(wrapped, share_x, share_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        floor = acc[1] / np.maximum(weight[1], 1e-6)[..., None]
+        share = np.where(weight[1] > 1e-6, np.clip(reach / LEVEL_FULL, 0, 1), 1)[..., None]
+        has = (reach > 1e-6) | (weight[1] > 1e-6)
+        out[rows] = np.clip(np.where(has[..., None], level * share + floor * (1 - share), 0) + 0.5, 0, 255)
         covered[rows] = has
+        hidden[rows] = behind & ~has
     pitch = np.pi / 2 - (np.arange(height) + 0.5) / height * np.pi
     above = np.repeat((pitch >= NADIR_PITCH)[:, None], width, 1)
-    holes = above & ~covered
-    hole_fraction = float(holes.sum() / above.sum())
-    image = np.clip(out + 0.5, 0, 255).astype(np.uint8)
-    if holes.any():
-        image = cv2.inpaint(image, holes.astype(np.uint8), 3, cv2.INPAINT_TELEA)
-    # The neutral disc: solid below −82°, blended over the 2° above it.
-    alpha = np.clip((NADIR_PITCH - pitch) / NADIR_FEATHER, 0, 1)[:, None, None]
-    alpha = np.where((~covered & ~above)[..., None], 1, np.broadcast_to(alpha, (height, width, 1)))
-    disc = np.array(NADIR_BGR, np.float32)
-    image = np.clip(image * (1 - alpha) + disc * alpha + 0.5, 0, 255).astype(np.uint8)
+    band = above & (covered.mean(1) >= BAND_SHARE)[:, None]
+    holes = band & ~covered & ~hidden
+    hole_fraction = float(holes.sum() / band.sum()) if band.any() else 1.0
+    if report is not None and band.any():
+        seen = np.degrees(pitch[band.any(1)])
+        report['band'] = (float(seen.min()), float(seen.max()))
+    if report is not None:
+        report['covered'] = covered
+    image = out
+    if not covered.all():
+        # The open top and bottom become streaks; anything else unphotographed is blurred in.
+        rest = ~covered & ~_caps(image, covered)
+        if rest.any():
+            image = _fill(image, rest)
+    if any(R[1, 2] < np.sin(DOWN_PITCH) for R in rotations):
+        # The neutral disc: solid below −82°, blended over the 2° above it.
+        alpha = np.clip((NADIR_PITCH - pitch) / NADIR_FEATHER, 0, 1)[:, None, None]
+        alpha = np.where((~covered & ~above)[..., None], 1, np.broadcast_to(alpha, (height, width, 1)))
+        disc = np.array(NADIR_BGR, np.float32)
+        low = int(np.argmax(alpha[:, 0, 0] > 0)) if (alpha > 0).any() else height
+        low = min(low, int(np.argmax((~covered & ~above).any(1))) if (~covered & ~above).any() else height)
+        image[low:] = np.clip(image[low:] * (1 - alpha[low:]) + disc * alpha[low:] + 0.5, 0, 255)
     return image, hole_fraction

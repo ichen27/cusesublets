@@ -28,10 +28,12 @@ jobs:
           python3 -m venv /tmp/spots
           /tmp/spots/bin/pip install --quiet -r processing/requirements-spots.txt
           /tmp/spots/bin/python tests/spot-stitch-unit.py
+          /tmp/spots/bin/python tests/studio-unit.py
       - run: python3 tests/housing-search-migration.py
       - run: python3 tests/search-write-races.py
       - run: python3 tests/social-write-races.py
       - run: python3 tests/private-drafts-races.py
       - run: npm run build
+      - run: npm run build:studio
       - run: npx tsc --noEmit -p prototype/tsconfig.json
       - run: npx vite build --config prototype/vite.config.ts

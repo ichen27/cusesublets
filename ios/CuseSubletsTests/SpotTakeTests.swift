@@ -1,4 +1,5 @@
 import XCTest
+import simd
 
 @testable import CuseSublets
 
@@ -137,7 +138,7 @@ final class SpotTakeTests: XCTestCase {
     XCTAssertEqual(SpotTake.maximumSpots, 8)
     XCTAssertEqual(SpotTake.maximumWalkFrames, 90)
     XCTAssertEqual(SpotTake.archiveLimit, 96 * 1024 * 1024)
-    XCTAssertEqual(SpotTake.maximumViews, 8 * 29 + 90)
+    XCTAssertEqual(SpotTake.maximumViews, 8 * 6 + 90)
   }
 
   func testSplatBudgetUnchanged() {
@@ -167,5 +168,119 @@ final class SpotTakeTests: XCTestCase {
     try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
     XCTAssertFalse(try SpotTake.discardIfEmpty(folder: folder))
     XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+  }
+
+  func testAMovedSpotKeepsItsHeightAndSlices() throws {
+    try write([record(0, role: "slice", spot: 1), record(1, role: "slice", spot: 2)])
+    try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
+    try SpotTake.appendSpot(spot(2, slices: [1]), to: folder)
+    try SpotTake.moveSpot(2, to: SIMD2(3, -4.5), in: folder)
+    let saved = SpotTake.savedSpots(in: folder, frames: try PhotoRecorder.savedFrames(in: folder))
+    XCTAssertEqual(saved.map(\.spot), [1, 2])
+    XCTAssertEqual(saved[0].position, [0.5, 0, -1])
+    XCTAssertNil(saved[0].moved)
+    XCTAssertEqual(saved[1].position, [3, 0, -4.5])
+    XCTAssertEqual(saved[1].moved, true)
+    XCTAssertEqual(saved[1].slices, ["images/00001.jpg"])
+  }
+
+  func testMovingAMissingSpotOrToNowhereFails() throws {
+    try write([record(0, role: "slice", spot: 1)])
+    try SpotTake.appendSpot(spot(1, slices: [0]), to: folder)
+    XCTAssertThrowsError(try SpotTake.moveSpot(7, to: SIMD2(1, 1), in: folder))
+    XCTAssertThrowsError(try SpotTake.moveSpot(1, to: SIMD2(.nan, 1), in: folder))
+  }
+
+  func testMapLayoutTurnsADragBackIntoMetres() {
+    let layout = SpotMapLayout(
+      points: [SIMD2(-1, -2), SIMD2(3, 1)], size: CGSize(width: 300, height: 200))
+    for place in [SIMD2<Float>(-1, -2), SIMD2(3, 1), SIMD2(0.4, -0.7)] {
+      let back = layout.world(layout.screen(place))
+      XCTAssertEqual(simd_distance(back, place), 0, accuracy: 1e-4)
+    }
+    // Everything fits, with the middle of the room in the middle of the map.
+    XCTAssertEqual(layout.screen(SIMD2(1, -0.5)), CGPoint(x: 150, y: 100))
+    XCTAssertGreaterThan(layout.screen(SIMD2(-1, -2)).x, 0)
+    XCTAssertLessThan(layout.screen(SIMD2(3, 1)).x, 300)
+  }
+
+  func testAZoomedAndMovedMapStillTurnsADragBackIntoMetres() {
+    let size = CGSize(width: 300, height: 200)
+    let pose = SpotMapPose(zoom: 2.5, pan: CGSize(width: 40, height: -25))
+    let layout = SpotMapLayout(points: [SIMD2(-1, -2), SIMD2(3, 1)], size: size, pose: pose)
+    for place in [SIMD2<Float>(-1, -2), SIMD2(3, 1), SIMD2(0.4, -0.7)] {
+      XCTAssertEqual(simd_distance(layout.world(layout.screen(place)), place), 0, accuracy: 1e-4)
+    }
+    // The middle of the room moves with the map, and a metre is drawn 2.5 times as long.
+    let fitted = SpotMapLayout(points: [SIMD2(-1, -2), SIMD2(3, 1)], size: size)
+    XCTAssertEqual(layout.screen(SIMD2(1, -0.5)), CGPoint(x: 190, y: 75))
+    XCTAssertEqual(layout.metre, fitted.metre * 2.5, accuracy: 1e-6)
+  }
+
+  func testPinchingKeepsThePlaceUnderTheFingersStill() {
+    let size = CGSize(width: 300, height: 200)
+    let points = [SIMD2<Float>(-1, -2), SIMD2(3, 1)]
+    let start = SpotMapPose(zoom: 1.5, pan: CGSize(width: 10, height: 20))
+    let fingers = CGPoint(x: 220, y: 60)
+    let place = SpotMapLayout(points: points, size: size, pose: start).world(fingers)
+    let zoomed = start.zoomed(by: 2, about: fingers, in: size)
+    XCTAssertEqual(zoomed.zoom, 3, accuracy: 1e-6)
+    let after = SpotMapLayout(points: points, size: size, pose: zoomed).screen(place)
+    XCTAssertEqual(after.x, fingers.x, accuracy: 1e-3)
+    XCTAssertEqual(after.y, fingers.y, accuracy: 1e-3)
+  }
+
+  func testTheMapCannotBeZoomedOrMovedOutOfReach() {
+    let size = CGSize(width: 300, height: 200)
+    let centre = CGPoint(x: 150, y: 100)
+    XCTAssertEqual(SpotMapPose().zoomed(by: 100, about: centre, in: size).zoom, SpotMapPose.zoomRange.upperBound)
+    XCTAssertEqual(SpotMapPose().zoomed(by: 0.01, about: centre, in: size).zoom, SpotMapPose.zoomRange.lowerBound)
+    // However far it is dragged, the middle of the fitted map stays on screen.
+    let far = SpotMapPose().moved(by: CGSize(width: 5000, height: -5000), in: size)
+    XCTAssertEqual(far.pan, CGSize(width: 150, height: -100))
+    XCTAssertEqual(SpotMapPose().moved(by: CGSize(width: 30, height: 12), in: size).pan, CGSize(width: 30, height: 12))
+  }
+
+  func testASpotRecordsHowLongItsCameraAndSketchTook() throws {
+    var record = spot(1, slices: [0])
+    record.cameraDelay = 0.8
+    record.sketchDelay = 2.5
+    let json = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+    XCTAssertEqual(json["camera_delay"] as? Double, 0.8)
+    XCTAssertEqual(json["sketch_delay"] as? Double, 2.5)
+    // Takes saved by earlier builds have neither.
+    let old = try JSONEncoder().encode(spot(2, slices: [0]))
+    XCTAssertNil(try JSONDecoder().decode(SpotRecord.self, from: old).cameraDelay)
+  }
+
+  func testTheMapGridKeepsItsLinesApart() {
+    // A line every metre while a metre is wide enough on screen, then every 2, 5, 10 metres.
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 60), 1)
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 20), 2)
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 8), 5)
+    XCTAssertEqual(SpotMapLayout.gridStep(metre: 3), 10)
+  }
+
+  func testDiagnosticsKeepOnlyTheirLatestLines() throws {
+    let file = folder.appendingPathComponent("log/diagnostics.log")
+    let log = SpotDiagnostics(file: file, limit: 400)
+    for index in 0..<60 { log.note("event \(index)") }
+    log.wait()
+    let lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n")
+    XCTAssertLessThanOrEqual(lines.joined(separator: "\n").utf8.count, 400)
+    XCTAssertTrue(try XCTUnwrap(lines.last).hasSuffix("event 59"))
+    XCTAssertFalse(lines.contains { $0.hasSuffix("event 0") })
+    // Whole lines only, each with the time it was written.
+    XCTAssertTrue(lines.allSatisfy { $0.contains(" event ") && $0.first?.isNumber == true })
+  }
+
+  func testTheFirstShotWaitsForTheCameraToSettleItsExposure() {
+    // A camera that has just opened is still finding its exposure, which a spot then keeps.
+    XCTAssertFalse(SpotRecorder.exposureSettled(after: 0.2, adjusting: false))
+    XCTAssertTrue(SpotRecorder.exposureSettled(after: 0.6, adjusting: false))
+    XCTAssertFalse(SpotRecorder.exposureSettled(after: 0.6, adjusting: true))
+    // It does not wait for ever on a camera that never says it is done.
+    XCTAssertTrue(SpotRecorder.exposureSettled(after: 1.6, adjusting: true))
   }
 }

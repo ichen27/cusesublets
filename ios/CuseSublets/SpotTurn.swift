@@ -11,12 +11,17 @@ struct SpotTarget: Equatable {
 }
 
 enum SpotLayout {
-  /// A level ring, rings tilted up and down, and the ceiling straight above, so the stitched
-  /// sphere has no holes except the floor under the person's feet. Starting values, tuned on
-  /// the iPhone 17.
-  static let standard: [SpotTarget] =
-    ring(0, count: 12, pitchDegrees: 0) + ring(1, count: 8, pitchDegrees: 50)
-    + ring(2, count: 8, pitchDegrees: -50) + [SpotTarget(ring: 3, yaw: 0, pitch: .pi / 2)]
+  /// Degrees the shots look below level. The floor says more about a room than the ceiling,
+  /// and one turn cannot photograph both: each degree down trades ceiling for floor.
+  static let tiltDegrees: Float = -15
+
+  /// Six shots on the 0.5× camera in one turn on the spot, all tipped the same way. In
+  /// portrait that lens sees about 87° across and 103° up and down, so the panorama reaches
+  /// about 64° below level and 33° above it, and neighbouring shots overlap by about 27° at
+  /// their middles. From 1.4 m up that shows the floor from 0.7 m away, and the line where a
+  /// wall meets a 2.4 m ceiling when the wall is at least 1.5 m away. The ceiling and floor
+  /// beyond are not photographed; the stitcher fills them softly.
+  static let standard: [SpotTarget] = ring(0, count: 6, pitchDegrees: tiltDegrees)
 
   private static func ring(_ ring: Int, count: Int, pitchDegrees: Float) -> [SpotTarget] {
     (0..<count).map { index in

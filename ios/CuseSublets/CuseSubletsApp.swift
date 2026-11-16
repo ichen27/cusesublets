@@ -115,7 +115,7 @@ import SwiftUI
   var body: some Scene {
     WindowGroup {
       #if PERSONAL_DEVICE
-        NavigationStack { DeviceCaptureCheckView() }.tint(.cuseOrange)
+        PropertiesView().tint(.cuseOrange)
       #else
         RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
           .tint(.cuseOrange).task(id: scenePhase) {

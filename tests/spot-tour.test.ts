@@ -21,6 +21,27 @@ describe("spot tour result contract", () => {
   it("accepts a valid result", () => {
     expect(validateSpotTourResult(result, 4096)).toEqual(result);
   });
+  it("accepts the sharper panorama size and a photographed band", () => {
+    const sharp = {
+      ...result,
+      spots: [
+        { ...spot(1, 512), band: [-47.8, 48.1], panorama: { offset: 512, length: 1000, width: 8192, height: 4096 } },
+      ],
+    };
+    expect(validateSpotTourResult(sharp, 4096)).toEqual(sharp);
+  });
+  it("rejects other panorama sizes and impossible bands", () => {
+    const withPanorama = (width: number, height: number) => ({
+      ...result,
+      spots: [{ ...spot(1, 512), panorama: { offset: 512, length: 1000, width, height } }],
+    });
+    expect(() => validateSpotTourResult(withPanorama(6000, 3000), 4096)).toThrow();
+    expect(() => validateSpotTourResult(withPanorama(8192, 2048), 4096)).toThrow();
+    for (const band of [[10, -10], [-120, 40], [0, 0], [1], "wide"])
+      expect(() =>
+        validateSpotTourResult({ ...result, spots: [{ ...spot(1, 512), band }] }, 4096),
+      ).toThrow();
+  });
   it("rejects zero or nine spots", () => {
     expect(() => validateSpotTourResult({ ...result, spots: [] }, 4096)).toThrow();
     const nine = Array.from({ length: 9 }, (_, i) => spot(i + 1, 512 * (i + 1) * 4, 512));
