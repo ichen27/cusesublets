@@ -34,6 +34,40 @@ enum QuadFormat {
     return place.isEmpty ? "Subleasing a place" : "Subleasing in \(place)"
   }
 
+  /// One line of the "what has been checked" card.
+  struct Check: Equatable {
+    let text: String
+    let done: Bool
+  }
+  /// What staff have and have not checked for a place, in the order shown.
+  static func checks(hostName: String, identity: String, lease: String) -> [Check] {
+    let name = firstName(hostName)
+    return [
+      identity == "verified"
+        ? Check(text: "\(name)'s ID matches their profile", done: true)
+        : Check(text: "\(name)'s ID not checked yet", done: false),
+      lease == "verified"
+        ? Check(text: "Lease for this place reviewed by staff", done: true)
+        : Check(text: "Lease not checked yet", done: false),
+    ]
+  }
+
+  static func firstName(_ name: String) -> String {
+    name.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? "this member"
+  }
+
+  /// "Entire place · 1 bed · 1.5 baths · Jan 5 – May 15".
+  static func stay(roomType: String, beds: Double, baths: Double, start: String, end: String)
+    -> String
+  {
+    func count(_ value: Double, _ noun: String) -> String {
+      let number = value.formatted(.number.precision(.fractionLength(0...1)))
+      return "\(number) \(noun)\(value == 1 ? "" : "s")"
+    }
+    return [roomType, count(beds, "bed"), count(baths, "bath"), dateRange(start, end)]
+      .joined(separator: " · ")
+  }
+
   private static func formatter(_ format: String) -> DateFormatter {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")

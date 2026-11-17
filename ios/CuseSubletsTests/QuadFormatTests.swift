@@ -52,4 +52,31 @@ final class QuadFormatTests: XCTestCase {
     XCTAssertEqual(QuadTab.allCases.map(\.rawValue), [0, 1, 2, 3])
     XCTAssertEqual(QuadTab.inbox.identifier, "tab-inbox")
   }
+
+  func testChecksListWhatStaffHaveAndHaveNotChecked() {
+    let rows = QuadFormat.checks(hostName: "Jamie Chen", identity: "verified", lease: "pending")
+    XCTAssertEqual(rows.map(\.text), ["Jamie's ID matches their profile", "Lease not checked yet"])
+    XCTAssertEqual(rows.map(\.done), [true, false])
+  }
+
+  func testChecksUseTheFirstNameAndSayWhenNothingIsChecked() {
+    let rows = QuadFormat.checks(hostName: "Alex", identity: "needs_info", lease: "verified")
+    XCTAssertEqual(
+      rows.map(\.text), ["Alex's ID not checked yet", "Lease for this place reviewed by staff"])
+    XCTAssertEqual(rows.map(\.done), [false, true])
+  }
+
+  func testFirstNameFallsBackWhenTheNameIsEmpty() {
+    XCTAssertEqual(QuadFormat.firstName("Jamie Chen"), "Jamie")
+    XCTAssertEqual(QuadFormat.firstName("  "), "this member")
+  }
+
+  func testStayLineSaysWhatAndWhen() {
+    XCTAssertEqual(
+      QuadFormat.stay(roomType: "Entire place", beds: 1, baths: 1.5, start: "2027-01-05", end: "2027-05-15"),
+      "Entire place · 1 bed · 1.5 baths · Jan 5 – May 15")
+    XCTAssertEqual(
+      QuadFormat.stay(roomType: "Private room", beds: 4, baths: 2, start: "2027-01-05", end: "2027-05-15"),
+      "Private room · 4 beds · 2 baths · Jan 5 – May 15")
+  }
 }

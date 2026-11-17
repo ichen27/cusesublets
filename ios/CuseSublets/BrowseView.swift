@@ -315,88 +315,284 @@ struct SearchCard: View {
       .background, in: RoundedRectangle(cornerRadius: 20))
   }
 }
+/// One sublease: photos and the 360° tour first, then the person, what has been checked, the
+/// details and the comments. Its own bar at the bottom carries the price and the way to reply.
 struct ListingView: View {
   @EnvironmentObject var state: AppState
+  @Environment(\.dismiss) private var dismiss
   let listing: Listing
   @State private var report = false
   @State private var reason = ""
+  /// A published tour that is ready to open, when the place has one.
+  @State private var tour: RoomTour?
+
+  private var own: Bool { state.user?.id == listing.ownerId }
+
   var body: some View {
     if state.hiddenMemberIDs.contains(listing.ownerId) {
       EmptyState(
         title: "Member blocked", text: "This member’s posts are hidden while you are signed in.")
     } else {
       ScrollView {
-        VStack(alignment: .leading, spacing: 20) {
-          TabView { ForEach(listing.images, id: \.self) { RemoteImage(path: $0) } }.tabViewStyle(
-            .page
-          ).frame(height: 280).clipped()
-          VStack(alignment: .leading, spacing: 18) {
-            Text(listing.title).font(.largeTitle.bold())
-            Text("\(dollars(listing.price)) / month · \(listing.roomType)").font(.title3)
-            if listing.sample { StatusText(text: "Sample listing — not a real offer") }
-            Text("\(listing.startDate) – \(listing.endDate)").foregroundStyle(.secondary)
-            Text(listing.description)
-            Text(listing.amenities.joined(separator: " · ")).font(.subheadline)
-            ChecksView(
-              identity: listing.hostIdentity, lease: listing.leaseStatus,
-              permission: listing.permissionStatus)
-            NavigationLink {
-              MemberView(id: listing.ownerId)
-            } label: {
-              Label("About \(listing.hostName)", systemImage: "person.crop.circle")
-            }
-            Map(interactionModes: []) {
-              Marker(listing.neighborhood, coordinate: listing.coordinate)
-            }
-            .frame(height: 200)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            Text("Approximate location · \(listing.address)").font(.caption).foregroundStyle(
-              .secondary)
-            if let tour = listing.matterportUrl, let url = URL(string: tour), url.scheme == "https"
-            {
-              Link("Explore photographic tour", destination: url)
-            }
-            if let video = listing.videoUrl, !video.isEmpty,
-              let url = URL(string: video, relativeTo: state.api.baseURL)
-            {
-              Link("Watch listing video", destination: url)
-            }
-            NavigationLink {
-              RoomScansView(listing: listing)
-            } label: {
-              Label("Room layouts & capture", systemImage: "viewfinder")
-            }
-            NavigationLink("Photographic tours") { RoomToursView(listing: listing) }
-            SocialView(type: "listing", targetID: listing.id)
-            if state.user?.id != listing.ownerId {
-              Button("Contact host") { Task { await state.contact(listingID: listing.id) } }
-                .buttonStyle(.borderedProminent).tint(.cuseButtonFill).controlSize(.large).frame(
-                  maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 16) {
+          hero
+          VStack(alignment: .leading, spacing: 16) {
+            heading
+            host
+            checks
+            about
+            location
+            more
+            comments
+            if !own {
               Button("Report listing", role: .destructive) {
                 if state.requireLogin() { report = true }
               }
-            } else {
-              NavigationLink("Manage listing") { ListingManageView(listing: listing) }
-            }
-          }.padding()
-        }
-      }.navigationTitle("Place").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ShareLink(item: state.api.url("/#listing/\(listing.id)")) }
-        .alert("Report listing", isPresented: $report) {
-          TextField("Reason (at least 10 characters)", text: $reason)
-          Button("Send report", role: .destructive) {
-            Task {
-              do {
-                try await state.api.act("/api/listings/\(listing.id)/report", ["reason": reason])
-                reason = ""
-              } catch { state.error = error.localizedDescription }
+              .font(.subheadline.weight(.bold)).frame(minHeight: 44)
             }
           }
-          Button("Cancel", role: .cancel) {}
-        } message: {
-          Text("Tell the review team what needs attention.")
+          .padding(.horizontal, 16)
         }
+        .padding(.bottom, 16)
+      }
+      // This screen has no tab bar under it, so it drops the room the tab reserves for one.
+      .contentMargins(.bottom, 0, for: .scrollContent)
+      .background(Color.quadGround)
+      .safeAreaInset(edge: .bottom, spacing: 0) { priceBar }
+      .toolbar(.hidden, for: .navigationBar)
+      .hidesQuadTabBar()
+      .task(id: listing.id) { await loadTour() }
+      .alert("Report listing", isPresented: $report) {
+        TextField("Reason (at least 10 characters)", text: $reason)
+        Button("Send report", role: .destructive) {
+          Task {
+            do {
+              try await state.api.act("/api/listings/\(listing.id)/report", ["reason": reason])
+              reason = ""
+            } catch { state.error = error.localizedDescription }
+          }
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("Tell the review team what needs attention.")
+      }
     }
+  }
+
+  private var hero: some View {
+    TabView {
+      if listing.images.isEmpty {
+        RemoteImage(path: nil)
+      } else {
+        ForEach(listing.images, id: \.self) { RemoteImage(path: $0) }
+      }
+    }
+    .tabViewStyle(.page)
+    .quadSidewaysScroll()
+    .frame(height: 280)
+    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    .overlay(alignment: .top) {
+      HStack(spacing: 8) {
+        Button {
+          dismiss()
+        } label: {
+          Image(systemName: "chevron.left")
+        }
+        .buttonStyle(.quadIcon).accessibilityLabel("Back")
+        Spacer()
+        ShareLink(item: state.api.url("/#listing/\(listing.id)")) {
+          Image(systemName: "square.and.arrow.up")
+        }
+        .buttonStyle(.quadIcon).accessibilityLabel("Share")
+      }
+      .padding(12)
+    }
+    .overlay(alignment: .bottomLeading) {
+      if let tour {
+        NavigationLink {
+          TourWebView(api: state.api, listingID: listing.id, tourID: tour.id)
+            .navigationTitle(tour.name).navigationBarTitleDisplayMode(.inline)
+        } label: {
+          Label("Look around in 360°", systemImage: "view.3d")
+        }
+        .buttonStyle(.quadDark).padding(12)
+      }
+    }
+    .padding(.horizontal, 12).padding(.top, 4)
+  }
+
+  private var heading: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if listing.sample { QuadChip(text: "Sample listing, not a real offer", kind: .note) }
+      Text(listing.title).font(.title2.weight(.heavy)).foregroundStyle(Color.quadInk)
+        .accessibilityAddTraits(.isHeader)
+      Text(
+        QuadFormat.stay(
+          roomType: listing.roomType, beds: listing.beds, baths: listing.baths,
+          start: listing.startDate, end: listing.endDate)
+      ).font(.subheadline).foregroundStyle(Color.quadMuted)
+    }
+  }
+
+  private var host: some View {
+    NavigationLink {
+      MemberView(id: listing.ownerId)
+    } label: {
+      HStack(spacing: 12) {
+        QuadAvatar(name: listing.hostName, id: listing.ownerId, size: 46)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Subleased by \(listing.hostName)").font(.subheadline.weight(.heavy))
+          Text(listing.hostIdentity == "verified" ? "ID checked" : "ID not checked yet")
+            .font(.footnote).foregroundStyle(Color.quadMuted)
+        }
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+          .foregroundStyle(Color.quadMuted)
+      }
+      .foregroundStyle(Color.quadInk)
+      .padding(12)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .quadCard()
+  }
+
+  private var checks: some View {
+    let rows = QuadFormat.checks(
+      hostName: listing.hostName, identity: listing.hostIdentity, lease: listing.leaseStatus)
+    let any = rows.contains(where: \.done)
+    return VStack(alignment: .leading, spacing: 9) {
+      Label("What has been checked", systemImage: "checkmark.shield")
+        .font(.headline.weight(.heavy))
+        .foregroundStyle(any ? Color.quadGreenText : Color.quadInk)
+      ForEach(rows, id: \.text) { row in
+        Label(row.text, systemImage: row.done ? "checkmark" : "minus")
+          .font(.subheadline.weight(row.done ? .semibold : .regular))
+          .foregroundStyle(row.done ? Color.quadInk : Color.quadMuted)
+      }
+      Text("Checks lower the risk of scams. They are not a guarantee.")
+        .font(.caption).foregroundStyle(any ? Color.quadGreenText : Color.quadMuted)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(14)
+    .background(
+      any ? Color.quadGreenTint : Color.quadWell,
+      in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+  }
+
+  private var about: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("About this place").font(.headline.weight(.heavy))
+      Text(listing.description).font(.subheadline)
+      if !listing.amenities.isEmpty {
+        QuadFlow {
+          ForEach(listing.amenities, id: \.self) { amenity in
+            Text(amenity).font(.footnote.weight(.semibold))
+              .padding(.horizontal, 12).padding(.vertical, 7)
+              .background(.white, in: Capsule())
+              .overlay(Capsule().strokeBorder(Color.quadInk.opacity(0.08)))
+          }
+        }
+        .padding(.top, 2)
+      }
+    }
+    .foregroundStyle(Color.quadInk)
+  }
+
+  private var location: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Map(interactionModes: []) {
+        Marker(listing.neighborhood, coordinate: listing.coordinate)
+      }
+      .frame(height: 180)
+      .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+      Text("Approximate location · \(listing.address)").font(.caption)
+        .foregroundStyle(Color.quadMuted)
+    }
+  }
+
+  /// Other ways to see the place, and where its owner manages tours and layouts.
+  private var more: some View {
+    VStack(spacing: 0) {
+      if let link = listing.matterportUrl, let url = URL(string: link), url.scheme == "https" {
+        Link(destination: url) { moreRow("Open the Matterport tour", symbol: "arrow.up.right") }
+        Divider().padding(.leading, 16)
+      }
+      if let video = listing.videoUrl, !video.isEmpty,
+        let url = URL(string: video, relativeTo: state.api.baseURL)
+      {
+        Link(destination: url) { moreRow("Watch the video", symbol: "play.rectangle") }
+        Divider().padding(.leading, 16)
+      }
+      NavigationLink {
+        RoomToursView(listing: listing)
+      } label: {
+        moreRow(own ? "Scan or manage 360° tours" : "All 360° tours", symbol: "chevron.right")
+      }
+      Divider().padding(.leading, 16)
+      NavigationLink {
+        RoomScansView(listing: listing)
+      } label: {
+        moreRow(own ? "Capture or manage room layouts" : "Room layouts", symbol: "chevron.right")
+      }
+    }
+    .buttonStyle(.plain)
+    .quadCard()
+  }
+
+  private func moreRow(_ title: String, symbol: String) -> some View {
+    HStack {
+      Text(title).font(.subheadline.weight(.bold))
+      Spacer()
+      Image(systemName: symbol).font(.footnote.weight(.bold)).foregroundStyle(Color.quadMuted)
+    }
+    .foregroundStyle(Color.quadInk)
+    .padding(.horizontal, 16).frame(minHeight: 52)
+    .contentShape(Rectangle())
+  }
+
+  private var comments: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Questions and comments").font(.headline.weight(.heavy))
+        .foregroundStyle(Color.quadInk)
+      SocialView(type: "listing", targetID: listing.id)
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading).quadCard()
+    }
+  }
+
+  private var priceBar: some View {
+    HStack(spacing: 12) {
+      VStack(alignment: .leading, spacing: 1) {
+        (Text(dollars(listing.price)).font(.title3.weight(.heavy))
+          + Text(" / month").font(.footnote.weight(.bold)).foregroundColor(.quadMuted))
+        Text(QuadFormat.dateRange(listing.startDate, listing.endDate)).font(.caption)
+          .foregroundStyle(Color.quadMuted)
+      }
+      .foregroundStyle(Color.quadInk)
+      Spacer(minLength: 0)
+      if own {
+        NavigationLink("Manage listing") { ListingManageView(listing: listing) }
+          .buttonStyle(.quadPrimary)
+      } else {
+        Button("Message \(QuadFormat.firstName(listing.hostName))") {
+          Task { await state.contact(listingID: listing.id) }
+        }
+        .buttonStyle(.quadPrimary)
+      }
+    }
+    .padding(.leading, 20).padding(.trailing, 10).frame(minHeight: 72)
+    .background(.white, in: Capsule())
+    .shadow(color: Color(quad: 0x1F2937).opacity(0.12), radius: 14, y: 6)
+    .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
+    .quadBarFade()
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("listing-price-bar")
+  }
+
+  /// Finds a published tour to offer on the photo. A server without tours simply has none.
+  private func loadTour() async {
+    let response: ToursResponse? = try? await state.api.get("/api/listings/\(listing.id)/tours")
+    tour = response?.tours.first { $0.status == "ready" && $0.published }
   }
 }
 struct ChecksView: View {

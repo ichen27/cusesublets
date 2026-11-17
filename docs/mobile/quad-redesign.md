@@ -10,7 +10,8 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | App name on the home screen, app icon | Built ("Quad", three squares and an orange circle on indigo) |
 | Floating tab bar with a raised Post button | Built (`QuadTabBar.swift`) |
 | Home feed | Built (`BrowseView.swift`, `QuadFeed.swift`) |
-| Matches, a sublease's page, profiles, Inbox and chat, You | Old style, under the new tab bar |
+| A sublease's page | Built (`ListingView` in `BrowseView.swift`) |
+| Matches, profiles, Inbox and chat, You | Old style, under the new tab bar |
 | Listing in steps with a scan step, sign-up questions | Not built |
 | Scan and tour screens in the new colours | Not built |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
@@ -47,6 +48,10 @@ The system tab bar is hidden and `QuadTabBar` is drawn over the bottom of the ta
 - Every scrolling screen inside a tab gets a bottom margin (`QuadTabBar.reservedHeight`) so its last line clears the bar. A safe-area inset on the tab view or the navigation stack did not reach the screens inside, so this is a scroll-content margin set on each tab's stack.
 - That margin also reaches strips that scroll sideways and adds a blank band under them. Put `.quadSidewaysScroll()` on any horizontal `ScrollView` inside a tab.
 
+A screen with its own bar at the bottom, such as a sublease's page with its price bar, calls `.hidesQuadTabBar()` and drops the tab's bottom margin. Both floating bars use `quadBarFade()` so that content scrolling under them does not show through below.
+
+A sublease's page shows the photos first, with a "Look around in 360°" button when the place has a published tour that is ready. It lists what staff have checked and, as plainly, what they have not: the person's ID and the lease. Sublet permission is no longer shown as a check.
+
 The Post button asks a guest to log in. For a member it offers "Sublease my place" or "Say what I'm looking for", switches to the You tab and opens the matching editor there, because the You tab already owns both editors.
 
 Interface tests find the tabs by identifier: `tab-home`, `tab-matches`, `tab-post`, `tab-inbox`, `tab-you`.
@@ -62,11 +67,13 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 159 unit tests, 9 marketplace interface tests and the capture app's interface test passed. The long journey test was skipped, as it is in CI. Nothing here has been run on a physical iPhone.
+Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 163 unit tests, 9 marketplace interface tests and the capture app's interface test passed. The long journey test was skipped, as it is in CI. Nothing here has been run on a physical iPhone, and the 360° button on a sublease's page has not been seen with a real tour, because the local test data has none.
 
 ![The home feed, signed out and signed in, the Post choices and the You tab](screenshots/quad-home-feed.jpg)
 
-The screenshot uses test accounts and test listings only.
+![A sublease's page: photo, person, checks, details and the price bar](screenshots/quad-sublease-page.jpg)
+
+The screenshots use test accounts and sample listings only.
 
 ## Design source
 

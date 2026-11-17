@@ -94,7 +94,9 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["Save comment"].tap()
     XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 10))
     attach(app, "Edited listing comment")
-    app.navigationBars.buttons.firstMatch.tap()
+    // A sublease's page draws its own Back button over the photo.
+    reveal(app.buttons["Back"], in: app)
+    app.buttons["Back"].tap()
     app.buttons["Capture or manage room layouts"].tap()
     XCTAssertTrue(
       app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
@@ -298,9 +300,12 @@ final class MarketplaceTests: XCTestCase {
       return bar.exists ? bar.frame.maxY + 4 : app.frame.minY
     }
     func safeBottom() -> CGFloat {
-      // The raised Post button is the highest part of the floating tab bar.
-      let bar = app.buttons["tab-post"]
-      return bar.exists ? bar.frame.minY - 4 : app.frame.maxY
+      // The raised Post button is the highest part of the floating tab bar. A sublease's page
+      // has its own price bar there instead.
+      let post = app.buttons["tab-post"]
+      if post.exists { return post.frame.minY - 4 }
+      let price = app.otherElements["listing-price-bar"]
+      return price.exists ? price.frame.minY - 4 : app.frame.maxY
     }
     func safelyVisible() -> Bool {
       guard element.exists && element.isHittable else { return false }

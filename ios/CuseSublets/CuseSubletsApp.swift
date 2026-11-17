@@ -47,6 +47,8 @@ import SwiftUI
   @Published var tab = 0
   /// Set by the Post button; the You tab opens the matching editor and clears it.
   @Published var postIntent: PostIntent?
+  /// How many screens with their own bottom bar are showing; the tab bar hides while any is.
+  @Published var screensHidingTabBar = 0
   @Published var conversationID: String?
   func refreshSession(reportErrors: Bool = true) async {
     let requestID = UUID()
@@ -144,8 +146,10 @@ struct RootView: View {
       tab(.you) { AccountView() }
     }
     .overlay(alignment: .bottom) {
-      QuadTabBar(selection: $state.tab) { if state.requireLogin() { choosingPost = true } }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+      if state.screensHidingTabBar == 0 {
+        QuadTabBar(selection: $state.tab) { if state.requireLogin() { choosingPost = true } }
+          .ignoresSafeArea(.keyboard, edges: .bottom)
+      }
     }
     .confirmationDialog(
       "What would you like to post?", isPresented: $choosingPost, titleVisibility: .visible

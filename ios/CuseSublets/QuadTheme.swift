@@ -99,6 +99,21 @@ struct QuadIconButtonStyle: ButtonStyle {
   }
 }
 
+/// A dark pill for an action that sits on top of a photo.
+struct QuadDarkButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .font(.subheadline.weight(.heavy))
+      .foregroundStyle(.white)
+      .padding(.horizontal, 18).frame(minHeight: 46)
+      .background(Color.quadInk, in: Capsule())
+      .modifier(QuadPress(pressed: configuration.isPressed))
+  }
+}
+
+extension ButtonStyle where Self == QuadDarkButtonStyle {
+  static var quadDark: QuadDarkButtonStyle { .init() }
+}
 extension ButtonStyle where Self == QuadPrimaryButtonStyle {
   static var quadPrimary: QuadPrimaryButtonStyle { .init() }
   static var quadPrimaryWide: QuadPrimaryButtonStyle { .init(wide: true) }
@@ -111,6 +126,21 @@ extension ButtonStyle where Self == QuadIconButtonStyle {
 }
 
 extension View {
+  /// Behind a floating bar at the bottom of a screen: fades whatever scrolls under it into the
+  /// page colour, so nothing shows through below the bar.
+  func quadBarFade() -> some View {
+    background {
+      LinearGradient(
+        stops: [
+          .init(color: Color.quadGround.opacity(0), location: 0),
+          .init(color: Color.quadGround.opacity(0.94), location: 0.45),
+          .init(color: Color.quadGround, location: 1),
+        ], startPoint: .top, endPoint: .bottom
+      )
+      .ignoresSafeArea(edges: .bottom)
+      .allowsHitTesting(false)
+    }
+  }
   /// For a strip that scrolls sideways inside a tab. Every scrolling screen in a tab keeps room
   /// for the floating tab bar under its content; a sideways strip must not, or it grows a blank
   /// band underneath.

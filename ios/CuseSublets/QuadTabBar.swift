@@ -41,6 +41,7 @@ struct QuadTabBar: View {
     .padding(.horizontal, 12)
     .padding(.top, 14)
     .padding(.bottom, 4)
+    .quadBarFade()
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("quad-tab-bar")
   }
@@ -64,6 +65,21 @@ struct QuadTabBar: View {
     .accessibilityAddTraits(selected ? [.isSelected] : [])
     .accessibilityIdentifier(tab.identifier)
   }
+}
+
+private struct HidesQuadTabBar: ViewModifier {
+  @EnvironmentObject var state: AppState
+  func body(content: Content) -> some View {
+    // A count, not a flag: when one such screen opens another, the new one appears before the
+    // old one disappears.
+    content.onAppear { state.screensHidingTabBar += 1 }
+      .onDisappear { state.screensHidingTabBar = max(0, state.screensHidingTabBar - 1) }
+  }
+}
+
+extension View {
+  /// For a screen with its own bar at the bottom: takes the floating tab bar away while it shows.
+  func hidesQuadTabBar() -> some View { modifier(HidesQuadTabBar()) }
 }
 
 /// Press feedback for the tab bar's own buttons, which draw themselves.
