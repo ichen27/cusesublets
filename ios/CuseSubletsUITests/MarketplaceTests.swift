@@ -43,38 +43,19 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 20))
     attach(app, "Account")
     app.buttons["List your place"].tap()
-    XCTAssertTrue(app.textFields["Listing title"].waitForExistence(timeout: 10))
-    enter("Private iPhone draft", into: app.textFields["Listing title"], in: app)
-    let save = app.buttons["Save private draft & finish later"]
-    reveal(save, in: app)
-    save.tap()
+    XCTAssertTrue(app.textFields["Neighborhood"].waitForExistence(timeout: 10))
+    enter("Westcott", into: app.textFields["Neighborhood"], in: app)
+    tapOutsideTheForm("Save and finish later", in: app)
     XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
     app.swipeUp()
     let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
       .firstMatch
     XCTAssertTrue(resume.waitForExistence(timeout: 10))
     resume.tap()
-    let neighborhood = app.textFields["Neighborhood"]
-    XCTAssertTrue(neighborhood.waitForExistence(timeout: 10))
-    enter("Westcott", into: neighborhood, in: app)
-    reveal(app.textFields["Approximate public address"], in: app)
-    enter(
-      "Near Westcott — synthetic UI test", into: app.textFields["Approximate public address"],
-      in: app)
-    app.swipeUp()
-    let description = app.descendants(matching: .any).matching(identifier: "listing-description")
-      .firstMatch
-    reveal(description, in: app)
-    enter(
-      "Synthetic simulator listing only. This is not an available property.", into: description,
-      in: app)
-    reveal(app.buttons["Publish listing"], in: app)
-    app.buttons["Publish listing"].tap()
-    XCTAssertTrue(
-      app.staticTexts["Your place is published. Checks are still independent."].waitForExistence(
-        timeout: 15))
+    fillPlaceAndDetails(title: "Private iPhone draft", in: app)
+    skipToChecksAndPublish(in: app)
     attach(app, "Published sample listing")
-    app.buttons["Add photos, room scans & documents"].tap()
+    app.buttons["Manage my place"].tap()
     app.buttons["View listing"].tap()
     let comment = app.descendants(matching: .any).matching(identifier: "comment-draft").firstMatch
     reveal(comment, in: app)
@@ -101,7 +82,7 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
     attach(app, "Room capture capability")
-    // Return through the two pushed screens and close the editor explicitly.
+    // Return through the two pushed screens and close the listing steps explicitly.
     app.navigationBars.buttons.firstMatch.tap()
     app.navigationBars.buttons.firstMatch.tap()
     app.buttons["Done"].tap()
@@ -154,15 +135,16 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["tab-you"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
   }
-  @MainActor func testPostButtonOffersBothKindsAndOpensTheListingEditor() async throws {
+  @MainActor func testPostButtonOffersBothKindsAndOpensTheListingSteps() async throws {
     continueAfterFailure = false
     let member = try await seedMember()
     let app = launchApp(session: member.cookie)
     app.buttons["tab-post"].tap()
     XCTAssertTrue(app.buttons["Say what I'm looking for"].waitForExistence(timeout: 10))
     app.buttons["Sublease my place"].tap()
-    XCTAssertTrue(app.textFields["Listing title"].waitForExistence(timeout: 15))
-    attach(app, "Listing editor from the Post button")
+    XCTAssertTrue(app.staticTexts["Where is your place?"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Step 1 of 5 · Where"].exists)
+    attach(app, "Listing steps from the Post button")
   }
   @MainActor func testPostButtonAsksAGuestToLogIn() throws {
     let app = XCUIApplication()
@@ -183,10 +165,8 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.staticTexts[member.name].waitForExistence(timeout: 20))
     reveal(app.buttons["List your place"], in: app)
     app.buttons["List your place"].tap()
-    enter("Private iPhone draft", into: app.textFields["Listing title"], in: app)
-    let save = app.buttons["Save private draft & finish later"]
-    reveal(save, in: app)
-    save.tap()
+    enter("Westcott", into: app.textFields["Neighborhood"], in: app)
+    tapOutsideTheForm("Save and finish later", in: app)
     XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
     let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
       .firstMatch
@@ -195,24 +175,36 @@ final class MarketplaceTests: XCTestCase {
     resume.tap()
     let neighborhood = app.textFields["Neighborhood"]
     XCTAssertTrue(neighborhood.waitForExistence(timeout: 10))
-    XCTAssertEqual(app.textFields["Listing title"].value as? String, "Private iPhone draft")
-    enter("Westcott", into: neighborhood, in: app)
-    reveal(app.textFields["Approximate public address"], in: app)
-    enter(
-      "Near Westcott — synthetic UI test", into: app.textFields["Approximate public address"],
-      in: app)
-    let description = app.descendants(matching: .any).matching(identifier: "listing-description")
-      .firstMatch
-    reveal(description, in: app)
-    enter(
-      "Synthetic simulator listing only. This is not an available property.", into: description,
-      in: app)
-    reveal(app.buttons["Publish listing"], in: app)
-    app.buttons["Publish listing"].tap()
+    XCTAssertEqual(neighborhood.value as? String, "Westcott", "The draft was not restored")
+    fillPlaceAndDetails(title: "Private iPhone draft", fillNeighborhood: false, in: app)
     XCTAssertTrue(
-      app.staticTexts["Your place is published. Checks are still independent."].waitForExistence(
-        timeout: 15))
+      app.staticTexts["Your place is saved and not published yet. Nobody else can see it."].exists)
+    skipToChecksAndPublish(in: app)
     attach(app, "Published sample listing")
+    app.buttons["Done"].tap()
+    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Published"].waitForExistence(timeout: 10))
+    XCTAssertFalse(
+      app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place")).firstMatch
+        .exists, "The private draft should be gone once its place exists")
+  }
+  @MainActor func testAPlaceLeftUnpublishedIsFinishedFromItsPage() async throws {
+    continueAfterFailure = false
+    let member = try await seedMember()
+    let app = launchApp(session: member.cookie)
+    app.buttons["tab-post"].tap()
+    XCTAssertTrue(app.buttons["Sublease my place"].waitForExistence(timeout: 10))
+    app.buttons["Sublease my place"].tap()
+    let title = "Unfinished \(UUID().uuidString.prefix(6))"
+    fillPlaceAndDetails(title: title, in: app)
+    tapOutsideTheForm("Finish later", in: app)
+    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Not published"].waitForExistence(timeout: 10))
+    openOwnListing(title, in: app)
+    app.buttons["Add photos, a scan and checks in steps"].tap()
+    XCTAssertTrue(app.staticTexts["Add photos"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Step 3 of 5 · Photos"].exists)
+    skipToChecksAndPublish(in: app)
   }
   @MainActor func testListingCommentPostsAndEdits() async throws {
     continueAfterFailure = false
@@ -286,22 +278,89 @@ final class MarketplaceTests: XCTestCase {
         .exists)
     attach(app, "Privacy notice at largest Dynamic Type")
   }
+  /// Types the first two steps of listing a place and leaves the app on the photos step, where
+  /// the place exists on the server and is not published.
+  @MainActor private func fillPlaceAndDetails(
+    title: String, fillNeighborhood: Bool = true, in app: XCUIApplication
+  ) {
+    XCTAssertTrue(app.staticTexts["Where is your place?"].waitForExistence(timeout: 15))
+    if fillNeighborhood { enter("Westcott", into: app.textFields["Neighborhood"], in: app) }
+    reveal(app.textFields["Approximate public address"], in: app)
+    enter(
+      "Near Westcott — synthetic UI test", into: app.textFields["Approximate public address"],
+      in: app)
+    tapOutsideTheForm("Continue", in: app)
+    XCTAssertTrue(app.staticTexts["Tell people about it"].waitForExistence(timeout: 10))
+    // A step that is not finished says what is missing, and stops saying it once that changes.
+    app.buttons["Continue"].tap()
+    let problem = app.staticTexts["flow-problem"]
+    XCTAssertTrue(problem.waitForExistence(timeout: 5))
+    XCTAssertEqual(problem.label, "Give your place a title.")
+    enter(title, into: app.textFields["Listing title"], in: app)
+    XCTAssertTrue(problem.waitForNonExistence(timeout: 5), "The message outlived its cause")
+    let description = app.descendants(matching: .any).matching(identifier: "listing-description")
+      .firstMatch
+    reveal(description, in: app)
+    enter(
+      "Synthetic simulator listing only. This is not an available property.", into: description,
+      in: app)
+    dismissKeyboard(in: app)
+    attach(app, "Listing steps: details")
+    tapOutsideTheForm("Continue", in: app)
+    XCTAssertTrue(app.staticTexts["Add photos"].waitForExistence(timeout: 20))
+    attach(app, "Listing steps: photos")
+  }
+  /// From the photos step: no photos, no scan (a simulator cannot scan), then publish.
+  @MainActor private func skipToChecksAndPublish(in app: XCUIApplication) {
+    app.buttons["Skip for now"].tap()
+    XCTAssertTrue(app.staticTexts["Let people look around"].waitForExistence(timeout: 10))
+    XCTAssertTrue(
+      app.descendants(matching: .any).matching(identifier: "scan-unavailable").firstMatch
+        .waitForExistence(timeout: 15), "A simulator should be told that it cannot scan")
+    XCTAssertFalse(app.buttons["Scan now"].exists)
+    attach(app, "Listing steps: scan unavailable")
+    app.buttons["Continue"].tap()
+    XCTAssertTrue(app.staticTexts["Last step: checks"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Your ID is not checked yet"].exists)
+    XCTAssertTrue(app.staticTexts["Lease not checked yet"].exists)
+    attach(app, "Listing steps: checks")
+    app.buttons["Publish my place"].tap()
+    XCTAssertTrue(app.staticTexts["Your place is live"].waitForExistence(timeout: 15))
+    XCTAssertTrue(
+      app.staticTexts[
+        "Publishing did not check your ID or your lease. Staff review those separately."
+      ].exists)
+  }
+  /// For a button in the header or the bottom bar of the listing steps, which never scrolls.
+  @MainActor private func tapOutsideTheForm(_ label: String, in app: XCUIApplication) {
+    dismissKeyboard(in: app)
+    let button = app.buttons[label]
+    XCTAssertTrue(button.waitForExistence(timeout: 10))
+    button.tap()
+  }
+  @MainActor private func dismissKeyboard(in app: XCUIApplication) {
+    guard app.keyboards.firstMatch.exists else { return }
+    let done = app.buttons["dismiss-keyboard"]
+    XCTAssertTrue(done.waitForExistence(timeout: 10))
+    done.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+  }
   @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
-    if app.keyboards.firstMatch.exists {
-      let done = app.buttons["dismiss-keyboard"]
-      XCTAssertTrue(done.waitForExistence(timeout: 10))
-      done.tap()
-      XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
-    }
+    dismissKeyboard(in: app)
     // The floating tab bar can cover controls that XCTest still reports as hittable.
     // Bring the whole control clear of the actual bars before asking XCTest to tap it.
     func safeTop() -> CGFloat {
+      // A bar that is hidden, or belongs to a screen underneath a full-screen cover, still
+      // exists for XCTest but covers nothing.
       let bar = app.navigationBars.firstMatch
-      return bar.exists ? bar.frame.maxY + 4 : app.frame.minY
+      return bar.exists && bar.isHittable ? bar.frame.maxY + 4 : app.frame.minY
     }
     func safeBottom() -> CGFloat {
-      // The raised Post button is the highest part of the floating tab bar. A sublease's page
+      // The listing steps cover the tab bar and keep their own bar at the bottom. Elsewhere the
+      // raised Post button is the highest part of the floating tab bar, and a sublease's page
       // has its own price bar there instead.
+      let steps = app.otherElements["listing-flow-bar"]
+      if steps.exists { return steps.frame.minY - 4 }
       let post = app.buttons["tab-post"]
       if post.exists { return post.frame.minY - 4 }
       let price = app.otherElements["listing-price-bar"]

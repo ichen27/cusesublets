@@ -58,6 +58,9 @@ struct DraftResponse: Decodable {
   let draft: DraftRecord?
   let revision: Int
 }
+/// Edits the details of a place that already exists ("Edit details" on its page). New places are
+/// made in `ListingFlow`; the parts of this view that create one are no longer reached and can
+/// go when this editor is redrawn.
 struct ListingEditor: View {
   @EnvironmentObject var state: AppState
   @Environment(\.dismiss) var dismiss
@@ -286,6 +289,7 @@ struct ListingManageView: View {
   @State private var picking = false
   @State private var kind = "media"
   @State private var editing = false
+  @State private var finishing: ListingFlowStart?
   @State private var busy = false
   @State private var error = ""
   @State private var notice = ""
@@ -301,6 +305,9 @@ struct ListingManageView: View {
           Button("Pause listing") { change("pause") }
         } else if l.status == "paused" || l.status == "pending" {
           Button("Publish listing") { change("publish") }
+          Button("Add photos, a scan and checks in steps") {
+            finishing = ListingFlowStart(id: UUID().uuidString, place: l)
+          }
         }
       }
       Section("Photos, video & room scans") {
@@ -329,6 +336,9 @@ struct ListingManageView: View {
       if !error.isEmpty { Text(error).foregroundStyle(.red) }
     }.navigationTitle("Manage place").task { await load() }.sheet(isPresented: $editing) {
       NavigationStack { ListingEditor(existing: l, onSaved: { Task { await load() } }) }
+    }
+    .fullScreenCover(item: $finishing, onDismiss: { Task { await load() } }) { start in
+      NavigationStack { ListingFlow(start: start, onSaved: { Task { await load() } }) }
     }
     .fileImporter(
       isPresented: $picking,

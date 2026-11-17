@@ -11,8 +11,9 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | Floating tab bar with a raised Post button | Built (`QuadTabBar.swift`) |
 | Home feed | Built (`BrowseView.swift`, `QuadFeed.swift`) |
 | A sublease's page | Built (`ListingView` in `BrowseView.swift`) |
+| Listing a place in five steps, with photos, a scan step and checks | Built (`ListingFlow.swift`, `ListingSteps.swift`) |
 | Matches, profiles, Inbox and chat, You | Old style, under the new tab bar |
-| Listing in steps with a scan step, sign-up questions | Not built |
+| Sign-up questions | Not built |
 | Scan and tour screens in the new colours | Not built |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
 
@@ -52,7 +53,35 @@ A screen with its own bar at the bottom, such as a sublease's page with its pric
 
 A sublease's page shows the photos first, with a "Look around in 360°" button when the place has a published tour that is ready. It lists what staff have checked and, as plainly, what they have not: the person's ID and the lease. Sublet permission is no longer shown as a check.
 
-The Post button asks a guest to log in. For a member it offers "Sublease my place" or "Say what I'm looking for", switches to the You tab and opens the matching editor there, because the You tab already owns both editors.
+The Post button asks a guest to log in. For a member it offers "Sublease my place" or "Say what I'm looking for", switches to the You tab and opens the listing steps or the search editor there, because the You tab already owns both.
+
+## Listing a place
+
+Listing a place is five steps: where, details, photos, scan, checks.
+
+1. **Where.** Neighborhood, an approximate address, a public pin and the walk to campus.
+2. **Details.** Title, private room or entire place, rent, bedrooms and bathrooms, dates, a description and one-tap amenities. "Continue" creates the place on the server, unpublished (`publish: false` on `POST /api/listings`). Photos, a scan and a lease all attach to a place, so the place has to exist before they can be added. Nobody but its owner and staff can see it.
+3. **Photos.** Up to 12 from the photo library. Each is redrawn no larger than 2048 pixels on its long side and saved as a JPEG under the server's 5 MB limit. Redrawing leaves behind what the camera stored inside the file, including where the photo was taken.
+4. **Scan.** "Scan now" opens the spot capture, and "Add it later" skips it. After a scan the step offers "Upload and build the tour". The tour stays private until its owner looks through it and publishes it from the place's tours page. The step says why when scanning is not possible: the server has no tour processing configured, or the device cannot track its position.
+5. **Checks.** Upload a lease and add an ID, both optional, both reviewed by staff. "Publish my place" makes the place live. Publishing checks nothing by itself, and the screen that follows says so.
+
+Leaving early keeps the work. Before the place exists, "Save and finish later" stores a private draft, listed under Private drafts in You. Afterwards, "Finish later" leaves the place under Your places marked "Not published", and its page offers "Add photos, a scan and checks in steps".
+
+The rules for moving between steps, the scan choices and the photo preparation have no interface in them and live in `ListingSteps.swift`, with tests in `ListingStepsTests.swift`.
+
+Known limits:
+
+- A photo cannot be removed or reordered in the app. The server has no route for it.
+- Once the place exists, the first two steps cannot be reopened. Their answers are changed with "Edit details" on the place's page, which is still the old one-page editor.
+- There are no buildings to pick from. The server has no building records yet, so step one takes a neighborhood and an address.
+- The steps do not ask for a Matterport or video link, which the old editor did when creating a place. A video can still be uploaded from the place's page. A Matterport link can no longer be set from the app.
+- A server from before this change ignores `publish: false` and publishes the place at once. The steps notice this, say that the place is already published, and end with "Finish".
+
+![Listing a place: where, details, photos and the scan step](screenshots/quad-listing-steps.jpg)
+
+![The scan step with a saved scan and where scanning is unavailable, then checks and the published place](screenshots/quad-listing-scan-and-checks.jpg)
+
+The "Scan now" and "4 spots saved" pictures were made by forcing those states in a simulator, which cannot scan. The others are from the interface tests.
 
 Interface tests find the tabs by identifier: `tab-home`, `tab-matches`, `tab-post`, `tab-inbox`, `tab-you`.
 
@@ -67,7 +96,14 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 163 unit tests, 9 marketplace interface tests and the capture app's interface test passed. The long journey test was skipped, as it is in CI. Nothing here has been run on a physical iPhone, and the 360° button on a sublease's page has not been seen with a real tour, because the local test data has none.
+Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 183 unit tests, 10 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed.
+
+What that does not cover:
+
+- Nothing here has been run on a physical iPhone.
+- The 360° button on a sublease's page has not been seen with a real tour, because the local test data has none.
+- In the listing steps, scanning and uploading a scan have not been run. A simulator cannot scan and the local server builds no tours. The steps open the same capture screen as the standalone capture app, which has been used on a phone. Sending a scan from the marketplace app to a server that builds tours has not been run anywhere yet, here or from the tours page; the code that does it was moved into `SpotTourUpload` so both share it, without a test of its own.
+- Choosing photos from the library was checked once by hand-driven automation in the simulator (two photos picked, uploaded and shown on the published page). No committed test covers it, because the system photo picker is not reliable to drive in CI.
 
 ![The home feed, signed out and signed in, the Post choices and the You tab](screenshots/quad-home-feed.jpg)
 

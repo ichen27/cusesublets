@@ -5,7 +5,7 @@ struct AccountView: View {
   @EnvironmentObject var state: AppState
   @State private var mine: [Listing] = []
   @State private var search: HousingSearch?
-  @State private var newListing = false
+  @State private var listing: ListingFlowStart?
   @State private var newSearch = false
   @State private var error = ""
   @State private var drafts: [DraftRecord] = []
@@ -38,23 +38,23 @@ struct AccountView: View {
             Button(search == nil ? "Create housing search" : "Edit search") { newSearch = true }
           }
           Section("Your places") {
-            Button("List your place", systemImage: "plus") { newListing = true }
+            Button("List your place", systemImage: "plus") { listing = .new() }
             ForEach(mine) { l in
               NavigationLink {
                 ListingManageView(listing: l)
               } label: {
                 VStack(alignment: .leading) {
                   Text(l.title)
-                  StatusText(text: l.status == "approved" ? "Published" : l.status)
+                  StatusText(
+                    text: l.status == "approved"
+                      ? "Published" : l.status == "pending" ? "Not published" : l.status)
                 }
               }
             }
           }
           Section("Private drafts") {
             ForEach(drafts.filter { $0.kind == "listing" }) { d in
-              NavigationLink("Resume place · \(d.id.prefix(8))") {
-                ListingEditor(draftID: d.id, onSaved: { Task { await load() } })
-              }
+              Button("Resume place · \(d.id.prefix(8))") { listing = ListingFlowStart(id: d.id) }
             }
             if drafts.contains(where: { $0.kind == "search" }) {
               Button("Resume housing search") { newSearch = true }
@@ -104,12 +104,12 @@ struct AccountView: View {
         guard let intent, state.user != nil else { return }
         state.postIntent = nil
         switch intent {
-        case .listing: newListing = true
+        case .listing: listing = .new()
         case .search: newSearch = true
         }
       }
-      .sheet(isPresented: $newListing) {
-        NavigationStack { ListingEditor(onSaved: { Task { await load() } }) }
+      .fullScreenCover(item: $listing, onDismiss: { Task { await load() } }) { start in
+        NavigationStack { ListingFlow(start: start, onSaved: { Task { await load() } }) }
       }
       .sheet(isPresented: $newSearch) {
         NavigationStack { SearchEditor(search: search, onSaved: { Task { await load() } }) }

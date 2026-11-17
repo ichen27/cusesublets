@@ -67,6 +67,37 @@ struct ToursResponse: Decodable {
   let captureEnabled: Bool
 }
 struct TourResponse: Decodable { let tour: RoomTour }
+/// Sends a spot take saved on this iPhone to become a tour of a place, then removes the local
+/// copy. The tour starts private; its owner publishes it after looking through it.
+enum SpotTourUpload {
+  @MainActor static func send(
+    api: APIClient, listingID: String, draft: PhotoCaptureDraft, folder: URL
+  ) async throws {
+    try JSONEncoder().encode(draft).write(
+      to: folder.appendingPathComponent("draft.json"),
+      options: [.atomic, .completeFileProtection])
+    let (file, size, hash) = try await Task.detached(priority: .userInitiated) {
+      // Package every time: spots may have been deleted or redone since the last package.
+      let file = try SpotTake.package(folder: folder)
+      let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+      guard size > 0, size <= SpotTake.archiveLimit else {
+        throw CaptureFailure.message("Capture exceeds 96 MB. Remove a spot and try again.")
+      }
+      let input = try FileHandle(forReadingFrom: file)
+      defer { try? input.close() }
+      var hash = SHA256()
+      while let bytes = try input.read(upToCount: 1_048_576), !bytes.isEmpty {
+        hash.update(data: bytes)
+      }
+      return (file, size, hash.finalize().map { String(format: "%02x", $0) }.joined())
+    }.value
+    let route = "/api/listings/\(listingID)/tours"
+    let _: TourResponse = try await api.post(
+      route, ["id": draft.id, "name": draft.name, "size": size, "sha256": hash, "kind": "spots"])
+    try await api.uploadCapture(route + "/\(draft.id)/upload", file: file)
+    try FileManager.default.removeItem(at: folder)
+  }
+}
 struct RoomToursView: View {
   @EnvironmentObject var state: AppState
   @Environment(\.scenePhase) var scenePhase
@@ -287,31 +318,9 @@ struct RoomToursView: View {
     do {
       var draft = draft
       draft.name = name.trimmingCharacters(in: .whitespaces)
-      try JSONEncoder().encode(draft).write(
-        to: folder.appendingPathComponent("draft.json"),
-        options: [.atomic, .completeFileProtection])
       local = draft
-      let folder = self.folder
-      let (file, size, hash) = try await Task.detached(priority: .userInitiated) {
-        // Package every time: spots may have been deleted or redone since the last package.
-        let file = try SpotTake.package(folder: folder)
-        let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size > 0, size <= SpotTake.archiveLimit else {
-          throw CaptureFailure.message("Capture exceeds 96 MB. Remove a spot and try again.")
-        }
-        let input = try FileHandle(forReadingFrom: file)
-        defer { try? input.close() }
-        var hash = SHA256()
-        while let bytes = try input.read(upToCount: 1_048_576), !bytes.isEmpty {
-          hash.update(data: bytes)
-        }
-        return (file, size, hash.finalize().map { String(format: "%02x", $0) }.joined())
-      }.value
-      let route = "/api/listings/\(listing.id)/tours"
-      let _: TourResponse = try await state.api.post(
-        route, ["id": draft.id, "name": draft.name, "size": size, "sha256": hash, "kind": "spots"])
-      try await state.api.uploadCapture(route + "/\(draft.id)/upload", file: file)
-      try FileManager.default.removeItem(at: folder)
+      try await SpotTourUpload.send(
+        api: state.api, listingID: listing.id, draft: draft, folder: folder)
       local = nil
       error = ""
       await load()
