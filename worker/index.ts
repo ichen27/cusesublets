@@ -1436,6 +1436,11 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
     requireThat(createKey === null || (typeof createKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(createKey)), 400, "Invalid publication ID");
     const draftRevision = b.clientDraftRevision ?? null;
     requireThat(draftRevision === null || (createKey && Number.isSafeInteger(draftRevision) && Number(draftRevision) > 0), 400, "Invalid draft revision");
+    // The iPhone listing steps create a place unpublished, add photos and a tour, then publish.
+    // An unpublished place is 'pending' with no review note: the state the owner's own pause
+    // leaves and the only one the owner's publish accepts.
+    const publishNow = b.publish ?? true;
+    requireThat(typeof publishNow === "boolean", 400, "Publish must be true or false");
     if (createKey) {
       const previous = await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey);
       if (previous) return json({ listing: listingView(await getListing(e, previous.id), u) });
@@ -1490,10 +1495,11 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
     const key = id();
     const creation = await stmt(
       e,
-      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,'approved',?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id=? AND revision=? AND deleted=0)) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
+      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id=? AND revision=? AND deleted=0)) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
       key,
       u.id,
       JSON.stringify(data),
+      publishNow ? "approved" : "pending",
       now(),
       createKey,
       u.id,

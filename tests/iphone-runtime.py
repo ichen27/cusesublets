@@ -32,6 +32,22 @@ class IPhoneRuntime(unittest.TestCase):
   updated=host.call('/api/listings/'+key)[1]['listing'];self.assertEqual(original,(updated['leaseStatus'],updated['permissionStatus'],updated['hostIdentity']))
   self.assertEqual(host.call(route+'/delete',{})[0],200)
   self.assertEqual(host.call(route+'/visibility',dict(published=True))[0],404)
+ def test_place_can_be_created_unpublished_and_published_later(self):
+  import datetime
+  guest,host=rt.Client(),rt.Client();host.login('host')
+  day=lambda n:(datetime.date.today()+datetime.timedelta(days=n)).isoformat()
+  body=dict(title='Synthetic unpublished place',neighborhood='Westcott',address='Approximate synthetic test area',price=800,beds=1,baths=1,roomType='Private room',startDate=day(30),endDate=day(180),description='Synthetic runtime listing only. Not an available property.',amenities=[],images=[],lat=43.04,lng=-76.13)
+  self.assertEqual(host.call('/api/listings',{**body,'publish':'no'})[0],400)
+  status,data=host.call('/api/listings',{**body,'publish':False,'clientPublishId':str(uuid.uuid4())});self.assertEqual(status,201,data)
+  place=data['listing'];self.assertEqual(place['status'],'pending')
+  route='/api/listings/'+place['id']
+  self.assertEqual(guest.call(route)[0],404)
+  self.assertNotIn(place['id'],[l['id'] for l in guest.call('/api/listings')[1]['listings']])
+  self.assertEqual(host.call(route)[0],200)
+  status,data=host.call(route+'/publish',{});self.assertEqual(status,200,data);self.assertEqual(data['listing']['status'],'approved')
+  self.assertIn(place['id'],[l['id'] for l in guest.call('/api/listings')[1]['listings']])
+  # Leaving `publish` out still publishes at once, as before.
+  status,data=host.call('/api/listings',body);self.assertEqual(status,201,data);self.assertEqual(data['listing']['status'],'approved')
  def test_mobile_pkce_replay_and_logout(self):
   host=rt.Client();host.login('host')
   verifier='a'*64;challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')

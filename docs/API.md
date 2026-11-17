@@ -8,6 +8,7 @@ All endpoints same-origin. Errors `{error:string}` with non-2xx. Money is USD mo
 - GET `/api/listings` → `{listings:Listing[]}` approved public listings.
 - GET `/api/listings/:id` → `{listing:Listing}` (pending only owner/admin).
 - POST `/api/listings` `{title,neighborhood,address,price,beds,baths,roomType,startDate,endDate,description,amenities?:string[],images?:string[],videoUrl?:string,matterportUrl?:string,walkMinutes?:number}` → `{listing:Listing}` pending review. Approximate coordinates assigned for Syracuse; address must describe approximate public location.
+- POST `/api/listings` also accepts `publish?:boolean` (default `true`). `publish:false` creates the listing unpublished: `status:"pending"` with no review note, visible only to its owner and staff, until the owner calls `/api/listings/:id/publish`. Any other value returns 400.
 - GET `/api/mine` → `{listings:Listing[],documents:DocumentRecord[]}`
 - POST `/api/profile` `{name:string}` → `{user:User}`; cannot change role/identity.
 - GET `/api/messages` → `{messages:Message[],listings:Listing[]}` participant messages.
