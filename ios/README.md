@@ -53,6 +53,21 @@ npm run ios:journey -- <udid>  # a specific simulator
 
 The script starts a throwaway API on port 8936 under `work/`, runs only `testFullMarketplaceJourney`, then stops the API and simulator. Hosted CI boots the simulator and lets it settle before testing, and retries a failed test once. The result bundle still records first-attempt failures, so check it when a retry passes.
 
+### Finding timing problems before hosted CI does
+
+A hosted simulator answers some requests several seconds late, so it trips over assumptions that never fail on a fast Mac: a tap before the saved session has been checked, a label read before its data arrived, a button pressed while still disabled. `tests/slow-api-proxy.py` reproduces that on a local Mac. Run the API on another port, put the proxy on the port the tests use, and name the requests to delay:
+
+```sh
+npx wrangler dev --ip 127.0.0.1 --port 8942 --persist-to work/iphone-state --var APP_ENV:development &
+python3 tests/slow-api-proxy.py --listen 8936 --upstream 8942 \
+  --delay "GET /api/session=8" --delay "GET /api/drafts/=6" \
+  --delay "GET /api/=3" --delay "POST /api/=2" &
+```
+
+Then run the interface tests as usual. It slows the server only, not the simulator, so it does not stand in for a hosted run.
+
+Keep interface tests synchronous (`throws`, not `async throws`). When an `async` test fails with `continueAfterFailure = false`, the test runner exits instead of stopping the test, and `xcodebuild` does not retry a test that ended that way. Seed state with the blocking helpers in `MarketplaceTests.swift`.
+
 The UI tests create synthetic accounts and publish synthetic listings only on port 8936. Never point tests at operational data. Apply every checked-in migration to fresh isolated state; the native account, room and reporting features need the full schema. Follow the existing deployment runbook before migrating a running datastore; do not seed operational data.
 
 ## Try it

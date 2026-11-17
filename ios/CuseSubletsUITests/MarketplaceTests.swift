@@ -13,13 +13,13 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
     app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     app.launch()
-    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 30))
     signOutIfNeeded(app)
     app.buttons["tab-home"].tap()
     XCTAssertTrue(app.staticTexts["Quad"].exists)
     attach(app, "Browse")
     app.buttons["Filters"].tap()
-    XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.buttons["Reset filters"].exists)
     XCTAssertTrue(app.switches["Furnished"].exists)
     app.buttons["Done"].tap()
@@ -30,9 +30,9 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["tab-you"].tap()
     app.buttons["Log in or create an account"].tap()
     let create = app.buttons["Create an account"]
-    XCTAssertTrue(create.waitForExistence(timeout: 15))
+    XCTAssertTrue(create.waitForExistence(timeout: 30))
     create.tap()
-    XCTAssertTrue(app.textFields["Your name"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.textFields["Your name"].waitForExistence(timeout: 30))
     enter("iPhone UI Test", into: app.textFields["Your name"], in: app)
     enter("iphone-\(UUID().uuidString)@example.test", into: app.textFields["Email"], in: app)
     reveal(app.secureTextFields["Password"], in: app)
@@ -40,17 +40,17 @@ final class MarketplaceTests: XCTestCase {
       "isolated-test-password-2026", into: app.secureTextFields["Password"], in: app, secure: true)
     reveal(app.buttons["Create account"], in: app)
     app.buttons["Create account"].tap()
-    XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 30))
     attach(app, "Account")
     app.buttons["List your place"].tap()
-    XCTAssertTrue(app.textFields["Neighborhood"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.textFields["Neighborhood"].waitForExistence(timeout: 30))
     enter("Westcott", into: app.textFields["Neighborhood"], in: app)
     tapOutsideTheForm("Save and finish later", in: app)
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 30))
     app.swipeUp()
     let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
       .firstMatch
-    XCTAssertTrue(resume.waitForExistence(timeout: 10))
+    XCTAssertTrue(resume.waitForExistence(timeout: 30))
     resume.tap()
     fillPlaceAndDetails(title: "Private iPhone draft", in: app)
     skipToChecksAndPublish(in: app)
@@ -63,7 +63,7 @@ final class MarketplaceTests: XCTestCase {
     enter(initialComment, into: comment, in: app)
     reveal(app.buttons["Post"], in: app)
     app.buttons["Post"].tap()
-    XCTAssertTrue(app.staticTexts[initialComment].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts[initialComment].waitForExistence(timeout: 30))
     app.buttons["Edit"].tap()
     reveal(comment, in: app)
     comment.tap()
@@ -73,24 +73,21 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertEqual(comment.value as? String, "Edited " + initialComment)
     reveal(app.buttons["Save comment"], in: app)
     app.buttons["Save comment"].tap()
-    XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 30))
     attach(app, "Edited listing comment")
     // A sublease's page draws its own Back button over the photo.
     reveal(app.buttons["Back"], in: app)
     app.buttons["Back"].tap()
     app.buttons["Capture or manage room layouts"].tap()
     XCTAssertTrue(
-      app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
+      app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 30))
     attach(app, "Room capture capability")
     // Return through the two pushed screens and close the listing steps explicitly.
     app.navigationBars.buttons.firstMatch.tap()
     app.navigationBars.buttons.firstMatch.tap()
     app.buttons["Done"].tap()
     app.buttons["tab-you"].tap()
-    reveal(app.buttons["Log out"], in: app)
-    app.buttons["Log out"].tap()
-    app.buttons["tab-you"].tap()
-    XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
+    logOut(in: app)
   }
   @MainActor func testSignedOutBrowseFiltersAndTabs() throws {
     continueAfterFailure = false
@@ -98,17 +95,17 @@ final class MarketplaceTests: XCTestCase {
     signOutIfNeeded(app)
     app.buttons["tab-home"].tap()
     XCTAssertTrue(
-      app.staticTexts["Quad"].waitForExistence(timeout: 10))
+      app.staticTexts["Quad"].waitForExistence(timeout: 30))
     attach(app, "Browse")
     app.buttons["Filters"].tap()
-    XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.buttons["Reset filters"].exists)
     XCTAssertTrue(app.switches["Furnished"].exists)
     app.buttons["Done"].tap()
     app.buttons["tab-matches"].tap()
-    XCTAssertTrue(app.staticTexts["Find your fit"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Find your fit"].waitForExistence(timeout: 30))
     app.buttons["tab-inbox"].tap()
-    XCTAssertTrue(app.staticTexts["Your conversations"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Your conversations"].waitForExistence(timeout: 30))
   }
   @MainActor func testSignupClosesSheetAndLogoutReturnsToGuest() throws {
     continueAfterFailure = false
@@ -116,7 +113,7 @@ final class MarketplaceTests: XCTestCase {
     signOutIfNeeded(app)
     app.buttons["Log in or create an account"].tap()
     let create = app.buttons["Create an account"]
-    XCTAssertTrue(create.waitForExistence(timeout: 15))
+    XCTAssertTrue(create.waitForExistence(timeout: 30))
     create.tap()
     enter("iPhone UI Test", into: app.textFields["Your name"], in: app)
     enter("iphone-\(UUID().uuidString)@example.test", into: app.textFields["Email"], in: app)
@@ -126,23 +123,20 @@ final class MarketplaceTests: XCTestCase {
     reveal(app.buttons["Create account"], in: app)
     app.buttons["Create account"].tap()
     XCTAssertTrue(
-      app.navigationBars["Welcome"].waitForNonExistence(timeout: 20),
+      app.navigationBars["Welcome"].waitForNonExistence(timeout: 30),
       "Login sheet stayed open after signup")
-    XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 30))
     attach(app, "Account")
-    reveal(app.buttons["Log out"], in: app)
-    app.buttons["Log out"].tap()
-    app.buttons["tab-you"].tap()
-    XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
+    logOut(in: app)
   }
-  @MainActor func testPostButtonOffersBothKindsAndOpensTheListingSteps() async throws {
+  @MainActor func testPostButtonOffersBothKindsAndOpensTheListingSteps() throws {
     continueAfterFailure = false
-    let member = try await seedMember()
+    let member = try seedMember()
     let app = launchApp(session: member.cookie)
     app.buttons["tab-post"].tap()
-    XCTAssertTrue(app.buttons["Say what I'm looking for"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["Say what I'm looking for"].waitForExistence(timeout: 30))
     app.buttons["Sublease my place"].tap()
-    XCTAssertTrue(app.staticTexts["Where is your place?"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Where is your place?"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.staticTexts["Step 1 of 5 · Where"].exists)
     attach(app, "Listing steps from the Post button")
   }
@@ -151,30 +145,30 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_API_URL"] = Self.apiBase
     app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     app.launch()
-    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 30))
     signOutIfNeeded(app)
     app.buttons["tab-post"].tap()
-    XCTAssertTrue(app.buttons["Create an account"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["Create an account"].waitForExistence(timeout: 30))
     XCTAssertFalse(app.buttons["Sublease my place"].exists)
   }
-  @MainActor func testPrivateDraftResumesAndPublishes() async throws {
+  @MainActor func testPrivateDraftResumesAndPublishes() throws {
     continueAfterFailure = false
-    let member = try await seedMember()
+    let member = try seedMember()
     let app = launchApp(session: member.cookie)
     app.buttons["tab-you"].tap()
-    XCTAssertTrue(app.staticTexts[member.name].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts[member.name].waitForExistence(timeout: 30))
     reveal(app.buttons["List your place"], in: app)
     app.buttons["List your place"].tap()
     enter("Westcott", into: app.textFields["Neighborhood"], in: app)
     tapOutsideTheForm("Save and finish later", in: app)
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 30))
     let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
       .firstMatch
-    XCTAssertTrue(resume.waitForExistence(timeout: 10))
+    XCTAssertTrue(resume.waitForExistence(timeout: 30))
     reveal(resume, in: app)
     resume.tap()
     let neighborhood = app.textFields["Neighborhood"]
-    XCTAssertTrue(neighborhood.waitForExistence(timeout: 10))
+    XCTAssertTrue(neighborhood.waitForExistence(timeout: 30))
     XCTAssertEqual(neighborhood.value as? String, "Westcott", "The draft was not restored")
     fillPlaceAndDetails(title: "Private iPhone draft", fillNeighborhood: false, in: app)
     XCTAssertTrue(
@@ -182,45 +176,49 @@ final class MarketplaceTests: XCTestCase {
     skipToChecksAndPublish(in: app)
     attach(app, "Published sample listing")
     app.buttons["Done"].tap()
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Published"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Published"].waitForExistence(timeout: 30))
     XCTAssertFalse(
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place")).firstMatch
         .exists, "The private draft should be gone once its place exists")
   }
-  @MainActor func testAPlaceLeftUnpublishedIsFinishedFromItsPage() async throws {
+  /// Typing the first steps by hand is covered by `testPrivateDraftResumesAndPublishes`; this
+  /// place is left unpublished through the API, so the test drives only finishing it.
+  @MainActor func testAPlaceLeftUnpublishedIsFinishedFromItsPage() throws {
     continueAfterFailure = false
-    let member = try await seedMember()
+    let member = try seedMember()
+    let title = try seedListing(for: member, publish: false)
     let app = launchApp(session: member.cookie)
-    app.buttons["tab-post"].tap()
-    XCTAssertTrue(app.buttons["Sublease my place"].waitForExistence(timeout: 10))
-    app.buttons["Sublease my place"].tap()
-    let title = "Unfinished \(UUID().uuidString.prefix(6))"
-    fillPlaceAndDetails(title: title, in: app)
-    tapOutsideTheForm("Finish later", in: app)
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Not published"].waitForExistence(timeout: 10))
+    app.buttons["tab-you"].tap()
+    XCTAssertTrue(app.staticTexts["Not published"].waitForExistence(timeout: 30))
     openOwnListing(title, in: app)
-    app.buttons["Add photos, a scan and checks in steps"].tap()
-    XCTAssertTrue(app.staticTexts["Add photos"].waitForExistence(timeout: 15))
+    let finish = app.buttons["Add photos, a scan and checks in steps"]
+    finish.tap()
+    let photos = app.staticTexts["Add photos"]
+    XCTAssertTrue(photos.waitForExistence(timeout: 30))
     XCTAssertTrue(app.staticTexts["Step 3 of 5 · Photos"].exists)
+    // Leaving here keeps the place unpublished, and it can be picked up again.
+    tapOutsideTheForm("Finish later", in: app)
+    XCTAssertTrue(photos.waitForNonExistence(timeout: 30))
+    finish.tap()
+    XCTAssertTrue(photos.waitForExistence(timeout: 30))
     skipToChecksAndPublish(in: app)
   }
-  @MainActor func testMatchesShowOneAtATimeWithPassBackAndStartAgain() async throws {
+  @MainActor func testMatchesShowOneAtATimeWithPassBackAndStartAgain() throws {
     continueAfterFailure = false
-    let seeker = try await seedMember(name: "Sam Seeker")
+    let seeker = try seedMember(name: "Sam Seeker")
     let spot = freshSpot()
-    try await seedSearch(for: seeker, around: spot)
+    try seedSearch(for: seeker, around: spot)
     // The cheaper place ranks first, so the order of the deck is known.
-    let first = try await seedListing(
-      for: try await seedMember(name: "Jamie Host"), price: 700, at: spot)
-    let second = try await seedListing(
-      for: try await seedMember(name: "Riley Host"), price: 800, at: spot)
+    let first = try seedListing(
+      for: try seedMember(name: "Jamie Host"), price: 700, at: spot)
+    let second = try seedListing(
+      for: try seedMember(name: "Riley Host"), price: 800, at: spot)
     let app = launchApp(session: seeker.cookie)
     app.buttons["tab-matches"].tap()
     let position = app.staticTexts["match-position"]
-    XCTAssertTrue(position.waitForExistence(timeout: 20))
-    XCTAssertEqual(position.label, "1 of 2 that fit")
+    XCTAssertTrue(position.waitForExistence(timeout: 30))
+    wait(for: position, toBe: "label == '1 of 2 that fit'", "The matches did not load")
     XCTAssertTrue(matchCard(first, in: app).exists)
     XCTAssertFalse(matchCard(second, in: app).exists, "Only one match shows at a time")
     XCTAssertTrue(app.staticTexts["For your search"].exists)
@@ -254,22 +252,22 @@ final class MarketplaceTests: XCTestCase {
 
     // A tap opens the place, and coming back leaves the deck where it was.
     matchCard(first, in: app).tap()
-    XCTAssertTrue(app.otherElements["listing-price-bar"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.otherElements["listing-price-bar"].waitForExistence(timeout: 30))
     app.buttons["Back"].tap()
-    XCTAssertTrue(position.waitForExistence(timeout: 10))
+    XCTAssertTrue(position.waitForExistence(timeout: 30))
     XCTAssertEqual(position.label, "1 of 2 that fit")
   }
-  @MainActor func testASubleaserSeesPeopleWhoseSearchFitsTheirPlace() async throws {
+  @MainActor func testASubleaserSeesPeopleWhoseSearchFitsTheirPlace() throws {
     continueAfterFailure = false
     let spot = freshSpot()
-    let host = try await seedMember(name: "Harper Host")
-    let place = try await seedListing(for: host, price: 800, at: spot)
-    try await seedSearch(for: try await seedMember(name: "Sam Seeker"), around: spot)
+    let host = try seedMember(name: "Harper Host")
+    let place = try seedListing(for: host, price: 800, at: spot)
+    try seedSearch(for: try seedMember(name: "Sam Seeker"), around: spot)
     let app = launchApp(session: host.cookie)
     app.buttons["tab-matches"].tap()
     let position = app.staticTexts["match-position"]
-    XCTAssertTrue(position.waitForExistence(timeout: 20))
-    XCTAssertEqual(position.label, "1 of 1 that fits")
+    XCTAssertTrue(position.waitForExistence(timeout: 30))
+    wait(for: position, toBe: "label == '1 of 1 that fits'", "The matches did not load")
     XCTAssertTrue(app.staticTexts["For " + place].exists)
     XCTAssertTrue(matchCard("Sam Seeker", in: app).exists)
     XCTAssertTrue(app.staticTexts["Why your place fits"].exists)
@@ -277,54 +275,54 @@ final class MarketplaceTests: XCTestCase {
     attach(app, "Matches: a person who fits")
     app.buttons["Message Sam"].tap()
     XCTAssertTrue(
-      app.navigationBars["Sam Seeker"].waitForExistence(timeout: 15),
+      app.navigationBars["Sam Seeker"].waitForExistence(timeout: 30),
       "Messaging should open the conversation in the Inbox")
   }
-  @MainActor func testSavingOrMessagingAMatchMovesTheDeckOn() async throws {
+  @MainActor func testSavingOrMessagingAMatchMovesTheDeckOn() throws {
     continueAfterFailure = false
-    let seeker = try await seedMember(name: "Sam Seeker")
+    let seeker = try seedMember(name: "Sam Seeker")
     let spot = freshSpot()
-    try await seedSearch(for: seeker, around: spot)
-    let first = try await seedListing(
-      for: try await seedMember(name: "Jamie Host"), price: 700, at: spot)
-    let second = try await seedListing(
-      for: try await seedMember(name: "Riley Host"), price: 800, at: spot)
+    try seedSearch(for: seeker, around: spot)
+    let first = try seedListing(
+      for: try seedMember(name: "Jamie Host"), price: 700, at: spot)
+    let second = try seedListing(
+      for: try seedMember(name: "Riley Host"), price: 800, at: spot)
     let app = launchApp(session: seeker.cookie)
     app.buttons["tab-matches"].tap()
-    XCTAssertTrue(matchCard(first, in: app).waitForExistence(timeout: 20))
+    XCTAssertTrue(matchCard(first, in: app).waitForExistence(timeout: 30))
     app.buttons["Save for later"].tap()
-    XCTAssertTrue(matchCard(second, in: app).waitForExistence(timeout: 10))
+    XCTAssertTrue(matchCard(second, in: app).waitForExistence(timeout: 30))
     XCTAssertEqual(
       app.staticTexts["match-notice"].label, "Saved. It is under Saved posts in You.")
 
     app.buttons["Message Riley"].tap()
     XCTAssertTrue(
-      app.navigationBars["Riley Host"].waitForExistence(timeout: 15),
+      app.navigationBars["Riley Host"].waitForExistence(timeout: 30),
       "Messaging should open the conversation in the Inbox")
     app.buttons["tab-matches"].tap()
-    XCTAssertTrue(app.staticTexts["You've seen all 2"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["You've seen all 2"].waitForExistence(timeout: 30))
 
     // What was seen is remembered when the app is opened again.
     app.terminate()
     let again = launchApp(session: seeker.cookie)
     again.buttons["tab-matches"].tap()
-    XCTAssertTrue(again.staticTexts["You've seen all 2"].waitForExistence(timeout: 20))
+    XCTAssertTrue(again.staticTexts["You've seen all 2"].waitForExistence(timeout: 30))
   }
-  @MainActor func testMatchesWithoutAPlanOfferBothWaysToStart() async throws {
+  @MainActor func testMatchesWithoutAPlanOfferBothWaysToStart() throws {
     continueAfterFailure = false
-    let member = try await seedMember()
+    let member = try seedMember()
     let app = launchApp(session: member.cookie)
     app.buttons["tab-matches"].tap()
-    XCTAssertTrue(app.staticTexts["Matches start with your plans"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts["Matches start with your plans"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.buttons["Sublease my place"].exists)
     attach(app, "Matches: no plans yet")
     app.buttons["Say what I'm looking for"].tap()
-    XCTAssertTrue(app.navigationBars["Housing search"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.navigationBars["Housing search"].waitForExistence(timeout: 30))
   }
-  @MainActor func testListingCommentPostsAndEdits() async throws {
+  @MainActor func testListingCommentPostsAndEdits() throws {
     continueAfterFailure = false
-    let member = try await seedMember()
-    let title = try await seedListing(for: member)
+    let member = try seedMember()
+    let title = try seedListing(for: member)
     let app = launchApp(session: member.cookie)
     openOwnListing(title, in: app)
     app.buttons["View listing"].tap()
@@ -334,7 +332,7 @@ final class MarketplaceTests: XCTestCase {
     enter(initialComment, into: comment, in: app)
     reveal(app.buttons["Post"], in: app)
     app.buttons["Post"].tap()
-    XCTAssertTrue(app.staticTexts[initialComment].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts[initialComment].waitForExistence(timeout: 30))
     app.buttons["Edit"].tap()
     reveal(comment, in: app)
     comment.tap()
@@ -344,20 +342,20 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertEqual(comment.value as? String, "Edited " + initialComment)
     reveal(app.buttons["Save comment"], in: app)
     app.buttons["Save comment"].tap()
-    XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Edited " + initialComment].waitForExistence(timeout: 30))
     attach(app, "Edited listing comment")
   }
-  @MainActor func testRoomLayoutCaptureExplainsLiDARRequirement() async throws {
+  @MainActor func testRoomLayoutCaptureExplainsLiDARRequirement() throws {
     continueAfterFailure = false
-    let member = try await seedMember()
-    let title = try await seedListing(for: member)
+    let member = try seedMember()
+    let title = try seedListing(for: member)
     let app = launchApp(session: member.cookie)
     openOwnListing(title, in: app)
     let layouts = app.buttons["Capture or manage room layouts"]
     reveal(layouts, in: app)
     layouts.tap()
     XCTAssertTrue(
-      app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 10))
+      app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 30))
     attach(app, "Room capture capability")
   }
   @MainActor func testLocalDeviceCheckDoesNotRequireAccountOrSupportedCamera() throws {
@@ -365,11 +363,11 @@ final class MarketplaceTests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
     app.launch()
-    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 30))
     signOutIfNeeded(app)
     reveal(app.buttons["Device capture check"], in: app)
     app.buttons["Device capture check"].tap()
-    XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 30))
     let start = app.buttons["Start camera test"]
     reveal(start, in: app)
     XCTAssertFalse(start.isEnabled, "Simulator must not pretend camera capture works")
@@ -383,11 +381,11 @@ final class MarketplaceTests: XCTestCase {
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
     ]
     app.launch()
-    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 30))
     signOutIfNeeded(app)
     reveal(app.buttons["Data & privacy"], in: app)
     app.buttons["Data & privacy"].tap()
-    XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["Data & privacy"].waitForExistence(timeout: 30))
     XCTAssertTrue(
       app.staticTexts["Development preview. Public release and real transactions are not enabled."]
         .exists)
@@ -398,14 +396,14 @@ final class MarketplaceTests: XCTestCase {
   @MainActor private func fillPlaceAndDetails(
     title: String, fillNeighborhood: Bool = true, in app: XCUIApplication
   ) {
-    XCTAssertTrue(app.staticTexts["Where is your place?"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Where is your place?"].waitForExistence(timeout: 30))
     if fillNeighborhood { enter("Westcott", into: app.textFields["Neighborhood"], in: app) }
     reveal(app.textFields["Approximate public address"], in: app)
     enter(
       "Near Westcott — synthetic UI test", into: app.textFields["Approximate public address"],
       in: app)
     tapOutsideTheForm("Continue", in: app)
-    XCTAssertTrue(app.staticTexts["Tell people about it"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["Tell people about it"].waitForExistence(timeout: 30))
     // A step that is not finished says what is missing, and stops saying it once that changes.
     app.buttons["Continue"].tap()
     let problem = app.staticTexts["flow-problem"]
@@ -422,43 +420,54 @@ final class MarketplaceTests: XCTestCase {
     dismissKeyboard(in: app)
     attach(app, "Listing steps: details")
     tapOutsideTheForm("Continue", in: app)
-    XCTAssertTrue(app.staticTexts["Add photos"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts["Add photos"].waitForExistence(timeout: 30))
     attach(app, "Listing steps: photos")
   }
   /// From the photos step: no photos, no scan (a simulator cannot scan), then publish.
   @MainActor private func skipToChecksAndPublish(in app: XCUIApplication) {
-    app.buttons["Skip for now"].tap()
-    XCTAssertTrue(app.staticTexts["Let people look around"].waitForExistence(timeout: 10))
+    tapOutsideTheForm("Skip for now", in: app)
+    XCTAssertTrue(app.staticTexts["Let people look around"].waitForExistence(timeout: 30))
     XCTAssertTrue(
       app.descendants(matching: .any).matching(identifier: "scan-unavailable").firstMatch
-        .waitForExistence(timeout: 15), "A simulator should be told that it cannot scan")
+        .waitForExistence(timeout: 30), "A simulator should be told that it cannot scan")
     XCTAssertFalse(app.buttons["Scan now"].exists)
     attach(app, "Listing steps: scan unavailable")
-    app.buttons["Continue"].tap()
-    XCTAssertTrue(app.staticTexts["Last step: checks"].waitForExistence(timeout: 10))
+    tapOutsideTheForm("Continue", in: app)
+    XCTAssertTrue(app.staticTexts["Last step: checks"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.staticTexts["Your ID is not checked yet"].exists)
     XCTAssertTrue(app.staticTexts["Lease not checked yet"].exists)
     attach(app, "Listing steps: checks")
-    app.buttons["Publish my place"].tap()
-    XCTAssertTrue(app.staticTexts["Your place is live"].waitForExistence(timeout: 15))
+    tapOutsideTheForm("Publish my place", in: app)
+    XCTAssertTrue(app.staticTexts["Your place is live"].waitForExistence(timeout: 30))
     XCTAssertTrue(
       app.staticTexts[
         "Publishing did not check your ID or your lease. Staff review those separately."
       ].exists)
   }
   /// For a button in the header or the bottom bar of the listing steps, which never scrolls.
+  /// It waits until the button can be pressed: these are disabled while the step is loading
+  /// or saving, and a tap on a disabled button does nothing.
   @MainActor private func tapOutsideTheForm(_ label: String, in app: XCUIApplication) {
     dismissKeyboard(in: app)
     let button = app.buttons[label]
-    XCTAssertTrue(button.waitForExistence(timeout: 10))
+    XCTAssertTrue(button.waitForExistence(timeout: 30))
+    wait(for: button, toBe: "isEnabled == true", "\(label) stayed disabled")
     button.tap()
+  }
+  /// Waits for something about an element that the server decides, such as a label that is
+  /// empty until its data arrives.
+  @MainActor private func wait(
+    for element: XCUIElement, toBe condition: String, _ message: String
+  ) {
+    let met = expectation(for: NSPredicate(format: condition), evaluatedWith: element)
+    XCTAssertEqual(XCTWaiter().wait(for: [met], timeout: 30), .completed, message)
   }
   @MainActor private func dismissKeyboard(in app: XCUIApplication) {
     guard app.keyboards.firstMatch.exists else { return }
     let done = app.buttons["dismiss-keyboard"]
-    XCTAssertTrue(done.waitForExistence(timeout: 10))
+    XCTAssertTrue(done.waitForExistence(timeout: 30))
     done.tap()
-    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 30))
   }
   @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
     dismissKeyboard(in: app)
@@ -502,7 +511,7 @@ final class MarketplaceTests: XCTestCase {
   @MainActor private func enter(
     _ text: String, into field: XCUIElement, in app: XCUIApplication, secure: Bool = false
   ) {
-    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    XCTAssertTrue(field.waitForExistence(timeout: 30))
     func current() -> String {
       let value = field.value as? String ?? ""
       return value == field.placeholderValue ? "" : value
@@ -533,11 +542,13 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     if let cookie { app.launchEnvironment["CUSE_UI_SESSION_COOKIE"] = cookie }
     app.launch()
-    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 30))
     return app
   }
   /// Creates state directly on the isolated local API so each test drives only its own feature.
-  private func post(_ path: String, _ body: [String: Any], cookie: String? = nil) async throws
+  /// It waits for the answer without `await`: a test that is `async` cannot stop cleanly at its
+  /// first failure (the test runner exits instead), and then it is not retried either.
+  private func post(_ path: String, _ body: [String: Any], cookie: String? = nil) throws
     -> HTTPURLResponse
   {
     var request = URLRequest(url: try XCTUnwrap(URL(string: Self.apiBase + path)))
@@ -546,15 +557,30 @@ final class MarketplaceTests: XCTestCase {
     request.setValue(Self.apiBase, forHTTPHeaderField: "Origin")
     if let cookie { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
-    let http = try XCTUnwrap(response as? HTTPURLResponse)
+    let answer = Answer()
+    let answered = DispatchSemaphore(value: 0)
+    URLSession(configuration: .ephemeral).dataTask(with: request) { data, response, error in
+      answer.data = data ?? Data()
+      answer.response = response as? HTTPURLResponse
+      answer.error = error
+      answered.signal()
+    }.resume()
+    XCTAssertEqual(answered.wait(timeout: .now() + 60), .success, "\(path) did not answer")
+    if let error = answer.error { throw error }
+    let http = try XCTUnwrap(answer.response)
     XCTAssertTrue(
       (200..<300).contains(http.statusCode),
-      "\(path) returned \(http.statusCode): \(String(decoding: data, as: UTF8.self))")
+      "\(path) returned \(http.statusCode): \(String(decoding: answer.data, as: UTF8.self))")
     return http
   }
-  private func seedMember(name: String = "Seeded UI Test") async throws -> SeededMember {
-    let response = try await post(
+  /// What the server sent back, handed from the network queue to the waiting test.
+  private final class Answer: @unchecked Sendable {
+    var data = Data()
+    var response: HTTPURLResponse?
+    var error: Error?
+  }
+  private func seedMember(name: String = "Seeded UI Test") throws -> SeededMember {
+    let response = try post(
       "/api/auth/signup",
       [
         "email": "seeded-\(UUID().uuidString)@example.test",
@@ -585,8 +611,9 @@ final class MarketplaceTests: XCTestCase {
     )
   }
   private func seedListing(
-    for member: SeededMember, price: Int = 800, at spot: Spot = (43.04, -76.13)
-  ) async throws -> String {
+    for member: SeededMember, price: Int = 800, at spot: Spot = (43.04, -76.13),
+    publish: Bool = true
+  ) throws -> String {
     let title = "Seeded listing \(UUID().uuidString.prefix(6))"
     let body: [String: Any] = [
       "title": title, "neighborhood": "Westcott", "address": "Approximate synthetic test area",
@@ -594,13 +621,14 @@ final class MarketplaceTests: XCTestCase {
       "startDate": day(30), "endDate": day(180),
       "description": "Synthetic simulator listing only. This is not an available property.",
       "amenities": [String](), "images": [String](), "lat": spot.lat, "lng": spot.lng,
+      "publish": publish,
     ]
-    _ = try await post("/api/listings", body, cookie: member.cookie)
+    _ = try post("/api/listings", body, cookie: member.cookie)
     return title
   }
   /// An active housing search that a seeded listing at `spot` fits: its one small area
   /// surrounds the spot, its dates sit inside the listing's and its budget is above the rent.
-  private func seedSearch(for member: SeededMember, around spot: Spot) async throws {
+  private func seedSearch(for member: SeededMember, around spot: Spot) throws {
     let reach = 0.0004
     let body: [String: Any] = [
       "startDate": day(40), "endDate": day(120), "maxBudget": 1000, "roomType": "Any",
@@ -618,7 +646,7 @@ final class MarketplaceTests: XCTestCase {
         ]
       ],
     ]
-    _ = try await post("/api/my-search", body, cookie: member.cookie)
+    _ = try post("/api/my-search", body, cookie: member.cookie)
   }
   /// The card on the Matches screen whose label mentions `text`.
   @MainActor private func matchCard(_ text: String, in app: XCUIApplication) -> XCUIElement {
@@ -627,21 +655,31 @@ final class MarketplaceTests: XCTestCase {
   @MainActor private func openOwnListing(_ title: String, in app: XCUIApplication) {
     app.buttons["tab-you"].tap()
     let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
-    XCTAssertTrue(row.waitForExistence(timeout: 20), "Seeded listing missing from Your places")
+    XCTAssertTrue(row.waitForExistence(timeout: 30), "Seeded listing missing from Your places")
     reveal(row, in: app)
     row.tap()
-    XCTAssertTrue(app.buttons["View listing"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["View listing"].waitForExistence(timeout: 30))
   }
   @MainActor private func signOutIfNeeded(_ app: XCUIApplication) {
     app.buttons["tab-you"].tap()
-    let login = app.buttons["Log in or create an account"]
-    if login.waitForExistence(timeout: 3) { return }
+    // An earlier test may have left a session saved. Until the app has checked it, the app
+    // does not yet know whether anyone is signed in, and neither does this.
+    XCTAssertTrue(
+      app.descendants(matching: .any).matching(identifier: "checking-session").firstMatch
+        .waitForNonExistence(timeout: 30), "The saved session was never checked")
+    if app.buttons["Log in or create an account"].waitForExistence(timeout: 3) { return }
+    logOut(in: app)
+  }
+  /// Logs out from the You tab and waits until the app is a guest again. The app goes back to
+  /// the Home tab once the server has answered, so returning to You before that is undone.
+  /// The Log out row itself is no signal: it stops existing whenever its list scrolls it away.
+  @MainActor private func logOut(in app: XCUIApplication) {
     let logout = app.buttons["Log out"]
     reveal(logout, in: app)
     logout.tap()
-    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 15))
+    wait(for: app.buttons["tab-home"], toBe: "isSelected == true", "Logging out never finished")
     app.buttons["tab-you"].tap()
-    XCTAssertTrue(login.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 30))
   }
   @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot())

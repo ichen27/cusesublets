@@ -123,7 +123,18 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 203 unit tests, 14 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed.
+Last run on the Mac mini, 17 November 2026, iPhone 17 simulator: 209 unit tests, 14 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed. The 14 interface tests also passed against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`).
+
+### What hosted CI found
+
+When these were found, on 17 November, the hosted iPhone job had never passed on this branch. Nothing failed on the Mac mini, because the causes only show when the server answers slowly:
+
+- **A tap that needs an account, made before the saved session was checked.** For its first moments the app did not yet know who was signed in, and treated that as "nobody". A signed-in person who tapped Post straight away got the login sheet, which then closed and dropped the tap. The app now waits for the answer (`AppState.signedInOrAsk`), and the You, Matches and Inbox tabs say "Checking your account" for that moment instead of showing their guest screens. With no connection the wait lasts until the request gives up, up to 30 seconds, with no message of its own on the Post button.
+- **A saved draft shown as empty fields while it loaded.** Anything typed in that moment was replaced when the draft arrived. The steps now show "Loading your draft" until it has, and "Your draft didn't load" with a way to try again.
+- **Tests that could not stop.** The interface tests were `async`. When one failed, the test runner exited instead of stopping the test, and `xcodebuild` does not retry a test that ended that way, so the one retry CI allows never happened and a single early failure could use up the job's whole time limit. They are synchronous now.
+- **Tests that guessed.** Several read a label or pressed a button before the server had answered: reading the match count, pressing a step's button while it was still disabled, and deciding who was signed in three seconds after launch. Each now waits for the thing it depends on.
+
+The job's time limit went from 25 to 40 minutes. A passing run was already close to 25 before this branch added seven interface tests.
 
 What that does not cover:
 
