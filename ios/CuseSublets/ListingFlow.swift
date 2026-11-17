@@ -11,6 +11,8 @@ struct ListingFlowStart: Identifiable {
   /// The private draft's id. It also makes a repeated "create" return the same place.
   let id: String
   var place: Listing?
+  /// A private draft saved earlier is being reopened, so its answers must load first.
+  var resumesDraft = false
   static func new() -> ListingFlowStart { .init(id: UUID().uuidString) }
 }
 
@@ -21,6 +23,7 @@ struct ListingFlow: View {
   @EnvironmentObject var state: AppState
   @Environment(\.dismiss) private var dismiss
   let draftID: String
+  let resumesDraft: Bool
   let onSaved: () -> Void
 
   @State private var form = ListingForm()
@@ -28,6 +31,7 @@ struct ListingFlow: View {
   @State private var place: Listing?
   @State private var revision = 0
   @State private var loaded = false
+  @State private var loadFailed = false
   @State private var busy = false
   @State private var problem = ""
   @State private var notice = ""
@@ -50,11 +54,15 @@ struct ListingFlow: View {
 
   init(start: ListingFlowStart, onSaved: @escaping () -> Void) {
     draftID = start.id
+    resumesDraft = start.resumesDraft && start.place == nil
     self.onSaved = onSaved
     _place = State(initialValue: start.place)
     _step = State(initialValue: start.place == nil ? .place : .photos)
   }
 
+  private var opening: ListingOpening {
+    ListingOpening.choose(resuming: resumesDraft, loaded: loaded, failed: loadFailed)
+  }
   private var photos: [String] { place?.images ?? [] }
   private var isLive: Bool { place?.status == "approved" }
   private var scanOffer: ScanOffer {
@@ -118,12 +126,30 @@ struct ListingFlow: View {
       header
       ScrollView {
         VStack(alignment: .leading, spacing: 18) {
-          switch step {
-          case .place: placeStep
-          case .details: detailsStep
-          case .photos: photosStep
-          case .scan: scanStep
-          case .checks: checksStep
+          switch opening {
+          case .ready:
+            switch step {
+            case .place: placeStep
+            case .details: detailsStep
+            case .photos: photosStep
+            case .scan: scanStep
+            case .checks: checksStep
+            }
+          case .loadingDraft:
+            HStack(spacing: 10) {
+              ProgressView()
+              Text("Loading your draft").font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.quadMuted)
+            }
+            .frame(maxWidth: .infinity).padding(.top, 40)
+          case .failed:
+            VStack(alignment: .leading, spacing: 12) {
+              Text("Your draft didn't load").font(.headline)
+              Text("Nothing was changed. Check your connection and try again.")
+                .font(.subheadline).foregroundStyle(Color.quadMuted)
+              Button("Try again") { Task { await load() } }.buttonStyle(.quadSecondary)
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 18)
           }
         }
         .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 24)
@@ -596,6 +622,8 @@ struct ListingFlow: View {
 
   private func load() async {
     guard !loaded else { return }
+    loadFailed = false
+    problem = ""
     do {
       if place != nil {
         try await reloadPlace()
@@ -605,7 +633,10 @@ struct ListingFlow: View {
         if let draft = saved.draft { form = ListingForm(draft: draft.data.mapValues(\.value)) }
       }
       loaded = true
-    } catch { problem = error.localizedDescription }
+    } catch {
+      loadFailed = true
+      problem = error.localizedDescription
+    }
   }
 
   private func reloadPlace() async throws {

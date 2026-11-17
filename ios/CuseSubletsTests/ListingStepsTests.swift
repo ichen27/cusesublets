@@ -203,4 +203,21 @@ final class ListingStepsTests: XCTestCase {
   func testSomethingThatIsNotAPictureIsRefused() {
     XCTAssertNil(ListingPhoto.prepared(Data("not a picture".utf8)))
   }
+
+  // MARK: Opening
+
+  func testANewPlaceCanBeTypedStraightAway() {
+    XCTAssertEqual(ListingOpening.choose(resuming: false, loaded: false, failed: false), .ready)
+  }
+
+  /// Empty fields shown before a saved draft arrives would be typed into and then replaced.
+  func testASavedDraftIsNotShownAsEmptyFieldsWhileItLoads() {
+    XCTAssertEqual(
+      ListingOpening.choose(resuming: true, loaded: false, failed: false), .loadingDraft)
+    XCTAssertEqual(ListingOpening.choose(resuming: true, loaded: true, failed: false), .ready)
+  }
+
+  func testASavedDraftThatDoesNotLoadSaysSo() {
+    XCTAssertEqual(ListingOpening.choose(resuming: true, loaded: false, failed: true), .failed)
+  }
 }

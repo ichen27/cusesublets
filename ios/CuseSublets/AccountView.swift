@@ -54,7 +54,9 @@ struct AccountView: View {
           }
           Section("Private drafts") {
             ForEach(drafts.filter { $0.kind == "listing" }) { d in
-              Button("Resume place · \(d.id.prefix(8))") { listing = ListingFlowStart(id: d.id) }
+              Button("Resume place · \(d.id.prefix(8))") {
+                listing = ListingFlowStart(id: d.id, resumesDraft: true)
+              }
             }
             if drafts.contains(where: { $0.kind == "search" }) {
               Button("Resume housing search") { newSearch = true }

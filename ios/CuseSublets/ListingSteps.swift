@@ -147,6 +147,23 @@ struct ListingForm: Equatable {
   }
 }
 
+/// What the first steps show while the listing steps open.
+enum ListingOpening: Equatable {
+  /// The answers can be typed.
+  case ready
+  /// A saved draft is on its way from the server.
+  case loadingDraft
+  /// The saved draft could not be read.
+  case failed
+
+  /// Empty fields shown before a saved draft arrives would be typed into and then replaced by
+  /// the draft, so a draft being reopened shows nothing to type in until it has loaded.
+  static func choose(resuming: Bool, loaded: Bool, failed: Bool) -> ListingOpening {
+    if !resuming || loaded { return .ready }
+    return failed ? .failed : .loadingDraft
+  }
+}
+
 /// What the scan step offers.
 enum ScanOffer: Equatable {
   /// The server has not yet said whether it builds tours.
