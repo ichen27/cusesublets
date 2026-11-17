@@ -205,6 +205,7 @@ export interface PublicProfile {
   avatar?: string;
   photos: string[];
   socials: ProfileSocials;
+  /** The month the account was created, as yyyy-MM. */
   joinedAt?: string;
 }
 export interface ProfileReview {
@@ -215,6 +216,10 @@ export interface ProfileReview {
   body: string;
   createdAt: string;
   listingTitle: string;
+  /** Which side of the sublease the reviewer was on. Absent from older servers. */
+  authorRole?: "subleaser" | "subtenant";
+  /** The month the stay ended, as yyyy-MM. Absent from older servers. */
+  stayEnded?: string;
 }
 export interface ReviewableBooking {
   id: string;

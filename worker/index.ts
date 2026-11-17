@@ -1,4 +1,9 @@
 import { blockedMemberIDs, memberBlockRoute } from "./member-blocks";
+import {
+  completedSubleases,
+  joinedMonth,
+  profileReviews,
+} from "./profile-history";
 import { beginAccountDeletion, accountDeletionStatus, sweepAccountDeletions } from "./account-deletion";
 import { appleNotification, appleChallenge, appleExchange, appleConfigured, type AppleEnv } from "./apple-auth";
 import { roomTourRoute, tourProcessorRoute } from "./room-tours";
@@ -694,6 +699,10 @@ async function reviewable(e: Env, u: User, target: string) {
     u.id,
   );
 }
+/** Payment states that count as paid. A practice payment counts only in development. */
+function paidStatuses(e: Env) {
+  return e.APP_ENV === "development" ? ["paid", "demo_paid"] : ["paid"];
+}
 function socialLinks(value: unknown) {
   requireThat(
     value && typeof value === "object" && !Array.isArray(value),
@@ -1035,7 +1044,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
         avatar: profile.avatar,
         photos: profile.photos,
         socials: profile.socials,
-        joinedAt: target.joinedAt || undefined,
+        joinedAt: joinedMonth(target.joinedAt),
       },
       listings: (
         await listings(
@@ -1046,10 +1055,12 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       ).map((l) => listingView(l)),
       search: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? LIMIT 1", target.id, syracuseDate())).filter(r=>!hiddenMembers.has(r.ownerId)).map(searchView)[0] || null,
       requests: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).filter(r=>!hiddenMembers.has(r.ownerId)).map(requestView),
-      reviews: await all(
-        e,
-        "SELECT r.id,r.authorId,a.name authorName,r.rating,r.body,r.createdAt,json_extract(l.data,'$.title') listingTitle FROM profile_reviews r JOIN users a ON a.id=r.authorId JOIN bookings b ON b.id=r.bookingId JOIN listings l ON l.id=b.listingId WHERE r.targetId=? ORDER BY r.rowid DESC LIMIT 200",
+      reviews: await profileReviews(e.DB, target.id),
+      completed: await completedSubleases(
+        e.DB,
         target.id,
+        paidStatuses(e),
+        syracuseDate(),
       ),
       reviewableBookings: u ? await reviewable(e, u, target.id) : [],
     });

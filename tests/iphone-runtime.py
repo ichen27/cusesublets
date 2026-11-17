@@ -32,6 +32,15 @@ class IPhoneRuntime(unittest.TestCase):
   updated=host.call('/api/listings/'+key)[1]['listing'];self.assertEqual(original,(updated['leaseStatus'],updated['permissionStatus'],updated['hostIdentity']))
   self.assertEqual(host.call(route+'/delete',{})[0],200)
   self.assertEqual(host.call(route+'/visibility',dict(published=True))[0],404)
+ def test_a_new_members_profile_says_when_they_joined_and_what_they_have_finished(self):
+  import datetime,urllib.parse
+  month=lambda:datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m')
+  guest,member,before=rt.Client(),rt.Client(),month()
+  status,body=member.call('/api/auth/signup',dict(name='Profile Tester',email=uuid.uuid4().hex+'@example.test',password='synthetic-long-password'));self.assertEqual(status,200,body)
+  status,public=guest.call('/api/users/'+urllib.parse.quote(body['user']['id'],safe=''));self.assertEqual(status,200,public)
+  # The server keeps the moment an account was made; other people are shown only the month.
+  self.assertIn(public['profile'].get('joinedAt'),{before,month()})
+  self.assertEqual(public['completed'],dict(subleaser=0,subtenant=0));self.assertEqual(public['reviews'],[])
  def test_place_can_be_created_unpublished_and_published_later(self):
   import datetime
   guest,host=rt.Client(),rt.Client();host.login('host')
