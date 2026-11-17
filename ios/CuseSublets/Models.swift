@@ -160,12 +160,25 @@ struct PublicMember: Decodable {
   let avatar: String?
   let photos: [String]
   let socials: [String: String]
+  /// The month the account was created, `yyyy-MM`. Accounts from before this was recorded, and
+  /// older servers, have none.
+  var joinedAt: String?
 }
 struct MemberReview: Decodable, Identifiable {
   let id: String
+  var authorId: String?
   let authorName: String
   let rating: Int
   let body: String
+  /// "subleaser" or "subtenant": which side of the sublease the reviewer was on.
+  var authorRole: String?
+  /// The month the stay ended, `yyyy-MM`.
+  var stayEnded: String?
+}
+/// Subleases a person has finished here: paid for, moved into and ended.
+struct CompletedSubleases: Decodable {
+  let subleaser: Int
+  let subtenant: Int
 }
 struct ReviewableBooking: Decodable, Identifiable {
   let id: String
@@ -178,6 +191,8 @@ struct PublicProfileResponse: Decodable {
   let reviews: [MemberReview]
   let reviewableBookings: [ReviewableBooking]
   let search: HousingSearch?
+  /// Absent from a server older than the profile redesign.
+  var completed: CompletedSubleases?
 }
 struct SocialComment: Decodable, Identifiable {
   let id: String

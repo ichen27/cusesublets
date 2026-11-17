@@ -11,6 +11,8 @@ struct BlockedMembersResponse: Decodable {
 struct MemberSafetyActions: View {
   @EnvironmentObject var state: AppState
   let memberID: String
+  /// Shows the two actions behind one round "more" button instead of side by side.
+  var menu = false
   @State private var busy = false
   @State private var error = ""
   @State private var notice = ""
@@ -20,16 +22,31 @@ struct MemberSafetyActions: View {
   private var blocked: Bool { state.blockedMembers.contains { $0.id == memberID } }
   var body: some View {
     if memberID != state.user?.id {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          Button(blocked ? "Unblock member" : "Block member", role: blocked ? nil : .destructive) {
-            Task { if await state.signedInOrAsk() { confirmBlock = true } }
+      Group {
+        if menu {
+          Menu {
+            blockButton
+            reportButton
+          } label: {
+            Image(systemName: "ellipsis").font(.body.weight(.semibold))
+              .foregroundStyle(Color.quadInk).frame(width: 44, height: 44)
+              .background(.white, in: Circle())
+              .overlay(Circle().strokeBorder(Color.quadInk.opacity(0.08)))
           }
-          Button("Report member") { Task { if await state.signedInOrAsk() { reporting = true } } }
-        }.disabled(busy)
-        if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
-        if !notice.isEmpty { Text(notice).font(.callout) }
-      }.confirmationDialog(
+          .accessibilityLabel("More: block or report")
+          .disabled(busy)
+        } else {
+          VStack(alignment: .leading, spacing: 10) {
+            HStack {
+              blockButton
+              reportButton
+            }.disabled(busy)
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
+            if !notice.isEmpty { Text(notice).font(.callout) }
+          }
+        }
+      }
+      .confirmationDialog(
         blocked ? "Unblock this member?" : "Block this member?", isPresented: $confirmBlock,
         titleVisibility: .visible
       ) {
@@ -48,7 +65,29 @@ struct MemberSafetyActions: View {
       } message: {
         Text("Explain the behavior so staff can review it. Reports are private.")
       }
+      // The menu has no room for a line of text under it, so it says how things went in an alert.
+      .alert(
+        error.isEmpty ? notice : error,
+        isPresented: Binding(
+          get: { menu && !(error.isEmpty && notice.isEmpty) },
+          set: {
+            if !$0 {
+              error = ""
+              notice = ""
+            }
+          })
+      ) {
+        Button("OK") {}
+      }
     }
+  }
+  private var blockButton: some View {
+    Button(blocked ? "Unblock member" : "Block member", role: blocked ? nil : .destructive) {
+      Task { if await state.signedInOrAsk() { confirmBlock = true } }
+    }
+  }
+  private var reportButton: some View {
+    Button("Report member") { Task { if await state.signedInOrAsk() { reporting = true } } }
   }
   func changeBlock() async {
     busy = true

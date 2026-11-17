@@ -17,6 +17,7 @@ struct AccountView: View {
             Text(user.name).font(.title.bold())
             Text(user.email).foregroundStyle(.secondary)
             NavigationLink("Edit profile & checks") { ProfileEditor() }
+            NavigationLink("See your public profile") { MemberView(id: user.id) }
             NavigationLink("Blocked members") { BlockedMembersView() }
             NavigationLink("Saved posts") { SavedView() }
             NavigationLink("Change password") { PasswordView() }

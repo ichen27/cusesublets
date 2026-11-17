@@ -13,7 +13,8 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | A sublease's page | Built (`ListingView` in `BrowseView.swift`) |
 | Listing a place in five steps, with photos, a scan step and checks | Built (`ListingFlow.swift`, `ListingSteps.swift`) |
 | Matches, one at a time | Built (`MatchesView.swift`, `MatchDeck.swift`) |
-| Profiles, Inbox and chat, You | Old style, under the new tab bar |
+| A person's profile | Built (`MemberView.swift`, `PersonProfile.swift`) |
+| Inbox and chat, You, editing your own profile, a housing search's page | Old style, under the new tab bar |
 | Sign-up questions | Not built |
 | Scan and tour screens in the new colours | Not built |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
@@ -108,9 +109,42 @@ Known limits:
 - The mockup named a building and a walk to campus on the card. There are no building records, and the app does not read a walk time for a place, so the card shows the neighborhood.
 - The card shows the first photo only. The rest are on the place's page.
 - The server returns at most 50 matches for a plan.
-- A person's profile and what they are looking for still open in the old style.
+- What a person is looking for still opens in the old style.
 
 ![Matches: a place that fits a search, a person who fits a place, the end of the deck, and no plans yet](screenshots/quad-matches.jpg)
+
+## A person's profile
+
+A profile opens from a sublease's page, a match, a comment or a conversation. Your own opens from You, under "See your public profile".
+
+- **Who they are.** Photo or initials, name, the month they joined, and chips: "ID checked" in green when staff have checked their ID and "ID not checked" when not, then what they are doing now ("Subleasing a place", "Looking for a place").
+- **What they have finished here.** Three numbers: the average of their reviews, subleases finished as the subleaser, and subleases finished as the subtenant. A sublease counts when it was booked here, paid for, moved into and has ended, and is neither cancelled nor in an open dispute. That is the same rule that lets its two people review each other. The screen says this under the numbers.
+- **Their places and what they are looking for.** Each place opens its page. The search opens the housing search's page, which is still in the old style.
+- **Reviews.** Each says who wrote it, which side of the sublease they were on, the month the stay ended, and their stars. Only someone who finished a sublease with the person can write one, and the screen says so. When you are that someone, a "Review" card appears under the reviews.
+- **Message.** A conversation here is always about a place, so the button offers what there is to talk about: any place the person has listed, then any place of yours that fits what they are looking for. With one choice it opens the conversation; with several it asks which. With none there is no button, and a line at the bottom says why.
+- **Block or report** sit behind the round button at the top right. Blocking hides the profile at once.
+
+The server gained three things for this, all on `GET /api/users/:id` (`worker/profile-history.ts`):
+
+- `profile.joinedAt` is now the month an account was created (`yyyy-MM`). The column has existed since the profiles migration, but nothing wrote it. A new migration (`0021_joined_at.sql`) records it when an account is created, whichever sign-in made it. Accounts from before that have no date and their profiles say nothing about when they joined. Other people are sent the month, never the moment.
+- `completed` carries the two counts.
+- Each review carries `authorRole` and `stayEnded`.
+
+The app shows whichever of these the server sends, so it works against a server from before the change: the counts and the join month are simply absent.
+
+The wording and the message choices have no interface in them and live in `PersonProfile.swift`, with tests in `PersonProfileTests.swift`.
+
+Known limits:
+
+- The mockup had a button to save a profile. The server saves places and searches only, so there is no such button.
+- The mockup put a "Checked sublease" chip on each review. Every review comes from a finished sublease, so the chip said the same thing on every card; one line under the heading says it once.
+- The mockup named a building on the person's place. There are no building records, so the card shows the neighborhood.
+- Editing your own profile is still the old one-page form.
+- Local test data has no finished sublease, and one cannot be made through the API because it has to have ended. The pictures with reviews on them were made by adding two finished subleases and their reviews straight into the local test database.
+
+![A profile: someone subleasing, someone looking, and your own](screenshots/quad-profile.jpg)
+
+![A profile with finished subleases and reviews](screenshots/quad-profile-reviews.jpg)
 
 ## Checking it
 
@@ -123,11 +157,11 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 17 November 2026, iPhone 17 simulator: 209 unit tests, 14 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed. The 14 interface tests also passed against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`).
+Last run on the Mac mini, 17 November 2026, iPhone 17 simulator, after the profile was rebuilt: 226 unit tests and 17 marketplace interface tests passed against the normal local server, and the capture app's configuration built. Not rerun after the profile change: the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips); both passed on the commit before it. The interface tests were also run against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`), but that run does not count: the Mac mini's internal disk filled while it ran. In it 12 tests passed first time, two passed on the retry and three signed-out tests failed twice. The 14 tests from before the profile change had passed against the slow server on the commit before.
 
 ### What hosted CI found
 
-When these were found, on 17 November, the hosted iPhone job had never passed on this branch. Nothing failed on the Mac mini, because the causes only show when the server answers slowly:
+When these were found, on 17 November, the hosted iPhone job had never passed on this branch. It first passed on the commit that fixed them (`2c98a04`), in 27 minutes with no test retried. Nothing failed on the Mac mini, because the causes only show when the server answers slowly:
 
 - **A tap that needs an account, made before the saved session was checked.** For its first moments the app did not yet know who was signed in, and treated that as "nobody". A signed-in person who tapped Post straight away got the login sheet, which then closed and dropped the tap. The app now waits for the answer (`AppState.signedInOrAsk`), and the You, Matches and Inbox tabs say "Checking your account" for that moment instead of showing their guest screens. With no connection the wait lasts until the request gives up, up to 30 seconds, with no message of its own on the Post button.
 - **A saved draft shown as empty fields while it loaded.** Anything typed in that moment was replaced when the draft arrived. The steps now show "Loading your draft" until it has, and "Your draft didn't load" with a way to try again.

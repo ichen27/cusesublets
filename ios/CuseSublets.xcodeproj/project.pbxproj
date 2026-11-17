@@ -31,6 +31,7 @@
 		492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE94AA320384886E84A6B136 /* SocialView.swift */; };
 		4B3C27D8F80FF657ED89A199 /* LICENSE-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = A8C0C82C344C7477234E34FF /* LICENSE-Apache-2.0.txt */; };
 		4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE25303FE8E1D06352E818DF /* RoomScansView.swift */; };
+		535A6A359EA1C0E73D2843D2 /* PersonProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 807562E185504FB642CF9901 /* PersonProfileTests.swift */; };
 		550521CD4637D71B681D2A85 /* FloorCoverage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21CCB35C1774E763375BEA9F /* FloorCoverage.swift */; };
 		574E9365C22FA60C8479C02F /* SpotOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA66D17C337EE46896D4244 /* SpotOrientation.swift */; };
 		57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */; };
@@ -60,6 +61,8 @@
 		BE151DB85968FEB47E121E87 /* privacy.json in Resources */ = {isa = PBXBuildFile; fileRef = 01898D723ED9EF8CC50F921B /* privacy.json */; };
 		C1EDFF8E0D4C0FAD6EBF8698 /* FloorPatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A40EF311DFF1A90A0E526 /* FloorPatch.swift */; };
 		C3504A6BF4856D310C10D71B /* CaptureCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6573B854B8FE5BC5D6DB8447 /* CaptureCoverageTests.swift */; };
+		CB17BDFA5A4FAAB2F354E6EF /* PersonProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6729BC53B749AF01DE07C937 /* PersonProfile.swift */; };
+		CC9907B11CACF941AB9A5860 /* MemberView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F77F06DFFBC458AC49D39518 /* MemberView.swift */; };
 		CD78D11985648775153E92DC /* PropertyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC8B3F801E16910756D3EE2 /* PropertyStore.swift */; };
 		D05CE7BC7CB881D77D9F9648 /* MatchDeck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAA90720394C2F328581E5C /* MatchDeck.swift */; };
 		D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */; };
@@ -133,6 +136,7 @@
 		614DBA8DCF7BB33285F7A7F9 /* ListingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListingFlow.swift; sourceTree = "<group>"; };
 		61E43454C554AEC16735B4F1 /* PhotoCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCapture.swift; sourceTree = "<group>"; };
 		6573B854B8FE5BC5D6DB8447 /* CaptureCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCoverageTests.swift; sourceTree = "<group>"; };
+		6729BC53B749AF01DE07C937 /* PersonProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonProfile.swift; sourceTree = "<group>"; };
 		6B61A7AC3E840348287474FB /* PersonalDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalDeviceTests.swift; sourceTree = "<group>"; };
 		6B7E853ED345F273E6569FC4 /* SpotSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotSessionTests.swift; sourceTree = "<group>"; };
 		6DED3ABE9FC70DFD49A8ADE7 /* CapturePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePolicyTests.swift; sourceTree = "<group>"; };
@@ -142,6 +146,7 @@
 		7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadFormatTests.swift; sourceTree = "<group>"; };
 		7AAA90720394C2F328581E5C /* MatchDeck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDeck.swift; sourceTree = "<group>"; };
 		7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureArchive.swift; sourceTree = "<group>"; };
+		807562E185504FB642CF9901 /* PersonProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonProfileTests.swift; sourceTree = "<group>"; };
 		8224FC68A72324C8F26CCC38 /* CaptureStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStream.swift; sourceTree = "<group>"; };
 		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		887408B955171A2ACEDB8D83 /* DepthAnythingV2SmallF16P6.mlpackage */ = {isa = PBXFileReference; path = DepthAnythingV2SmallF16P6.mlpackage; sourceTree = "<group>"; };
@@ -174,6 +179,7 @@
 		F22ED5B906F4E4A57C789894 /* SpotTurnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTurnTests.swift; sourceTree = "<group>"; };
 		F2DD0C534B5E075195EA6D1E /* BrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseView.swift; sourceTree = "<group>"; };
 		F6817F9190BF966336DFCF3A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F77F06DFFBC458AC49D39518 /* MemberView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemberView.swift; sourceTree = "<group>"; };
 		F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyStudioTests.swift; sourceTree = "<group>"; };
 		FA5A40EF311DFF1A90A0E526 /* FloorPatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPatch.swift; sourceTree = "<group>"; };
 		FA5A5003EB90A1CA8A36386B /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
@@ -219,7 +225,9 @@
 				7AAA90720394C2F328581E5C /* MatchDeck.swift */,
 				E075CD358830CD77585FAB23 /* MatchesView.swift */,
 				25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */,
+				F77F06DFFBC458AC49D39518 /* MemberView.swift */,
 				B360091FC742F2D79BD19301 /* Models.swift */,
+				6729BC53B749AF01DE07C937 /* PersonProfile.swift */,
 				61E43454C554AEC16735B4F1 /* PhotoCapture.swift */,
 				7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */,
 				E9C318E0D74042DDAD6B7538 /* PhotoCapturePolicy.swift */,
@@ -264,6 +272,7 @@
 				D1D88D76611051EA41BFF3E2 /* ListingStepsTests.swift */,
 				2BE0FFCC85A96B5D742E8E47 /* MatchDeckTests.swift */,
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
+				807562E185504FB642CF9901 /* PersonProfileTests.swift */,
 				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
 				F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */,
 				7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */,
@@ -443,6 +452,7 @@
 				2B4A6DDEFD497D3C78DE322B /* ListingStepsTests.swift in Sources */,
 				48E1D59AF4B38DFBD6B56A6C /* MatchDeckTests.swift in Sources */,
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
+				535A6A359EA1C0E73D2843D2 /* PersonProfileTests.swift in Sources */,
 				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
 				D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */,
 				E1F847C484BC4EA62EDCB3B2 /* QuadFormatTests.swift in Sources */,
@@ -481,7 +491,9 @@
 				D05CE7BC7CB881D77D9F9648 /* MatchDeck.swift in Sources */,
 				DB250E2CAE977341E70B4D88 /* MatchesView.swift in Sources */,
 				68C2867E4804FF3C24E39266 /* MemberSafetyView.swift in Sources */,
+				CC9907B11CACF941AB9A5860 /* MemberView.swift in Sources */,
 				E896FAAB55F922648B4D48E3 /* Models.swift in Sources */,
+				CB17BDFA5A4FAAB2F354E6EF /* PersonProfile.swift in Sources */,
 				76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */,
 				ED032FCE1B368CA61D9D20B0 /* PhotoCaptureArchive.swift in Sources */,
 				F4CF53EAE0EFE1631F81DBDC /* PhotoCapturePolicy.swift in Sources */,

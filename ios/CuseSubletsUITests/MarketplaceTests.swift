@@ -278,6 +278,104 @@ final class MarketplaceTests: XCTestCase {
       app.navigationBars["Sam Seeker"].waitForExistence(timeout: 30),
       "Messaging should open the conversation in the Inbox")
   }
+  @MainActor func testAProfileShowsSomeonesPlaceStartsAConversationAndCanBlock() throws {
+    continueAfterFailure = false
+    let seeker = try seedMember(name: "Sam Seeker")
+    let spot = freshSpot()
+    try seedSearch(for: seeker, around: spot)
+    let place = try seedListing(for: try seedMember(name: "Jamie Host"), price: 700, at: spot)
+    let app = launchApp(session: seeker.cookie)
+    app.buttons["tab-matches"].tap()
+    let position = app.staticTexts["match-position"]
+    XCTAssertTrue(position.waitForExistence(timeout: 30))
+    wait(for: position, toBe: "label == '1 of 1 that fits'", "The matches did not load")
+    matchCard("Jamie Host", in: app).tap()
+
+    XCTAssertTrue(
+      app.staticTexts["Jamie's place"].waitForExistence(timeout: 30), "The profile did not load")
+    XCTAssertTrue(app.staticTexts["Jamie Host"].exists)
+    XCTAssertTrue(app.staticTexts["ID not checked"].exists)
+    XCTAssertTrue(app.staticTexts["Subleasing a place"].exists)
+    XCTAssertTrue(labelled(beginning: "Member since ", in: app).exists)
+    XCTAssertTrue(labelled(containing: "reviews yet", in: app).exists)
+    XCTAssertTrue(labelled(containing: "as subleaser", in: app).exists)
+    XCTAssertTrue(labelled(containing: "as subtenant", in: app).exists)
+    XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", place)).firstMatch.exists)
+    XCTAssertTrue(app.staticTexts["No reviews yet."].exists)
+    attach(app, "Profile: someone subleasing a place")
+
+    app.buttons["Message Jamie"].tap()
+    XCTAssertTrue(
+      app.navigationBars["Jamie Host"].waitForExistence(timeout: 30),
+      "Messaging from a profile should open the conversation in the Inbox")
+
+    // The profile is still open under Matches. Blocking hides it.
+    app.buttons["tab-matches"].tap()
+    let more = app.buttons["More: block or report"]
+    XCTAssertTrue(more.waitForExistence(timeout: 30))
+    more.tap()
+    let block = app.buttons["Block member"]
+    XCTAssertTrue(block.waitForExistence(timeout: 30))
+    block.tap()
+    let confirm = app.buttons["Block"]
+    XCTAssertTrue(confirm.waitForExistence(timeout: 30))
+    confirm.tap()
+    XCTAssertTrue(
+      labelled(containing: "are hidden while you are signed in", in: app)
+        .waitForExistence(timeout: 30), "Blocking did not hide the profile")
+    XCTAssertFalse(app.buttons["Message Jamie"].exists)
+  }
+  @MainActor func testSomeoneLookingIsMessagedByOfferingAPlaceThatFits() throws {
+    continueAfterFailure = false
+    let spot = freshSpot()
+    let host = try seedMember(name: "Harper Host")
+    _ = try seedListing(for: host, price: 800, at: spot)
+    try seedSearch(for: try seedMember(name: "Sam Seeker"), around: spot)
+    let app = launchApp(session: host.cookie)
+    app.buttons["tab-matches"].tap()
+    let position = app.staticTexts["match-position"]
+    XCTAssertTrue(position.waitForExistence(timeout: 30))
+    wait(for: position, toBe: "label == '1 of 1 that fits'", "The matches did not load")
+    matchCard("Sam Seeker", in: app).tap()
+    let about = app.buttons["About Sam Seeker"]
+    XCTAssertTrue(about.waitForExistence(timeout: 30))
+    reveal(about, in: app)
+    about.tap()
+
+    XCTAssertTrue(
+      app.staticTexts["What Sam is looking for"].waitForExistence(timeout: 30),
+      "The profile did not load")
+    XCTAssertTrue(app.staticTexts["Looking for a place"].exists)
+    XCTAssertTrue(labelled(containing: "up to $1,000 / month", in: app).exists)
+    attach(app, "Profile: someone looking for a place")
+    // Harper's one place fits Sam's search, so there is nothing to choose between.
+    let message = app.buttons["Message Sam"]
+    XCTAssertTrue(message.waitForExistence(timeout: 30))
+    message.tap()
+    XCTAssertTrue(
+      app.navigationBars["Sam Seeker"].waitForExistence(timeout: 30),
+      "Offering a place from a profile should open the conversation in the Inbox")
+  }
+  @MainActor func testYourOwnProfileOpensFromYouWithNothingToMessage() throws {
+    continueAfterFailure = false
+    let member = try seedMember(name: "Avery Own")
+    let app = launchApp(session: member.cookie)
+    app.buttons["tab-you"].tap()
+    let open = app.buttons["See your public profile"]
+    XCTAssertTrue(open.waitForExistence(timeout: 30))
+    open.tap()
+    XCTAssertTrue(
+      app.staticTexts["This is your profile as other people see it."]
+        .waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["No reviews yet."].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Avery Own"].exists)
+    XCTAssertFalse(app.buttons["Message Avery"].exists)
+    XCTAssertFalse(app.buttons["More: block or report"].exists)
+    XCTAssertFalse(
+      app.descendants(matching: .any).matching(identifier: "person-message-unavailable")
+        .firstMatch.exists, "Nobody needs telling why they cannot message themselves")
+    attach(app, "Profile: your own")
+  }
   @MainActor func testSavingOrMessagingAMatchMovesTheDeckOn() throws {
     continueAfterFailure = false
     let seeker = try seedMember(name: "Sam Seeker")
@@ -647,6 +745,19 @@ final class MarketplaceTests: XCTestCase {
       ],
     ]
     _ = try post("/api/my-search", body, cookie: member.cookie)
+  }
+  /// Anything on screen whose label contains, or begins with, `text`.
+  @MainActor private func labelled(containing text: String, in app: XCUIApplication)
+    -> XCUIElement
+  {
+    app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text))
+      .firstMatch
+  }
+  @MainActor private func labelled(beginning text: String, in app: XCUIApplication)
+    -> XCUIElement
+  {
+    app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", text))
+      .firstMatch
   }
   /// The card on the Matches screen whose label mentions `text`.
   @MainActor private func matchCard(_ text: String, in app: XCUIApplication) -> XCUIElement {
