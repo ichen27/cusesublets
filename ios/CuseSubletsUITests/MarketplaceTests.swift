@@ -13,21 +13,21 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
     app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     app.launch()
-    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
     signOutIfNeeded(app)
-    app.tabBars.buttons["Browse"].tap()
-    XCTAssertTrue(app.staticTexts["Find a sublet.\nList your place."].exists)
+    app.buttons["tab-home"].tap()
+    XCTAssertTrue(app.staticTexts["Quad"].exists)
     attach(app, "Browse")
     app.buttons["Filters"].tap()
     XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["Reset filters"].exists)
     XCTAssertTrue(app.switches["Furnished"].exists)
     app.buttons["Done"].tap()
-    app.tabBars.buttons["Matches"].tap()
+    app.buttons["tab-matches"].tap()
     XCTAssertTrue(app.staticTexts["Find your fit"].waitForExistence(timeout: 5))
-    app.tabBars.buttons["Inbox"].tap()
+    app.buttons["tab-inbox"].tap()
     XCTAssertTrue(app.staticTexts["Your conversations"].waitForExistence(timeout: 5))
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     app.buttons["Log in or create an account"].tap()
     let create = app.buttons["Create an account"]
     XCTAssertTrue(create.waitForExistence(timeout: 15))
@@ -103,28 +103,28 @@ final class MarketplaceTests: XCTestCase {
     app.navigationBars.buttons.firstMatch.tap()
     app.navigationBars.buttons.firstMatch.tap()
     app.buttons["Done"].tap()
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     reveal(app.buttons["Log out"], in: app)
     app.buttons["Log out"].tap()
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
   }
   @MainActor func testSignedOutBrowseFiltersAndTabs() throws {
     continueAfterFailure = false
     let app = launchApp()
     signOutIfNeeded(app)
-    app.tabBars.buttons["Browse"].tap()
+    app.buttons["tab-home"].tap()
     XCTAssertTrue(
-      app.staticTexts["Find a sublet.\nList your place."].waitForExistence(timeout: 10))
+      app.staticTexts["Quad"].waitForExistence(timeout: 10))
     attach(app, "Browse")
     app.buttons["Filters"].tap()
     XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["Reset filters"].exists)
     XCTAssertTrue(app.switches["Furnished"].exists)
     app.buttons["Done"].tap()
-    app.tabBars.buttons["Matches"].tap()
+    app.buttons["tab-matches"].tap()
     XCTAssertTrue(app.staticTexts["Find your fit"].waitForExistence(timeout: 10))
-    app.tabBars.buttons["Inbox"].tap()
+    app.buttons["tab-inbox"].tap()
     XCTAssertTrue(app.staticTexts["Your conversations"].waitForExistence(timeout: 10))
   }
   @MainActor func testSignupClosesSheetAndLogoutReturnsToGuest() throws {
@@ -149,14 +149,35 @@ final class MarketplaceTests: XCTestCase {
     attach(app, "Account")
     reveal(app.buttons["Log out"], in: app)
     app.buttons["Log out"].tap()
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     XCTAssertTrue(app.buttons["Log in or create an account"].waitForExistence(timeout: 10))
+  }
+  @MainActor func testPostButtonOffersBothKindsAndOpensTheListingEditor() async throws {
+    continueAfterFailure = false
+    let member = try await seedMember()
+    let app = launchApp(session: member.cookie)
+    app.buttons["tab-post"].tap()
+    XCTAssertTrue(app.buttons["Say what I'm looking for"].waitForExistence(timeout: 10))
+    app.buttons["Sublease my place"].tap()
+    XCTAssertTrue(app.textFields["Listing title"].waitForExistence(timeout: 15))
+    attach(app, "Listing editor from the Post button")
+  }
+  @MainActor func testPostButtonAsksAGuestToLogIn() throws {
+    let app = XCUIApplication()
+    app.launchEnvironment["CUSE_API_URL"] = Self.apiBase
+    app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
+    app.launch()
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
+    signOutIfNeeded(app)
+    app.buttons["tab-post"].tap()
+    XCTAssertTrue(app.buttons["Create an account"].waitForExistence(timeout: 15))
+    XCTAssertFalse(app.buttons["Sublease my place"].exists)
   }
   @MainActor func testPrivateDraftResumesAndPublishes() async throws {
     continueAfterFailure = false
     let member = try await seedMember()
     let app = launchApp(session: member.cookie)
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     XCTAssertTrue(app.staticTexts[member.name].waitForExistence(timeout: 20))
     reveal(app.buttons["List your place"], in: app)
     app.buttons["List your place"].tap()
@@ -235,7 +256,7 @@ final class MarketplaceTests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["CUSE_API_URL"] = "http://127.0.0.1:8936"
     app.launch()
-    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
     signOutIfNeeded(app)
     reveal(app.buttons["Device capture check"], in: app)
     app.buttons["Device capture check"].tap()
@@ -253,7 +274,7 @@ final class MarketplaceTests: XCTestCase {
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
     ]
     app.launch()
-    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
     signOutIfNeeded(app)
     reveal(app.buttons["Data & privacy"], in: app)
     app.buttons["Data & privacy"].tap()
@@ -270,14 +291,15 @@ final class MarketplaceTests: XCTestCase {
       done.tap()
       XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
     }
-    // Floating tab bars can cover controls that XCTest still reports as hittable.
+    // The floating tab bar can cover controls that XCTest still reports as hittable.
     // Bring the whole control clear of the actual bars before asking XCTest to tap it.
     func safeTop() -> CGFloat {
       let bar = app.navigationBars.firstMatch
       return bar.exists ? bar.frame.maxY + 4 : app.frame.minY
     }
     func safeBottom() -> CGFloat {
-      let bar = app.tabBars.firstMatch
+      // The raised Post button is the highest part of the floating tab bar.
+      let bar = app.buttons["tab-post"]
       return bar.exists ? bar.frame.minY - 4 : app.frame.maxY
     }
     func safelyVisible() -> Bool {
@@ -332,7 +354,7 @@ final class MarketplaceTests: XCTestCase {
     app.launchEnvironment["CUSE_UI_MANUAL_PASSWORD"] = "1"
     if let cookie { app.launchEnvironment["CUSE_UI_SESSION_COOKIE"] = cookie }
     app.launch()
-    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 20))
     return app
   }
   /// Creates state directly on the isolated local API so each test drives only its own feature.
@@ -385,7 +407,7 @@ final class MarketplaceTests: XCTestCase {
     return title
   }
   @MainActor private func openOwnListing(_ title: String, in app: XCUIApplication) {
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: 20), "Seeded listing missing from Your places")
     reveal(row, in: app)
@@ -393,14 +415,14 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.buttons["View listing"].waitForExistence(timeout: 10))
   }
   @MainActor private func signOutIfNeeded(_ app: XCUIApplication) {
-    app.tabBars.buttons["You"].tap()
+    app.buttons["tab-you"].tap()
     let login = app.buttons["Log in or create an account"]
     if login.waitForExistence(timeout: 3) { return }
     let logout = app.buttons["Log out"]
     reveal(logout, in: app)
     logout.tap()
-    XCTAssertTrue(app.navigationBars["CuseSublets"].waitForExistence(timeout: 15))
-    app.tabBars.buttons["You"].tap()
+    XCTAssertTrue(app.buttons["tab-home"].waitForExistence(timeout: 15))
+    app.buttons["tab-you"].tap()
     XCTAssertTrue(login.waitForExistence(timeout: 10))
   }
   @MainActor private func attach(_ app: XCUIApplication, _ name: String) {

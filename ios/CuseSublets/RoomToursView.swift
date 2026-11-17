@@ -351,7 +351,7 @@ struct SavedCapturePhotos: View {
           }
         }
       }
-    }.task {
+    }.quadSidewaysScroll().task {
       files =
         ((try? FileManager.default.contentsOfDirectory(
           at: folder.appendingPathComponent("images"), includingPropertiesForKeys: nil)) ?? [])

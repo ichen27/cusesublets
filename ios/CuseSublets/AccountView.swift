@@ -99,6 +99,15 @@ struct AccountView: View {
       }
     }.navigationTitle("You")
       .task(id: state.user?.id) { await load() }.refreshable { await load() }
+      .onChange(of: state.postIntent, initial: true) { _, intent in
+        // The Post button in the tab bar lands here; open the editor it asked for.
+        guard let intent, state.user != nil else { return }
+        state.postIntent = nil
+        switch intent {
+        case .listing: newListing = true
+        case .search: newSearch = true
+        }
+      }
       .sheet(isPresented: $newListing) {
         NavigationStack { ListingEditor(onSaved: { Task { await load() } }) }
       }

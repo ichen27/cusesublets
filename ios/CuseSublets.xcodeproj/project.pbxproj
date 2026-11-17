@@ -19,6 +19,7 @@
 		1F261E219E5AD3A8B24E2DBD /* SpotSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7E853ED345F273E6569FC4 /* SpotSessionTests.swift */; };
 		2005F10C3B328943EBFCFF47 /* DepthAnythingV2SmallF16P6.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 887408B955171A2ACEDB8D83 /* DepthAnythingV2SmallF16P6.mlpackage */; };
 		2591EB8BD4901D4BB93CECBE /* DiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116B62AE815C2FDF07D07D9F /* DiscoveryTests.swift */; };
+		2ACC9E2376C43F0B84D76AF4 /* QuadFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0018FA4C7F1B4D3329B5C5C /* QuadFormat.swift */; };
 		2F88ABA47FCE55BC629875BC /* Editors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD685FF874F61D99FC41025 /* Editors.swift */; };
 		300D5880B02CDC57819A5755 /* SpotOrientationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9373F8E892C1645E9D4C38 /* SpotOrientationTests.swift */; };
 		3132B322033C4D40178E6F34 /* CaptureStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79FC630E0209AFFDE73A2A50 /* CaptureStorageTests.swift */; };
@@ -37,6 +38,7 @@
 		644F1A5E0601A7F346CD8165 /* RoomSketchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EFFA984CDDC942CFE18FE2 /* RoomSketchTests.swift */; };
 		68C2867E4804FF3C24E39266 /* MemberSafetyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */; };
 		71788E8290D58E3381D007ED /* CapturePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DED3ABE9FC70DFD49A8ADE7 /* CapturePolicyTests.swift */; };
+		7303504C73B18FF00EB03866 /* QuadTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EAE2BC26E39218F03D0A701 /* QuadTabBar.swift */; };
 		76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E43454C554AEC16735B4F1 /* PhotoCapture.swift */; };
 		77304F791FF3ABC088F500B7 /* PropertyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6AF50E586E5DB9CB14B61D /* PropertyViews.swift */; };
 		7B46865FC65E3AE94C0BC94B /* RoomSketch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EFE54CDC1AF84DDE4EFB54B /* RoomSketch.swift */; };
@@ -45,6 +47,7 @@
 		8B5660E3E4A15328ADD92003 /* StudioClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B637692C1DADC1FEA38DB1CE /* StudioClient.swift */; };
 		8E5CF358DEC748762C5BA0A7 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACAE3DA6881107AA07E3CACE /* PrivacyView.swift */; };
 		901A50D0ED3FE9D4C56E78A1 /* AppleLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF8FFF0EB781C16682C07A4 /* AppleLoginView.swift */; };
+		9ABF71743810714E06D28BDA /* QuadFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7590DE1B84601EB328ACF16 /* QuadFeed.swift */; };
 		9DD2B8A9A28AEB8D9A083614 /* AccountDeletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028225F95C2A10B0FF48D1BF /* AccountDeletionView.swift */; };
 		A2D41A2066414406CC23E87E /* SpotSpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39623125EAEE3B7B215DAB70 /* SpotSpaceView.swift */; };
 		A9EA2A05F0143E1C1A87E734 /* FloorPatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0B5E3F5345397207F667D7 /* FloorPatchTests.swift */; };
@@ -60,8 +63,10 @@
 		D612AF898F40919D06310D9A /* SpotTakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */; };
 		D79CA8E33F74EEC0EA8B0F12 /* SpotCaptureScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C55A9831AB4539D709A906E /* SpotCaptureScreens.swift */; };
 		D9217D1313E6CCC792017C3C /* CaptureStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8224FC68A72324C8F26CCC38 /* CaptureStream.swift */; };
+		E1F847C484BC4EA62EDCB3B2 /* QuadFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */; };
 		E6FD6C93A564F990FD6FC95E /* FloorCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */; };
 		E896FAAB55F922648B4D48E3 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B360091FC742F2D79BD19301 /* Models.swift */; };
+		EA425833FC9BA5D035462A7A /* QuadTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF60D31E104CED3A6B2B3624 /* QuadTheme.swift */; };
 		EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A5003EB90A1CA8A36386B /* InboxView.swift */; };
 		EB7EBE11E82A17E940F126AE /* SpotRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242AC5219A66CC1A88428954 /* SpotRecorder.swift */; };
 		ED032FCE1B368CA61D9D20B0 /* PhotoCaptureArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */; };
@@ -116,6 +121,7 @@
 		4AF199AE777B4244D9088869 /* RoomToursView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomToursView.swift; sourceTree = "<group>"; };
 		4BD8BDAB02688C12B03DB12F /* WideCamera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WideCamera.swift; sourceTree = "<group>"; };
 		5C9DAD67BC8F7860D816A7E6 /* CaptureStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStreamTests.swift; sourceTree = "<group>"; };
+		5EAE2BC26E39218F03D0A701 /* QuadTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadTabBar.swift; sourceTree = "<group>"; };
 		61E43454C554AEC16735B4F1 /* PhotoCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCapture.swift; sourceTree = "<group>"; };
 		6573B854B8FE5BC5D6DB8447 /* CaptureCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCoverageTests.swift; sourceTree = "<group>"; };
 		6B61A7AC3E840348287474FB /* PersonalDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalDeviceTests.swift; sourceTree = "<group>"; };
@@ -124,6 +130,7 @@
 		6FF97803B47C7A9DDF67B6B6 /* MarketplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceTests.swift; sourceTree = "<group>"; };
 		711B1D9F42613404EFADDB6D /* CuseSublets.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CuseSublets.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		79FC630E0209AFFDE73A2A50 /* CaptureStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStorageTests.swift; sourceTree = "<group>"; };
+		7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadFormatTests.swift; sourceTree = "<group>"; };
 		7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureArchive.swift; sourceTree = "<group>"; };
 		8224FC68A72324C8F26CCC38 /* CaptureStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStream.swift; sourceTree = "<group>"; };
 		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -131,6 +138,8 @@
 		8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorCoverageTests.swift; sourceTree = "<group>"; };
 		91A28CDBD8C225732CF86254 /* SpotTake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTake.swift; sourceTree = "<group>"; };
 		9486DB6DDDFCB3C5924CAD58 /* CuseSublets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CuseSublets.entitlements; sourceTree = "<group>"; };
+		A0018FA4C7F1B4D3329B5C5C /* QuadFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadFormat.swift; sourceTree = "<group>"; };
+		A7590DE1B84601EB328ACF16 /* QuadFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadFeed.swift; sourceTree = "<group>"; };
 		A79CF142313B036D31E63ED6 /* SpotSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotSession.swift; sourceTree = "<group>"; };
 		A8C0C82C344C7477234E34FF /* LICENSE-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE-Apache-2.0.txt"; sourceTree = "<group>"; };
 		ACAE3DA6881107AA07E3CACE /* PrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyView.swift; sourceTree = "<group>"; };
@@ -145,6 +154,7 @@
 		BF2C2F0E2B7DD5106607EC52 /* SpotPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotPreview.swift; sourceTree = "<group>"; };
 		C527909B5A83F43E0B1E6D77 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CEE85D48C8A4313993BC71A3 /* SpotTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTurn.swift; sourceTree = "<group>"; };
+		CF60D31E104CED3A6B2B3624 /* QuadTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadTheme.swift; sourceTree = "<group>"; };
 		D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureTests.swift; sourceTree = "<group>"; };
 		DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuseSubletsApp.swift; sourceTree = "<group>"; };
 		E144F33BD918D7C2FE5D6868 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -201,6 +211,10 @@
 				ACAE3DA6881107AA07E3CACE /* PrivacyView.swift */,
 				0BC8B3F801E16910756D3EE2 /* PropertyStore.swift */,
 				1C6AF50E586E5DB9CB14B61D /* PropertyViews.swift */,
+				A7590DE1B84601EB328ACF16 /* QuadFeed.swift */,
+				A0018FA4C7F1B4D3329B5C5C /* QuadFormat.swift */,
+				5EAE2BC26E39218F03D0A701 /* QuadTabBar.swift */,
+				CF60D31E104CED3A6B2B3624 /* QuadTheme.swift */,
 				AE25303FE8E1D06352E818DF /* RoomScansView.swift */,
 				2EFE54CDC1AF84DDE4EFB54B /* RoomSketch.swift */,
 				4AF199AE777B4244D9088869 /* RoomToursView.swift */,
@@ -234,6 +248,7 @@
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
 				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
 				F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */,
+				7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */,
 				15EFFA984CDDC942CFE18FE2 /* RoomSketchTests.swift */,
 				0B463D33EF6D54BE3740FC3A /* SessionLifecycleTests.swift */,
 				AE9373F8E892C1645E9D4C38 /* SpotOrientationTests.swift */,
@@ -410,6 +425,7 @@
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
 				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
 				D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */,
+				E1F847C484BC4EA62EDCB3B2 /* QuadFormatTests.swift in Sources */,
 				644F1A5E0601A7F346CD8165 /* RoomSketchTests.swift in Sources */,
 				FBA6EDB41ADF6EDB4CB78806 /* SessionLifecycleTests.swift in Sources */,
 				300D5880B02CDC57819A5755 /* SpotOrientationTests.swift in Sources */,
@@ -448,6 +464,10 @@
 				8E5CF358DEC748762C5BA0A7 /* PrivacyView.swift in Sources */,
 				CD78D11985648775153E92DC /* PropertyStore.swift in Sources */,
 				77304F791FF3ABC088F500B7 /* PropertyViews.swift in Sources */,
+				9ABF71743810714E06D28BDA /* QuadFeed.swift in Sources */,
+				2ACC9E2376C43F0B84D76AF4 /* QuadFormat.swift in Sources */,
+				7303504C73B18FF00EB03866 /* QuadTabBar.swift in Sources */,
+				EA425833FC9BA5D035462A7A /* QuadTheme.swift in Sources */,
 				4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */,
 				7B46865FC65E3AE94C0BC94B /* RoomSketch.swift in Sources */,
 				58ED9E8F0868FE7DD6A725FA /* RoomToursView.swift in Sources */,
@@ -546,7 +566,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
-				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
+				INFOPLIST_KEY_CFBundleDisplayName = Quad;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture room images and approximate layouts to create tours for your listing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -690,7 +710,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
-				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
+				INFOPLIST_KEY_CFBundleDisplayName = Quad;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture room images and approximate layouts to create tours for your listing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -760,7 +780,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_APIBaseURL = "https://app-cusesublets.chenagent.com";
-				INFOPLIST_KEY_CFBundleDisplayName = CuseSublets;
+				INFOPLIST_KEY_CFBundleDisplayName = Quad;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture room images and approximate layouts to create tours for your listing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

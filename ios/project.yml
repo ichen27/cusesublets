@@ -19,7 +19,7 @@ settings:
     MARKETING_VERSION: 0.1.0
     CURRENT_PROJECT_VERSION: 1
     GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_CFBundleDisplayName: CuseSublets
+    INFOPLIST_KEY_CFBundleDisplayName: Quad
     INFOPLIST_KEY_UILaunchScreen_Generation: YES
     INFOPLIST_KEY_NSCameraUsageDescription: Capture room images and approximate layouts to create tours for your listing.
     INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

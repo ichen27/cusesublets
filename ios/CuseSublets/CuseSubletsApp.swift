@@ -45,6 +45,8 @@ import SwiftUI
   @Published var showLogin = false
   @Published var error: String?
   @Published var tab = 0
+  /// Set by the Post button; the You tab opens the matching editor and clears it.
+  @Published var postIntent: PostIntent?
   @Published var conversationID: String?
   func refreshSession(reportErrors: Bool = true) async {
     let requestID = UUID()
@@ -117,8 +119,9 @@ import SwiftUI
       #if PERSONAL_DEVICE
         PropertiesView().tint(.cuseOrange)
       #else
+        // The redesign is drawn for light appearance only so far.
         RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
-          .tint(.cuseOrange).task(id: scenePhase) {
+          .tint(.quadOrangeDeep).preferredColorScheme(.light).task(id: scenePhase) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
               await state.refreshSession(reportErrors: false)
@@ -131,18 +134,24 @@ import SwiftUI
 }
 struct RootView: View {
   @EnvironmentObject var state: AppState
+  @State private var choosingPost = false
   var body: some View {
+    // The system tab bar is hidden; `QuadTabBar` floats over the bottom of every tab instead.
     TabView(selection: $state.tab) {
-      NavigationStack { BrowseView() }.tabItem { Label("Browse", systemImage: "square.grid.2x2") }
-        .tag(0)
-      NavigationStack { MatchesView() }.tabItem {
-        Label("Matches", systemImage: "arrow.left.arrow.right")
-      }.tag(1)
-      NavigationStack { InboxView() }.tabItem {
-        Label("Inbox", systemImage: "bubble.left.and.bubble.right")
-      }.tag(2)
-      NavigationStack { AccountView() }.tabItem { Label("You", systemImage: "person.crop.circle") }
-        .tag(3)
+      tab(.home) { BrowseView() }
+      tab(.matches) { MatchesView() }
+      tab(.inbox) { InboxView() }
+      tab(.you) { AccountView() }
+    }
+    .overlay(alignment: .bottom) {
+      QuadTabBar(selection: $state.tab) { if state.requireLogin() { choosingPost = true } }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+    .confirmationDialog(
+      "What would you like to post?", isPresented: $choosingPost, titleVisibility: .visible
+    ) {
+      Button("Sublease my place") { post(.listing) }
+      Button("Say what I'm looking for") { post(.search) }
     }
     .id(state.user?.id ?? "guest")
     .onReceive(
@@ -153,13 +162,27 @@ struct RootView: View {
     }
     .sheet(isPresented: $state.showLogin) { LoginView() }
     .alert(
-      "CuseSublets",
+      "Quad",
       isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })
     ) {
       Button("OK") { state.error = nil }
     } message: {
       Text(state.error ?? "")
     }
+  }
+  /// One tab's screens. The margin keeps the end of every scrolling screen above the floating
+  /// bar; a safe-area inset on the tab view or the stack does not reach the screens inside.
+  private func tab<Content: View>(_ tab: QuadTab, @ViewBuilder content: () -> Content)
+    -> some View
+  {
+    NavigationStack { content() }
+      .contentMargins(.bottom, QuadTabBar.reservedHeight, for: .scrollContent)
+      .toolbar(.hidden, for: .tabBar)
+      .tag(tab.rawValue)
+  }
+  private func post(_ intent: PostIntent) {
+    state.postIntent = intent
+    state.tab = QuadTab.you.rawValue
   }
 }
 struct LoginView: View {
@@ -342,8 +365,8 @@ struct RemoteImage: View {
     AsyncImage(url: path.flatMap { URL(string: $0, relativeTo: state.api.baseURL) }) { image in
       image.resizable().scaledToFill()
     } placeholder: {
-      Color.cuseCream.overlay(
-        Image(systemName: "house").font(.largeTitle).foregroundStyle(.secondary))
+      Color.quadPhoto.overlay(
+        Image(systemName: "photo").font(.title).foregroundStyle(Color.quadMuted))
     }.clipped()
   }
 }

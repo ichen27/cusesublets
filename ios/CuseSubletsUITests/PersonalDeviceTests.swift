@@ -10,6 +10,7 @@ import XCTest
       XCTAssertTrue(app.navigationBars["Properties"].waitForExistence(timeout: 20))
       XCTAssertTrue(app.buttons["Add a property"].firstMatch.exists)
       XCTAssertFalse(app.tabBars.firstMatch.exists)
+      XCTAssertFalse(app.otherElements["quad-tab-bar"].exists)
       // Adding a property leads to the pre-scan guide.
       app.buttons["Add a property"].firstMatch.tap()
       let field = app.textFields["Name or address"]
@@ -25,6 +26,7 @@ import XCTest
       app.buttons["Device capture check"].tap()
       XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 20))
       XCTAssertFalse(app.tabBars.firstMatch.exists)
+      XCTAssertFalse(app.otherElements["quad-tab-bar"].exists)
       XCTAssertFalse(app.buttons["Log in or create an account"].exists)
       let start = app.buttons["Start camera test"]
       for _ in 0..<4 {

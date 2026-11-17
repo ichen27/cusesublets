@@ -14,6 +14,7 @@ struct BrowseView: View {
   @State private var error = ""
   @State private var showMap = false
   @State private var showFilters = false
+  @State private var searching = false
   @State private var bounds: DiscoveryBounds?
   @State private var loading = false
   @State private var limit = 12
@@ -47,120 +48,148 @@ struct BrowseView: View {
     }
   }
   var body: some View {
+    // The header sits above the scroll view rather than in a top safe-area inset, which left an
+    // empty band the height of the header above the first post.
+    VStack(spacing: 0) {
+      header
+      feed
+    }
+    .background(Color.quadGround)
+    .toolbar(.hidden, for: .navigationBar)
+    .sheet(isPresented: $showFilters) {
+      DiscoveryFilterView(filters: $filters, order: $order, kind: kind) { bounds = nil }
+    }
+    .task(id: state.user?.id) {
+      order = state.user == nil ? "Latest" : "For you"
+      mine = []
+      mySearch = nil
+      await load()
+    }
+    .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
+  }
+  private var feed: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 20) {
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Find a sublet.\nList your place.").font(.largeTitle.bold())
-          Text("Homes and people around Syracuse.").foregroundStyle(.secondary)
-        }.padding(.top, 8)
-        Picker("Browse", selection: $kind) {
-          ForEach(["All", "Places", "People"], id: \.self) { Text($0) }
-        }.pickerStyle(.segmented)
-        Picker("Post order", selection: $order) {
-          Text("Latest").tag("Latest")
-          Text("For you").tag("For you")
-        }.pickerStyle(.segmented)
-        HStack {
-          Button("Filters", systemImage: "line.3.horizontal.decrease") { showFilters = true }
-          Spacer()
-          Button(showMap ? "Hide map" : "Show map", systemImage: "map") {
-            showMap.toggle()
-            if !showMap { bounds = nil }
-          }
-        }
+      LazyVStack(alignment: .leading, spacing: 14) {
         if order == "For you" && mySearch?.status != "active" && mine.isEmpty {
-          Text("Showing latest posts. Add a place or housing search in You to personalize matches.")
-            .font(.caption).foregroundStyle(.secondary)
+          Text("Showing the latest posts. Add a place or say what you're looking for to see what fits you first.")
+            .font(.footnote).foregroundStyle(Color.quadMuted)
         }
         if !filters.validDates {
           Text("Move out must be after move in.").foregroundStyle(.red)
         }
-        if showMap {
-          Map(
-            initialPosition: .region(
-              MKCoordinateRegion(
-                center: .init(latitude: 43.04, longitude: -76.13),
-                span: .init(latitudeDelta: 0.08, longitudeDelta: 0.1)))
-          ) {
-            if kind != "People" {
-              ForEach(places) { l in
-                Annotation(l.title, coordinate: l.coordinate) {
-                  NavigationLink {
-                    ListingView(listing: l)
-                  } label: {
-                    Text(dollars(l.price)).font(.caption.bold()).padding(6)
-                      .background(.background, in: Capsule())
-                  }.accessibilityLabel("\(l.title), \(dollars(l.price)) per month")
-                }
-              }
-            }
-            if kind != "Places" {
-              ForEach(people) { person in
-                ForEach(person.areas) { area in
-                  MapPolygon(
-                    coordinates: area.points.map {
-                      CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
-                    }
-                  ).foregroundStyle(Color.cuseOrange.opacity(0.15))
-                    .stroke(Color.cuseOrange.opacity(0.5), lineWidth: 1)
-                }
-              }
-            }
-          }.onMapCameraChange(frequency: .onEnd) { context in
-            if showMap { bounds = DiscoveryBounds(context.region) }
-          }.frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 18))
-          Text("Move the map to filter places and people's desired areas.").font(.caption)
-        }
+        if showMap { map }
         if !error.isEmpty {
           Text(error).foregroundStyle(.red)
-          Button("Retry") { Task { await load() } }
+          Button("Retry") { Task { await load() } }.buttonStyle(.quadSecondary)
         }
-        if loading { ProgressView().frame(maxWidth: .infinity) }
-        Text("\(posts.count) posts" + (bounds == nil ? "" : " in this map area")).font(.caption)
+        if loading && posts.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 24) }
         ForEach(Array(posts.prefix(limit))) { post in
           switch post {
           case .listing(let listing):
-            NavigationLink {
-              ListingView(listing: listing)
-            } label: {
-              ListingCard(listing: listing)
-            }.buttonStyle(.plain)
+            QuadListingCard(listing: listing, fits: post.fits(search: mySearch, listings: mine))
           case .search(let search):
-            NavigationLink {
-              SearchDetailView(search: search)
-            } label: {
-              SearchCard(search: search)
-            }.buttonStyle(.plain)
+            QuadSearchCard(search: search, fits: post.fits(search: mySearch, listings: mine))
           }
         }
-        if posts.count > limit { Button("More posts") { limit += 12 } }
+        if posts.count > limit {
+          Button("More posts") { limit += 12 }.buttonStyle(QuadSecondaryButtonStyle(wide: true))
+        }
         if !loading && error.isEmpty && posts.isEmpty {
           EmptyState(
             title: "No posts match", text: "Adjust your filters or explore a wider map area.")
         }
-      }.padding()
-    }.background(Color.cuseCream.opacity(0.45))
-      .navigationTitle("CuseSublets").navigationBarTitleDisplayMode(.inline)
-      .searchable(text: $filters.query, prompt: "Neighborhood, home or person")
-      .toolbar {
+      }
+      .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 16)
+    }
+    .refreshable { await load() }
+  }
+  /// The app's name, search and filters, and the row that chooses what the feed shows.
+  private var header: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        QuadLogo()
+        Text("Quad").font(.title2.weight(.heavy)).foregroundStyle(Color.quadInk)
+          .accessibilityAddTraits(.isHeader)
+        Spacer()
         Button {
-          state.tab = 3
+          searching.toggle()
+          if !searching { filters.query = "" }
         } label: {
-          Image(systemName: "plus.circle.fill")
+          Image(systemName: searching ? "xmark" : "magnifyingglass")
         }
-        .accessibilityLabel("Post a place or housing search")
+        .buttonStyle(.quadIcon).accessibilityLabel(searching ? "Close search" : "Search")
+        Button {
+          showFilters = true
+        } label: {
+          Image(systemName: "slider.horizontal.3")
+        }
+        .buttonStyle(.quadIcon).accessibilityLabel("Filters")
       }
-      .sheet(isPresented: $showFilters) {
-        DiscoveryFilterView(filters: $filters, kind: kind) { bounds = nil }
+      if searching {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass").foregroundStyle(Color.quadMuted)
+          TextField("Neighborhood, home or person", text: $filters.query)
+            .textInputAutocapitalization(.never).autocorrectionDisabled()
+            .submitLabel(.search)
+        }
+        .padding(.horizontal, 14).frame(minHeight: 46)
+        .background(.white, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.quadOrange, lineWidth: 2))
       }
-      .task(id: state.user?.id) {
-        order = state.user == nil ? "Latest" : "For you"
-        mine = []
-        mySearch = nil
-        await load()
-      }
-      .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
-      .refreshable { await load() }
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 8) {
+          QuadFilterChip(title: order, selected: kind == "All") { kind = "All" }
+          QuadFilterChip(title: "Places", selected: kind == "Places") { kind = "Places" }
+          QuadFilterChip(title: "People", selected: kind == "People") { kind = "People" }
+          QuadFilterChip(title: "Map", symbol: "map", selected: showMap) {
+            showMap.toggle()
+            if !showMap { bounds = nil }
+          }
+        }
+        .padding(.vertical, 2)
+      }.quadSidewaysScroll()
+    }
+    .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
+    .background(Color.quadGround)
+  }
+  private var map: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Map(
+        initialPosition: .region(
+          MKCoordinateRegion(
+            center: .init(latitude: 43.04, longitude: -76.13),
+            span: .init(latitudeDelta: 0.08, longitudeDelta: 0.1)))
+      ) {
+        if kind != "People" {
+          ForEach(places) { l in
+            Annotation(l.title, coordinate: l.coordinate) {
+              NavigationLink {
+                ListingView(listing: l)
+              } label: {
+                QuadChip(text: dollars(l.price), kind: .price)
+              }.accessibilityLabel("\(l.title), \(dollars(l.price)) per month")
+            }
+          }
+        }
+        if kind != "Places" {
+          ForEach(people) { person in
+            ForEach(person.areas) { area in
+              MapPolygon(
+                coordinates: area.points.map {
+                  CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
+                }
+              ).foregroundStyle(Color.quadOrange.opacity(0.15))
+                .stroke(Color.quadOrange.opacity(0.5), lineWidth: 1)
+            }
+          }
+        }
+      }.onMapCameraChange(frequency: .onEnd) { context in
+        if showMap { bounds = DiscoveryBounds(context.region) }
+      }.frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+      Text(
+        "\(posts.count) posts in this map area. Move the map to filter places and the areas people want."
+      ).font(.footnote).foregroundStyle(Color.quadMuted)
+    }
   }
   func load() async {
     let request = UUID()
@@ -195,11 +224,16 @@ struct BrowseView: View {
 struct DiscoveryFilterView: View {
   @Environment(\.dismiss) private var dismiss
   @Binding var filters: DiscoveryFilters
+  @Binding var order: String
   let kind: String
   let resetMap: () -> Void
   var body: some View {
     NavigationStack {
       Form {
+        Picker("Show first", selection: $order) {
+          Text("What fits you").tag("For you")
+          Text("The latest").tag("Latest")
+        }
         Picker("Monthly budget", selection: $filters.maxPrice) {
           Text("Any budget").tag(nil as Double?)
           ForEach([700.0, 900, 1200, 1600, 2200, 3000, 5000], id: \.self) {

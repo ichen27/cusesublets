@@ -1,6 +1,6 @@
 # CuseSublets for iPhone
 
-Native iPhone client for the existing CuseSublets marketplace, with RoomPlan capture and private-to-public room layouts. This is a development preview with simulator validation, not a released App Store app. See [scope and release boundaries](../docs/mobile/iphone-plan.md).
+Native iPhone client for the existing CuseSublets marketplace, with RoomPlan capture and private-to-public room layouts. The app is being redesigned and shows on the home screen as **Quad**; see [the redesign notes](../docs/mobile/quad-redesign.md) for the look, what is rebuilt and what is still in the old style. This is a development preview with simulator validation, not a released App Store app. See [scope and release boundaries](../docs/mobile/iphone-plan.md).
 
 ## Prerequisites and build
 
@@ -57,8 +57,8 @@ The UI tests create synthetic accounts and publish synthetic listings only on po
 
 ## Try it
 
-1. Browse places and people anonymously; open a listing, profile, map or existing tour.
-2. Create a test account or log in. Use You to create/resume a private listing or housing-search draft.
+1. Browse places and people anonymously on the Home tab; open a listing, profile, map or existing tour.
+2. Create a test account or log in. Use the Post button in the tab bar, or You, to create/resume a private listing or housing-search draft.
 3. Publish a place, add media/check evidence, and open room layouts. Capture is disabled on unsupported hardware.
 4. On a supported phone, scan a room, inspect the local result, name it and upload privately. Publish it only after review; check the same listing on the website.
 5. Use Matches to start a conversation. Messages, shared documents and negotiation use the existing participant permissions.
