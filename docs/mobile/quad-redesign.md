@@ -157,7 +157,7 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 17 November 2026, iPhone 17 simulator, after the profile was rebuilt: 226 unit tests and 17 marketplace interface tests passed against the normal local server, and the capture app's configuration built. Not rerun after the profile change: the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips); both passed on the commit before it. The interface tests were also run against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`), but that run does not count: the Mac mini's internal disk filled while it ran. In it 12 tests passed first time, two passed on the retry and three signed-out tests failed twice. The 14 tests from before the profile change had passed against the slow server on the commit before.
+Last run on the Mac mini, 17 November 2026, iPhone 17 simulator, after the profile was rebuilt: 226 unit tests, 17 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed. The 17 interface tests also passed against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`), with no test retried.
 
 ### What hosted CI found
 
