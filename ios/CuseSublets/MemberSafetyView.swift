@@ -23,9 +23,9 @@ struct MemberSafetyActions: View {
       VStack(alignment: .leading, spacing: 10) {
         HStack {
           Button(blocked ? "Unblock member" : "Block member", role: blocked ? nil : .destructive) {
-            if state.requireLogin() { confirmBlock = true }
+            Task { if await state.signedInOrAsk() { confirmBlock = true } }
           }
-          Button("Report member") { if state.requireLogin() { reporting = true } }
+          Button("Report member") { Task { if await state.signedInOrAsk() { reporting = true } } }
         }.disabled(busy)
         if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
         if !notice.isEmpty { Text(notice).font(.callout) }

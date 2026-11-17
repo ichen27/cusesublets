@@ -57,7 +57,9 @@ struct MatchesView: View {
 
   var body: some View {
     Group {
-      if state.user == nil {
+      if state.checkingSavedSession {
+        CheckingSessionView()
+      } else if state.user == nil {
         message(
           symbol: "person.2", title: "Find your fit",
           text:

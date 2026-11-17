@@ -93,15 +93,27 @@ import SwiftUI
     clearAccount()
     error = warning
   }
-  func requireLogin() -> Bool {
+  private func requireLogin() -> Bool {
     if user == nil {
       showLogin = true
       return false
     }
     return true
   }
+  /// The app has just opened with a saved session and the server has not yet said whose it is.
+  /// Until it does, nobody is known to be signed in, and nobody is known to be a guest.
+  var checkingSavedSession: Bool { user == nil && loading && api.hasStoredSession }
+  /// Whether someone is signed in; a guest is shown the login sheet. Just after the app opens
+  /// a saved session is still being checked, and this waits for that answer: asking at once
+  /// would show a signed-in person the login sheet and then drop what they tapped.
+  func signedInOrAsk() async -> Bool {
+    if checkingSavedSession {
+      for await checking in $loading.values where !checking { break }
+    }
+    return requireLogin()
+  }
   func contact(listingID: String, searchID: String? = nil) async {
-    guard requireLogin() else { return }
+    guard await signedInOrAsk() else { return }
     do {
       var body: [String: Any] = ["listingId": listingID]
       if let searchID { body["requestId"] = searchID }
@@ -147,7 +159,9 @@ struct RootView: View {
     }
     .overlay(alignment: .bottom) {
       if state.screensHidingTabBar == 0 {
-        QuadTabBar(selection: $state.tab) { if state.requireLogin() { choosingPost = true } }
+        QuadTabBar(selection: $state.tab) {
+          Task { if await state.signedInOrAsk() { choosingPost = true } }
+        }
           .ignoresSafeArea(.keyboard, edges: .bottom)
       }
     }
@@ -187,6 +201,20 @@ struct RootView: View {
   private func post(_ intent: PostIntent) {
     state.postIntent = intent
     state.tab = QuadTab.you.rawValue
+  }
+}
+/// Shown in place of a tab's guest screen while a saved session is still being checked, so a
+/// signed-in person opening the app is not first told to log in.
+struct CheckingSessionView: View {
+  var body: some View {
+    VStack(spacing: 12) {
+      ProgressView()
+      Text("Checking your account").font(.subheadline.weight(.semibold))
+        .foregroundStyle(Color.quadMuted)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("checking-session")
   }
 }
 struct LoginView: View {

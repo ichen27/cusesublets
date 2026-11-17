@@ -346,7 +346,7 @@ struct ListingView: View {
             comments
             if !own {
               Button("Report listing", role: .destructive) {
-                if state.requireLogin() { report = true }
+                Task { if await state.signedInOrAsk() { report = true } }
               }
               .font(.subheadline.weight(.bold)).frame(minHeight: 44)
             }
@@ -663,7 +663,7 @@ struct SearchDetailView: View {
             }
           }
           Button("Report housing search", role: .destructive) {
-            if state.requireLogin() { report = true }
+            Task { if await state.signedInOrAsk() { report = true } }
           }
         }
       }.padding()

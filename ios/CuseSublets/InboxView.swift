@@ -9,7 +9,9 @@ struct InboxView: View {
   @State private var loading = false
   var body: some View {
     Group {
-      if state.user == nil {
+      if state.checkingSavedSession {
+        CheckingSessionView()
+      } else if state.user == nil {
         VStack {
           EmptyState(
             title: "Your conversations",

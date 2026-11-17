@@ -77,6 +77,8 @@ struct AccountView: View {
           }
           if !error.isEmpty { Text(error).foregroundStyle(.red) }
         }
+      } else if state.checkingSavedSession {
+        CheckingSessionView()
       } else {
         ScrollView {
           VStack(spacing: 20) {

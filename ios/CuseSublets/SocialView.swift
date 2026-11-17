@@ -77,7 +77,7 @@ struct SocialView: View {
                   }
                 }
               } else {
-                Button("Report") { if state.requireLogin() { reportID = c.id } }
+                Button("Report") { Task { if await state.signedInOrAsk() { reportID = c.id } } }
               }
             }.font(.body).disabled(busy)
           }
@@ -157,8 +157,8 @@ struct SocialView: View {
     }
   }
   func perform(_ operation: @escaping () async throws -> Void) {
-    guard state.requireLogin() else { return }
     Task {
+      guard await state.signedInOrAsk() else { return }
       busy = true
       defer { busy = false }
       do {
