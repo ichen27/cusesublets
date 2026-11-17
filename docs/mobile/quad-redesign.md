@@ -12,7 +12,8 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | Home feed | Built (`BrowseView.swift`, `QuadFeed.swift`) |
 | A sublease's page | Built (`ListingView` in `BrowseView.swift`) |
 | Listing a place in five steps, with photos, a scan step and checks | Built (`ListingFlow.swift`, `ListingSteps.swift`) |
-| Matches, profiles, Inbox and chat, You | Old style, under the new tab bar |
+| Matches, one at a time | Built (`MatchesView.swift`, `MatchDeck.swift`) |
+| Profiles, Inbox and chat, You | Old style, under the new tab bar |
 | Sign-up questions | Not built |
 | Scan and tour screens in the new colours | Not built |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
@@ -85,6 +86,32 @@ The "Scan now" and "4 spots saved" pictures were made by forcing those states in
 
 Interface tests find the tabs by identifier: `tab-home`, `tab-matches`, `tab-post`, `tab-inbox`, `tab-you`.
 
+## Matches
+
+Matches shows one match at a time for one of the signed-in person's plans: their housing search, or one of their published places. A chip names the plan and, when there is more than one, switches between them.
+
+- **For a search**, the card is a place: photo, rent, a "360° tour" chip when a published tour is ready, title, neighborhood, the stay, and the person subleasing with what staff have checked.
+- **For a place**, the card is a person who is looking: name, ID check, their introduction, budget, dates and areas.
+- **Why it fits.** Each card lists the reasons with the person's own numbers in them, such as "Inside your $1,000 budget" or "Your place is in Sam's Westcott area". The server alone decides whether a place and a search match. The phone only words the reasons, from the place and the search it already has; without both it shows the server's plainer wording.
+- **Three actions.** Pass, Save for later (a private save, listed under Saved posts in You) and Message (opens the conversation in the Inbox). Each moves on to the next match. Dragging the card left passes and dragging it right saves; a label on the card says which before the finger lifts.
+- **Going back.** An arrow in the header brings back the last match. After the last one, "Start again" shows them all from the top.
+
+What has been seen is remembered on the phone, for each person and each plan, so the deck picks up where it was left. The server does not record it: another device starts from the top, and passing tells nobody anything. Deleting an account removes that person's list from the phone.
+
+The parts of the card that open another screen respond to a tap and are deliberately not buttons. The card follows a dragging finger, and a button under that finger treats the lift as a press, which opened the place at the end of every swipe.
+
+The deck, the swipe threshold and the wording have no interface in them and live in `MatchDeck.swift`, with tests in `MatchDeckTests.swift`.
+
+Known limits:
+
+- Dragging right to save was not in the agreed mockup, which had buttons only.
+- The mockup named a building and a walk to campus on the card. There are no building records, and the app does not read a walk time for a place, so the card shows the neighborhood.
+- The card shows the first photo only. The rest are on the place's page.
+- The server returns at most 50 matches for a plan.
+- A person's profile and what they are looking for still open in the old style.
+
+![Matches: a place that fits a search, a person who fits a place, the end of the deck, and no plans yet](screenshots/quad-matches.jpg)
+
 ## Checking it
 
 ```sh
@@ -96,13 +123,14 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 183 unit tests, 10 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed.
+Last run on the Mac mini, 16 November 2026, iPhone 17 simulator: 203 unit tests, 14 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed.
 
 What that does not cover:
 
 - Nothing here has been run on a physical iPhone.
 - The 360° button on a sublease's page has not been seen with a real tour, because the local test data has none.
 - In the listing steps, scanning and uploading a scan have not been run. A simulator cannot scan and the local server builds no tours. The steps open the same capture screen as the standalone capture app, which has been used on a phone. Sending a scan from the marketplace app to a server that builds tours has not been run anywhere yet, here or from the tours page; the code that does it was moved into `SpotTourUpload` so both share it, without a test of its own.
+- Matches were run with two seeded places and one seeded person. A long deck, a place with a real tour, and how the drag feels under a finger have not been tried.
 - Choosing photos from the library was checked once by hand-driven automation in the simulator (two photos picked, uploaded and shown on the published page). No committed test covers it, because the system photo picker is not reliable to drive in CI.
 
 ![The home feed, signed out and signed in, the Post choices and the You tab](screenshots/quad-home-feed.jpg)

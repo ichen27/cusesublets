@@ -187,6 +187,7 @@ extension AppState {
         clearDeletedAccount()
       }
     }
+    MatchSeenStore().forget(user: receipt.ownerId)
     // Read only owner identifiers, so partially written capture manifests do not prevent cleanup.
     let fm = FileManager.default
     let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

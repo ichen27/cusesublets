@@ -206,6 +206,121 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Step 3 of 5 · Photos"].exists)
     skipToChecksAndPublish(in: app)
   }
+  @MainActor func testMatchesShowOneAtATimeWithPassBackAndStartAgain() async throws {
+    continueAfterFailure = false
+    let seeker = try await seedMember(name: "Sam Seeker")
+    let spot = freshSpot()
+    try await seedSearch(for: seeker, around: spot)
+    // The cheaper place ranks first, so the order of the deck is known.
+    let first = try await seedListing(
+      for: try await seedMember(name: "Jamie Host"), price: 700, at: spot)
+    let second = try await seedListing(
+      for: try await seedMember(name: "Riley Host"), price: 800, at: spot)
+    let app = launchApp(session: seeker.cookie)
+    app.buttons["tab-matches"].tap()
+    let position = app.staticTexts["match-position"]
+    XCTAssertTrue(position.waitForExistence(timeout: 20))
+    XCTAssertEqual(position.label, "1 of 2 that fit")
+    XCTAssertTrue(matchCard(first, in: app).exists)
+    XCTAssertFalse(matchCard(second, in: app).exists, "Only one match shows at a time")
+    XCTAssertTrue(app.staticTexts["For your search"].exists)
+    XCTAssertTrue(app.staticTexts["Why it fits your search"].exists)
+    XCTAssertTrue(app.staticTexts["Inside your $1,000 budget"].exists)
+    XCTAssertTrue(app.staticTexts["In your Westcott area"].exists)
+    XCTAssertTrue(app.buttons["Message Jamie"].exists)
+    attach(app, "Matches: a place that fits")
+
+    app.buttons["Pass"].tap()
+    XCTAssertTrue(matchCard(second, in: app).waitForExistence(timeout: 5))
+    XCTAssertEqual(position.label, "2 of 2 that fit")
+    XCTAssertTrue(app.buttons["Message Riley"].exists)
+
+    app.buttons["Back to the last match"].tap()
+    XCTAssertTrue(matchCard(first, in: app).waitForExistence(timeout: 5))
+    XCTAssertEqual(position.label, "1 of 2 that fit")
+
+    // Dragging the card off to the left passes on it too.
+    // Lifting the finger after a drag must not count as a tap that opens the place.
+    let card = matchCard(first, in: app)
+    card.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).press(
+      forDuration: 0.1,
+      thenDragTo: card.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)))
+    XCTAssertTrue(matchCard(second, in: app).waitForExistence(timeout: 5))
+    app.buttons["Pass"].tap()
+    XCTAssertTrue(app.staticTexts["You've seen all 2"].waitForExistence(timeout: 5))
+    attach(app, "Matches: seen them all")
+    app.buttons["Start again"].tap()
+    XCTAssertTrue(matchCard(first, in: app).waitForExistence(timeout: 5))
+
+    // A tap opens the place, and coming back leaves the deck where it was.
+    matchCard(first, in: app).tap()
+    XCTAssertTrue(app.otherElements["listing-price-bar"].waitForExistence(timeout: 10))
+    app.buttons["Back"].tap()
+    XCTAssertTrue(position.waitForExistence(timeout: 10))
+    XCTAssertEqual(position.label, "1 of 2 that fit")
+  }
+  @MainActor func testASubleaserSeesPeopleWhoseSearchFitsTheirPlace() async throws {
+    continueAfterFailure = false
+    let spot = freshSpot()
+    let host = try await seedMember(name: "Harper Host")
+    let place = try await seedListing(for: host, price: 800, at: spot)
+    try await seedSearch(for: try await seedMember(name: "Sam Seeker"), around: spot)
+    let app = launchApp(session: host.cookie)
+    app.buttons["tab-matches"].tap()
+    let position = app.staticTexts["match-position"]
+    XCTAssertTrue(position.waitForExistence(timeout: 20))
+    XCTAssertEqual(position.label, "1 of 1 that fits")
+    XCTAssertTrue(app.staticTexts["For " + place].exists)
+    XCTAssertTrue(matchCard("Sam Seeker", in: app).exists)
+    XCTAssertTrue(app.staticTexts["Why your place fits"].exists)
+    XCTAssertTrue(app.staticTexts["Your rent is inside Sam's $1,000 budget"].exists)
+    attach(app, "Matches: a person who fits")
+    app.buttons["Message Sam"].tap()
+    XCTAssertTrue(
+      app.navigationBars["Sam Seeker"].waitForExistence(timeout: 15),
+      "Messaging should open the conversation in the Inbox")
+  }
+  @MainActor func testSavingOrMessagingAMatchMovesTheDeckOn() async throws {
+    continueAfterFailure = false
+    let seeker = try await seedMember(name: "Sam Seeker")
+    let spot = freshSpot()
+    try await seedSearch(for: seeker, around: spot)
+    let first = try await seedListing(
+      for: try await seedMember(name: "Jamie Host"), price: 700, at: spot)
+    let second = try await seedListing(
+      for: try await seedMember(name: "Riley Host"), price: 800, at: spot)
+    let app = launchApp(session: seeker.cookie)
+    app.buttons["tab-matches"].tap()
+    XCTAssertTrue(matchCard(first, in: app).waitForExistence(timeout: 20))
+    app.buttons["Save for later"].tap()
+    XCTAssertTrue(matchCard(second, in: app).waitForExistence(timeout: 10))
+    XCTAssertEqual(
+      app.staticTexts["match-notice"].label, "Saved. It is under Saved posts in You.")
+
+    app.buttons["Message Riley"].tap()
+    XCTAssertTrue(
+      app.navigationBars["Riley Host"].waitForExistence(timeout: 15),
+      "Messaging should open the conversation in the Inbox")
+    app.buttons["tab-matches"].tap()
+    XCTAssertTrue(app.staticTexts["You've seen all 2"].waitForExistence(timeout: 10))
+
+    // What was seen is remembered when the app is opened again.
+    app.terminate()
+    let again = launchApp(session: seeker.cookie)
+    again.buttons["tab-matches"].tap()
+    XCTAssertTrue(again.staticTexts["You've seen all 2"].waitForExistence(timeout: 20))
+  }
+  @MainActor func testMatchesWithoutAPlanOfferBothWaysToStart() async throws {
+    continueAfterFailure = false
+    let member = try await seedMember()
+    let app = launchApp(session: member.cookie)
+    app.buttons["tab-matches"].tap()
+    XCTAssertTrue(app.staticTexts["Matches start with your plans"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["Sublease my place"].exists)
+    attach(app, "Matches: no plans yet")
+    app.buttons["Say what I'm looking for"].tap()
+    XCTAssertTrue(app.navigationBars["Housing search"].waitForExistence(timeout: 15))
+  }
   @MainActor func testListingCommentPostsAndEdits() async throws {
     continueAfterFailure = false
     let member = try await seedMember()
@@ -438,8 +553,7 @@ final class MarketplaceTests: XCTestCase {
       "\(path) returned \(http.statusCode): \(String(decoding: data, as: UTF8.self))")
     return http
   }
-  private func seedMember() async throws -> SeededMember {
-    let name = "Seeded UI Test"
+  private func seedMember(name: String = "Seeded UI Test") async throws -> SeededMember {
     let response = try await post(
       "/api/auth/signup",
       [
@@ -451,24 +565,64 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(cookie.hasPrefix("cuse_password_session="), "Unexpected session cookie")
     return SeededMember(name: name, cookie: cookie)
   }
-  private func seedListing(for member: SeededMember) async throws -> String {
-    let title = "Seeded listing \(UUID().uuidString.prefix(6))"
-    let day: TimeInterval = 86_400
+  /// A day some days from now, as the server writes days.
+  private func day(_ offset: Int) -> String {
     let format = DateFormatter()
     format.calendar = Calendar(identifier: .gregorian)
     format.locale = Locale(identifier: "en_US_POSIX")
     format.timeZone = TimeZone(identifier: "America/New_York")
     format.dateFormat = "yyyy-MM-dd"
+    return format.string(from: Date().addingTimeInterval(Double(offset) * 86_400))
+  }
+  private typealias Spot = (lat: Double, lng: Double)
+  /// A spot of its own in the service area. Matching goes by area, so a test that counts
+  /// matches puts its places where no other test, and no earlier run, has put one. The server
+  /// keeps a place's pin to three decimals, so the spot is chosen on that grid.
+  private func freshSpot() -> Spot {
+    (
+      Double(Int.random(in: 43_060...43_120)) / 1000,
+      -Double(Int.random(in: 76_050...76_250)) / 1000
+    )
+  }
+  private func seedListing(
+    for member: SeededMember, price: Int = 800, at spot: Spot = (43.04, -76.13)
+  ) async throws -> String {
+    let title = "Seeded listing \(UUID().uuidString.prefix(6))"
     let body: [String: Any] = [
       "title": title, "neighborhood": "Westcott", "address": "Approximate synthetic test area",
-      "price": 800, "beds": 1, "baths": 1, "roomType": "Private room",
-      "startDate": format.string(from: Date().addingTimeInterval(30 * day)),
-      "endDate": format.string(from: Date().addingTimeInterval(180 * day)),
+      "price": price, "beds": 1, "baths": 1, "roomType": "Private room",
+      "startDate": day(30), "endDate": day(180),
       "description": "Synthetic simulator listing only. This is not an available property.",
-      "amenities": [String](), "images": [String](), "lat": 43.04, "lng": -76.13,
+      "amenities": [String](), "images": [String](), "lat": spot.lat, "lng": spot.lng,
     ]
     _ = try await post("/api/listings", body, cookie: member.cookie)
     return title
+  }
+  /// An active housing search that a seeded listing at `spot` fits: its one small area
+  /// surrounds the spot, its dates sit inside the listing's and its budget is above the rent.
+  private func seedSearch(for member: SeededMember, around spot: Spot) async throws {
+    let reach = 0.0004
+    let body: [String: Any] = [
+      "startDate": day(40), "endDate": day(120), "maxBudget": 1000, "roomType": "Any",
+      "requiredAmenities": [String](), "preferredAmenities": [String](),
+      "introduction": "Synthetic simulator search only.", "status": "active",
+      "areas": [
+        [
+          "id": "seeded", "label": "Westcott",
+          "points": [
+            ["lat": spot.lat - reach, "lng": spot.lng - reach],
+            ["lat": spot.lat + reach, "lng": spot.lng - reach],
+            ["lat": spot.lat + reach, "lng": spot.lng + reach],
+            ["lat": spot.lat - reach, "lng": spot.lng + reach],
+          ],
+        ]
+      ],
+    ]
+    _ = try await post("/api/my-search", body, cookie: member.cookie)
+  }
+  /// The card on the Matches screen whose label mentions `text`.
+  @MainActor private func matchCard(_ text: String, in app: XCUIApplication) -> XCUIElement {
+    app.buttons.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
   @MainActor private func openOwnListing(_ title: String, in app: XCUIApplication) {
     app.buttons["tab-you"].tap()

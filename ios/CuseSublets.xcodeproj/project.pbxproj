@@ -27,6 +27,7 @@
 		3B7EC5B3D6B17D6144F993FC /* CuseSubletsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */; };
 		40C32ECCDEE8D0AB20BFC179 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2598614F789BB2443591BACE /* Discovery.swift */; };
 		4706FDFD4D63B793043F5525 /* SpotSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79CF142313B036D31E63ED6 /* SpotSession.swift */; };
+		48E1D59AF4B38DFBD6B56A6C /* MatchDeckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE0FFCC85A96B5D742E8E47 /* MatchDeckTests.swift */; };
 		492808B1FD1E262B9134CAE0 /* SocialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE94AA320384886E84A6B136 /* SocialView.swift */; };
 		4B3C27D8F80FF657ED89A199 /* LICENSE-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = A8C0C82C344C7477234E34FF /* LICENSE-Apache-2.0.txt */; };
 		4B4924371C1A143975CDB071 /* RoomScansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE25303FE8E1D06352E818DF /* RoomScansView.swift */; };
@@ -60,11 +61,13 @@
 		C1EDFF8E0D4C0FAD6EBF8698 /* FloorPatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5A40EF311DFF1A90A0E526 /* FloorPatch.swift */; };
 		C3504A6BF4856D310C10D71B /* CaptureCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6573B854B8FE5BC5D6DB8447 /* CaptureCoverageTests.swift */; };
 		CD78D11985648775153E92DC /* PropertyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC8B3F801E16910756D3EE2 /* PropertyStore.swift */; };
+		D05CE7BC7CB881D77D9F9648 /* MatchDeck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAA90720394C2F328581E5C /* MatchDeck.swift */; };
 		D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */; };
 		D33DCF5402936974034C9AF6 /* ListingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 614DBA8DCF7BB33285F7A7F9 /* ListingFlow.swift */; };
 		D612AF898F40919D06310D9A /* SpotTakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */; };
 		D79CA8E33F74EEC0EA8B0F12 /* SpotCaptureScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C55A9831AB4539D709A906E /* SpotCaptureScreens.swift */; };
 		D9217D1313E6CCC792017C3C /* CaptureStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8224FC68A72324C8F26CCC38 /* CaptureStream.swift */; };
+		DB250E2CAE977341E70B4D88 /* MatchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E075CD358830CD77585FAB23 /* MatchesView.swift */; };
 		E1F847C484BC4EA62EDCB3B2 /* QuadFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */; };
 		E6FD6C93A564F990FD6FC95E /* FloorCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */; };
 		E896FAAB55F922648B4D48E3 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B360091FC742F2D79BD19301 /* Models.swift */; };
@@ -116,6 +119,7 @@
 		2598614F789BB2443591BACE /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
 		25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemberSafetyView.swift; sourceTree = "<group>"; };
 		2732EDEDBEDAC07B6ADFD693 /* CaptureCoverage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCoverage.swift; sourceTree = "<group>"; };
+		2BE0FFCC85A96B5D742E8E47 /* MatchDeckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDeckTests.swift; sourceTree = "<group>"; };
 		2EFE54CDC1AF84DDE4EFB54B /* RoomSketch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomSketch.swift; sourceTree = "<group>"; };
 		30E7C5D1A4010A0774B5A5B3 /* SpotTakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTakeTests.swift; sourceTree = "<group>"; };
 		34400A81F415FE72E0616C7B /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
@@ -136,6 +140,7 @@
 		711B1D9F42613404EFADDB6D /* CuseSublets.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CuseSublets.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		79FC630E0209AFFDE73A2A50 /* CaptureStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStorageTests.swift; sourceTree = "<group>"; };
 		7A0DC5F9E15431DC5498C2A1 /* QuadFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuadFormatTests.swift; sourceTree = "<group>"; };
+		7AAA90720394C2F328581E5C /* MatchDeck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDeck.swift; sourceTree = "<group>"; };
 		7B1EF30552B00A647D077672 /* PhotoCaptureArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureArchive.swift; sourceTree = "<group>"; };
 		8224FC68A72324C8F26CCC38 /* CaptureStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStream.swift; sourceTree = "<group>"; };
 		8858D8C784F032D77A087771 /* CuseSubletsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CuseSubletsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -163,6 +168,7 @@
 		D1D88D76611051EA41BFF3E2 /* ListingStepsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListingStepsTests.swift; sourceTree = "<group>"; };
 		D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCaptureTests.swift; sourceTree = "<group>"; };
 		DB33C1E6A3EA7258DF946447 /* CuseSubletsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuseSubletsApp.swift; sourceTree = "<group>"; };
+		E075CD358830CD77585FAB23 /* MatchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchesView.swift; sourceTree = "<group>"; };
 		E144F33BD918D7C2FE5D6868 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		E9C318E0D74042DDAD6B7538 /* PhotoCapturePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCapturePolicy.swift; sourceTree = "<group>"; };
 		F22ED5B906F4E4A57C789894 /* SpotTurnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotTurnTests.swift; sourceTree = "<group>"; };
@@ -210,6 +216,8 @@
 				F6817F9190BF966336DFCF3A /* Info.plist */,
 				614DBA8DCF7BB33285F7A7F9 /* ListingFlow.swift */,
 				4681B6EF77C8BEAD8ACB24AF /* ListingSteps.swift */,
+				7AAA90720394C2F328581E5C /* MatchDeck.swift */,
+				E075CD358830CD77585FAB23 /* MatchesView.swift */,
 				25F2091E326ACD226F5EE3D9 /* MemberSafetyView.swift */,
 				B360091FC742F2D79BD19301 /* Models.swift */,
 				61E43454C554AEC16735B4F1 /* PhotoCapture.swift */,
@@ -254,6 +262,7 @@
 				8BEA2385CDB3E7187BC64957 /* FloorCoverageTests.swift */,
 				FE0B5E3F5345397207F667D7 /* FloorPatchTests.swift */,
 				D1D88D76611051EA41BFF3E2 /* ListingStepsTests.swift */,
+				2BE0FFCC85A96B5D742E8E47 /* MatchDeckTests.swift */,
 				34400A81F415FE72E0616C7B /* ModelsTests.swift */,
 				D84DC431ACC638CED66A527C /* PhotoCaptureTests.swift */,
 				F9633EDED85CDB4E758D2B4A /* PropertyStudioTests.swift */,
@@ -432,6 +441,7 @@
 				E6FD6C93A564F990FD6FC95E /* FloorCoverageTests.swift in Sources */,
 				A9EA2A05F0143E1C1A87E734 /* FloorPatchTests.swift in Sources */,
 				2B4A6DDEFD497D3C78DE322B /* ListingStepsTests.swift in Sources */,
+				48E1D59AF4B38DFBD6B56A6C /* MatchDeckTests.swift in Sources */,
 				B8311E81E636C28640995BD6 /* ModelsTests.swift in Sources */,
 				57B5410AC8457A98CDF873BE /* PhotoCaptureTests.swift in Sources */,
 				D33995B53E4E5242944D3200 /* PropertyStudioTests.swift in Sources */,
@@ -468,6 +478,8 @@
 				EA7EB5C7FE468ACFDFDA9C6D /* InboxView.swift in Sources */,
 				D33DCF5402936974034C9AF6 /* ListingFlow.swift in Sources */,
 				FA0C343A15C4763C5B7C5188 /* ListingSteps.swift in Sources */,
+				D05CE7BC7CB881D77D9F9648 /* MatchDeck.swift in Sources */,
+				DB250E2CAE977341E70B4D88 /* MatchesView.swift in Sources */,
 				68C2867E4804FF3C24E39266 /* MemberSafetyView.swift in Sources */,
 				E896FAAB55F922648B4D48E3 /* Models.swift in Sources */,
 				76A69514413F1774DF2BCDBA /* PhotoCapture.swift in Sources */,
