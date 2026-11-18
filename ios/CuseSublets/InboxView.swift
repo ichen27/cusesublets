@@ -562,7 +562,7 @@ struct OfferEditor: View {
             } catch { self.error = error.localizedDescription }
           }
         }.disabled(busy)
-      }.navigationTitle(counter == nil ? "Your offer" : "Counteroffer")
+      }.navigationTitle(counter == nil ? "Make an offer" : "Counteroffer")
         .navigationBarTitleDisplayMode(.inline).tint(.quadOrangeDeep)
         .toolbar { Button("Cancel") { dismiss() } }.onAppear {
         amount = String(counter?.amount ?? listing.price)

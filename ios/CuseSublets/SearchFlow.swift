@@ -37,7 +37,12 @@ struct SearchFlow: View {
             case .about: aboutStep
             }
           } else {
-            ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+            HStack(spacing: 10) {
+              ProgressView()
+              Text("Checking for answers you saved earlier").font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.quadMuted)
+            }
+            .padding(.top, 24).accessibilityElement(children: .combine)
           }
         }
         .padding(.horizontal, 20).padding(.bottom, 24)
@@ -307,10 +312,13 @@ struct SearchFlow: View {
   private func load() async {
     guard !loaded else { return }
     if let search {
+      // A saved search has all its answers already, so it can be changed at once.
       form = SearchForm(search: search)
       step = startAt
+      loaded = true
     }
-    // An unfinished search may be waiting from the website or an older version of the app.
+    // An unfinished search may be waiting from the website or an older version of the app. A new
+    // search waits for it, so answers are not typed and then replaced.
     if let saved: DraftResponse = try? await state.api.get("/api/drafts/search") {
       draftRevision = saved.revision
       if search == nil, let draft = saved.draft {

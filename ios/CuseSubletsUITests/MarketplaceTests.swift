@@ -412,7 +412,7 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(
       app.buttons.matching(NSPredicate(format: "label == %@", title + ", Published")).firstMatch
         .waitForExistence(timeout: 30), "Your place should be listed with its status")
-    XCTAssertTrue(app.buttons["Say what I'm looking for"].exists)
+    XCTAssertTrue(app.buttons["Say what I'm looking for"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.buttons["Saved posts"].exists)
     XCTAssertTrue(app.buttons["Log out"].exists)
     attach(app, "You")
@@ -420,6 +420,7 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["Edit profile & checks"].tap()
     XCTAssertTrue(app.staticTexts["Profile and checks"].waitForExistence(timeout: 30))
     let bio = app.descendants(matching: .any)["profile-bio"]
+    XCTAssertTrue(bio.waitForExistence(timeout: 30), "The profile never loaded")
     reveal(bio, in: app)
     enter("Synthetic test bio. Not a real person.", into: bio, in: app)
     reveal(app.buttons["Save profile"], in: app)
@@ -505,8 +506,8 @@ final class MarketplaceTests: XCTestCase {
     let sendOffer = app.buttons["Send offer"]
     XCTAssertTrue(sendOffer.waitForExistence(timeout: 30))
     sendOffer.tap()
-    XCTAssertTrue(app.staticTexts["Your offer"].waitForExistence(timeout: 30))
-    XCTAssertTrue(app.staticTexts["Waiting for Jamie"].exists)
+    XCTAssertTrue(app.staticTexts["Waiting for Jamie"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Your offer"].exists)
     XCTAssertTrue(labelled(beginning: "$950", in: app).exists)
     attach(app, "Conversation: my offer")
     app.buttons["Withdraw"].tap()
@@ -558,10 +559,14 @@ final class MarketplaceTests: XCTestCase {
 
     XCTAssertTrue(app.staticTexts["When do you need a place?"].waitForExistence(timeout: 30))
     XCTAssertTrue(app.staticTexts["Step 1 of 3 · Dates and budget"].exists)
+    // A new search first asks the server for answers saved earlier.
+    XCTAssertTrue(app.buttons["Summer"].waitForExistence(timeout: 30), "The steps never loaded")
     app.buttons["Summer"].tap()
     wait(for: app.buttons["Summer"], toBe: "isSelected == true", "Summer was not chosen")
     XCTAssertEqual(app.staticTexts["search-budget"].label, "$1,000")
-    XCTAssertTrue(app.staticTexts["search-fits"].exists)
+    XCTAssertTrue(
+      app.staticTexts["search-fits"].waitForExistence(timeout: 30),
+      "The count of places that fit never appeared")
     attach(app, "Looking: dates and budget")
     app.buttons["Continue"].tap()
 
@@ -609,7 +614,9 @@ final class MarketplaceTests: XCTestCase {
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Kind of place")).firstMatch
       .tap()
     XCTAssertTrue(app.staticTexts["What are you looking for?"].waitForExistence(timeout: 30))
-    XCTAssertTrue(app.buttons["Private room"].isSelected)
+    wait(
+      for: app.buttons["Private room"], toBe: "exists == true AND isSelected == true",
+      "The saved kind of place was not filled in")
     XCTAssertTrue(app.buttons["Anywhere in Syracuse"].isSelected)
   }
   @MainActor func testListingCommentPostsAndEdits() throws {

@@ -255,7 +255,23 @@ xcodebuild -project ios/CuseSublets.xcodeproj -scheme CuseSublets \
 
 The interface tests need the isolated local API described in `ios/README.md`.
 
-Last run on the Mac mini, 17 November 2026, iPhone 17 simulator, after the profile was rebuilt: 226 unit tests, 17 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed. The 17 interface tests also passed against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`), with no test retried.
+Last run on the Mac mini, 18 November 2026, iPhone 17 simulator, after the Inbox, the search steps, You and the scan screens were rebuilt: 264 unit tests, 20 marketplace interface tests, the capture app's interface test and the long journey test (`npm run ios:journey`, which CI skips) passed. The 20 interface tests also passed against a deliberately slow server (`tests/slow-api-proxy.py`, described in `ios/README.md`), with no test retried.
+
+### What the slow server and a shared local database found
+
+The first slow run of these screens failed three of the new tests, twice each. Each was a real gap:
+
+- **You filled in piece by piece.** It asked the server for your places, your search and your drafts one after another, so on a slow connection "What you're looking for" sat empty for seconds after your places appeared. It now asks for all three at once and shows "Loading" until they arrive.
+- **The search steps waited on the server even to change a saved search.** A saved search already has its answers; only a new one needs to ask for answers saved earlier. A saved search now opens at once.
+- **The offer form and the offer card had the same title.** A test waiting for "Your offer" found the form's title while the offer was still being sent. The form is now titled "Make an offer".
+- **The tours page claimed too early.** Before the server had answered, it said tours could not be built on this server. It now says "Loading tours" until it knows.
+
+Two more failures came from the local test database, not the app. The interface tests put their places at a random map spot and count the matches there:
+
+- A spot landed on the exact one an earlier run had used, so two leftover places showed up as extra matches.
+- After the spots were spread over the whole service area, one landed inside a large search that the server's own block test leaves behind.
+
+The tests now pick a spot that no listed place occupies and no existing search covers. Hosted CI starts from an empty database, so it had neither problem.
 
 ### What hosted CI found
 

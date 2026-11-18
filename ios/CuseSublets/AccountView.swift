@@ -124,11 +124,24 @@ struct AccountView: View {
         Button("Say what I'm looking for") { newSearch = true }.buttonStyle(.quadSecondary)
       }
       .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 22)
+    } else {
+      loading
     }
+  }
+
+  /// Shown where an answer from the server will go, so the page does not look finished early.
+  private var loading: some View {
+    HStack(spacing: 10) {
+      ProgressView()
+      Text("Loading").font(.subheadline.weight(.semibold)).foregroundStyle(Color.quadMuted)
+    }
+    .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 22)
+    .accessibilityElement(children: .combine)
   }
 
   private var places: some View {
     VStack(alignment: .leading, spacing: 10) {
+      if !loaded { loading }
       ForEach(mine) { place in
         NavigationLink {
           ListingManageView(listing: place)
@@ -298,11 +311,13 @@ struct AccountView: View {
   func load() async {
     guard state.user != nil else { return }
     do {
-      let l: ListingsResponse = try await state.api.get("/api/mine")
+      // Asked for together, so a slow connection is waited on once and the page fills in whole.
+      async let places: ListingsResponse = state.api.get("/api/mine")
+      async let own: MySearchResponse = state.api.get("/api/my-search")
+      async let unfinished: DraftsResponse = state.api.get("/api/drafts")
+      let (l, s, d) = try await (places, own, unfinished)
       mine = l.listings
-      let s: MySearchResponse = try await state.api.get("/api/my-search")
       search = s.search
-      let d: DraftsResponse = try await state.api.get("/api/drafts")
       drafts = d.drafts
       error = ""
     } catch { self.error = error.localizedDescription }

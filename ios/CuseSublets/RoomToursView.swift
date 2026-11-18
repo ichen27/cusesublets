@@ -104,6 +104,8 @@ struct RoomToursView: View {
   @Environment(\.dismiss) private var dismiss
   let listing: Listing
   @State private var tours: [RoomTour] = []
+  /// False until the server has said what tours there are and whether it can build more.
+  @State private var loaded = false
   @State private var enabled = false
   @State private var local: PhotoCaptureDraft?
   @State private var capture: PhotoCaptureDraft?
@@ -136,7 +138,15 @@ struct RoomToursView: View {
           "Stand in a few spots in each room and turn once at each. Viewers get a 360° look at every spot. Photos may show seams, and the 3D overview is rough. A tour does not check a place or its measurements."
         )
         .font(.subheadline).foregroundStyle(Color.quadMuted)
-        if owner { capturing }
+        if !loaded && error.isEmpty {
+          HStack(spacing: 10) {
+            ProgressView()
+            Text("Loading tours").font(.subheadline.weight(.semibold))
+              .foregroundStyle(Color.quadMuted)
+          }
+          .accessibilityElement(children: .combine)
+        }
+        if owner && loaded { capturing }
         if legacy {
           card {
             Text(
@@ -152,7 +162,7 @@ struct RoomToursView: View {
         }
         if let local { saved(local) }
         ForEach(tours) { tour in tourCard(tour) }
-        if tours.isEmpty && local == nil {
+        if loaded && tours.isEmpty && local == nil {
           Text("No tours shared yet.").font(.subheadline).foregroundStyle(Color.quadMuted)
         }
         if busy {
@@ -395,6 +405,7 @@ struct RoomToursView: View {
       let r: ToursResponse = try await state.api.get("/api/listings/\(listing.id)/tours")
       tours = r.tours
       enabled = r.captureEnabled
+      loaded = true
       error = ""
     } catch { self.error = error.localizedDescription }
   }
