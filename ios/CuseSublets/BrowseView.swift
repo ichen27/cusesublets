@@ -281,40 +281,6 @@ struct DiscoveryFilterView: View {
     }
   }
 }
-struct ListingCard: View {
-  let listing: Listing
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      RemoteImage(path: listing.images.first).frame(height: 205).clipped()
-      VStack(alignment: .leading, spacing: 7) {
-        HStack {
-          Text(dollars(listing.price) + " / month").font(.headline)
-          Spacer()
-          if listing.sample { StatusText(text: "Sample") }
-        }
-        Text(listing.title).font(.title3.bold())
-        Text("\(listing.neighborhood) · \(listing.roomType)").foregroundStyle(.secondary)
-        Text("\(listing.startDate) – \(listing.endDate)").font(.caption)
-        Text(listing.hostName).font(.subheadline)
-      }.padding([.horizontal, .bottom])
-    }.background(.background, in: RoundedRectangle(cornerRadius: 20)).clipShape(
-      RoundedRectangle(cornerRadius: 20))
-  }
-}
-struct SearchCard: View {
-  let search: HousingSearch
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Label(search.ownerName, systemImage: "person.crop.circle").font(.headline)
-      Text("Looking for \(search.roomType.lowercased())").font(.title3.bold())
-      Text("Up to \(dollars(search.maxBudget)) / month")
-      Text(search.areas.map(\.label).joined(separator: " · ")).foregroundStyle(.secondary)
-      Text(search.introduction).lineLimit(3)
-      Text("\(search.startDate) – \(search.endDate)").font(.caption)
-    }.frame(maxWidth: .infinity, alignment: .leading).padding().background(
-      .background, in: RoundedRectangle(cornerRadius: 20))
-  }
-}
 /// One sublease: photos and the 360° tour first, then the person, what has been checked, the
 /// details and the comments. Its own bar at the bottom carries the price and the way to reply.
 struct ListingView: View {
@@ -595,25 +561,38 @@ struct ListingView: View {
     tour = response?.tours.first { $0.status == "ready" && $0.published }
   }
 }
+/// The three things staff check for a place, each with where it stands.
 struct ChecksView: View {
   let identity: String
   let lease: String
   let permission: String
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("CuseSublets Checks").font(.headline)
-      check("Identity verified", identity)
-      check("Lease reviewed", lease)
-      check("Sublet permission reviewed", permission)
+    VStack(alignment: .leading, spacing: 10) {
+      Text("What staff have checked").font(.subheadline.weight(.heavy))
+      check("Your ID", identity)
+      check("The lease", lease)
+      check("Permission to sublet", permission)
       Text(
-        "Checks describe specific manual reviews. Room scans do not verify ownership or permission to sublet."
-      ).font(.caption).foregroundStyle(.secondary)
-    }.padding().background(Color.cuseCream, in: RoundedRectangle(cornerRadius: 16))
+        "Each check is a review by a person of one document. A scan or a tour does not show that a place is yours or that you may sublet it."
+      ).font(.footnote).foregroundStyle(Color.quadMuted)
+    }
+    .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 22)
   }
   func check(_ label: String, _ status: String) -> some View {
-    Label(
-      status == "verified" ? label : "\(label): \(status.replacingOccurrences(of:"_",with:" "))",
-      systemImage: status == "verified" ? "checkmark.circle.fill" : "circle"
-    ).font(.subheadline)
+    let done = status == "verified"
+    return HStack(spacing: 8) {
+      Image(systemName: done ? "checkmark.circle.fill" : "circle")
+        .foregroundStyle(done ? Color.quadGreen : Color.quadMuted).accessibilityHidden(true)
+      Text(done ? "\(label): checked" : "\(label): \(Self.words(status))")
+        .font(.subheadline.weight(.semibold))
+    }
+  }
+  /// A check's status in words. Anything that is not checked is said as it stands.
+  static func words(_ status: String) -> String {
+    switch status {
+    case "verified": return "checked"
+    case "pending": return "not checked yet"
+    default: return status.replacingOccurrences(of: "_", with: " ")
+    }
   }
 }

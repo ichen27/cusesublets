@@ -282,8 +282,11 @@ struct ListingEditor: View {
     } catch { self.error = error.localizedDescription }
   }
 }
+/// Your own place: its status, the way to its public page, its photos, tours and room
+/// layouts, and the private documents staff check.
 struct ListingManageView: View {
   @EnvironmentObject var state: AppState
+  @Environment(\.dismiss) private var dismiss
   let listing: Listing
   @State private var current: Listing?
   @State private var picking = false
@@ -295,46 +298,80 @@ struct ListingManageView: View {
   @State private var notice = ""
   var l: Listing { current ?? listing }
   var body: some View {
-    List {
-      Section {
-        Text(l.title).font(.title2.bold())
-        StatusText(text: l.status)
-        NavigationLink("View listing") { ListingView(listing: l) }
-        Button("Edit details") { editing = true }
-        if l.status == "approved" {
-          Button("Pause listing") { change("pause") }
-        } else if l.status == "paused" || l.status == "pending" {
-          Button("Publish listing") { change("publish") }
-          Button("Add photos, a scan and checks in steps") {
-            finishing = ListingFlowStart(id: UUID().uuidString, place: l)
+    ScrollView {
+      VStack(alignment: .leading, spacing: 18) {
+        HStack(spacing: 12) {
+          Button {
+            dismiss()
+          } label: {
+            Image(systemName: "chevron.left")
+          }
+          .buttonStyle(.quadIcon).accessibilityLabel("Back")
+          Text("Your place").font(.title2.weight(.heavy)).accessibilityAddTraits(.isHeader)
+        }
+        .padding(.top, 4)
+        summary
+        section("Photos and tours") {
+          rows {
+            Button {
+              kind = "media"
+              picking = true
+            } label: {
+              row("Upload photo or video", "photo.on.rectangle")
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            NavigationLink {
+              RoomToursView(listing: l)
+            } label: {
+              row("360° tours", "view.3d")
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            NavigationLink {
+              RoomScansView(listing: l)
+            } label: {
+              row("Room layouts", "square.split.bottomrightquarter")
+            }
+            .buttonStyle(.plain)
           }
         }
-      }
-      Section("Photos, video & room scans") {
-        Button("Upload photo or video") {
-          kind = "media"
-          picking = true
+        section("Checks") {
+          ChecksView(identity: l.hostIdentity, lease: l.leaseStatus, permission: l.permissionStatus)
+          rows {
+            Button {
+              kind = "lease"
+              picking = true
+            } label: {
+              row("Upload private lease evidence", "doc.text")
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            Button {
+              kind = "permission"
+              picking = true
+            } label: {
+              row("Upload private sublet permission", "signature")
+            }
+            .buttonStyle(.plain)
+          }
+          Text("Only you and staff see these. Sending a new one starts that check again.")
+            .font(.footnote).foregroundStyle(Color.quadMuted)
         }
-        NavigationLink("Capture or manage photographic tours") { RoomToursView(listing: l) }
-        NavigationLink("Capture or manage room layouts") { RoomScansView(listing: l) }
-      }
-      Section("Independent checks") {
-        ChecksView(identity: l.hostIdentity, lease: l.leaseStatus, permission: l.permissionStatus)
-        Button("Upload private lease evidence") {
-          kind = "lease"
-          picking = true
+        if busy { ProgressView().frame(maxWidth: .infinity) }
+        if !notice.isEmpty {
+          Text(notice).font(.subheadline.weight(.bold)).foregroundStyle(Color.quadGreenText)
         }
-        Button("Upload private sublet permission") {
-          kind = "permission"
-          picking = true
+        if !error.isEmpty {
+          Text(error).font(.subheadline).foregroundStyle(Color(quad: 0xB42318))
         }
-        Text("Evidence is visible to you and staff. Replacement evidence resets that check.").font(
-          .caption)
       }
-      if busy { ProgressView() }
-      if !notice.isEmpty { Text(notice) }
-      if !error.isEmpty { Text(error).foregroundStyle(.red) }
-    }.navigationTitle("Manage place").task { await load() }.sheet(isPresented: $editing) {
+      .padding(.horizontal, 16).padding(.bottom, 16)
+    }
+    .foregroundStyle(Color.quadInk)
+    .background(Color.quadGround.ignoresSafeArea())
+    .toolbar(.hidden, for: .navigationBar)
+    .task { await load() }.sheet(isPresented: $editing) {
       NavigationStack { ListingEditor(existing: l, onSaved: { Task { await load() } }) }
     }
     .fullScreenCover(item: $finishing, onDismiss: { Task { await load() } }) { start in
@@ -357,6 +394,59 @@ struct ListingManageView: View {
         } catch { self.error = error.localizedDescription }
       }
     }
+  }
+  private var summary: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 12) {
+        RemoteImage(path: l.images.first).frame(width: 64, height: 64)
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 5) {
+          Text(l.title).font(.title3.weight(.heavy))
+          QuadChip(
+            text: AccountView.status(l.status), kind: l.status == "approved" ? .good : .note)
+        }
+        Spacer(minLength: 0)
+      }
+      NavigationLink("View listing") { ListingView(listing: l) }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
+      Button("Edit details") { editing = true }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
+      if l.status == "approved" {
+        Button("Pause listing") { change("pause") }
+          .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell)).disabled(busy)
+      } else if l.status == "paused" || l.status == "pending" {
+        Button("Publish listing") { change("publish") }.buttonStyle(.quadPrimaryWide)
+          .disabled(busy)
+        Button("Add photos, a scan and checks in steps") {
+          finishing = ListingFlowStart(id: UUID().uuidString, place: l)
+        }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
+      }
+    }
+    .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 24)
+  }
+  private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content)
+    -> some View
+  {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title).font(.headline.weight(.heavy)).accessibilityAddTraits(.isHeader)
+      content()
+    }
+  }
+  private func rows<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    VStack(spacing: 0) { content() }.quadCard(radius: 22)
+  }
+  private func row(_ title: String, _ symbol: String) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol).font(.body.weight(.semibold)).foregroundStyle(Color.quadMuted)
+        .frame(width: 26).accessibilityHidden(true)
+      Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.quadInk)
+      Spacer(minLength: 0)
+      Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+        .foregroundStyle(Color.quadMuted).accessibilityHidden(true)
+    }
+    .padding(.horizontal, 16).padding(.vertical, 14).contentShape(Rectangle())
   }
   func load() async {
     do {

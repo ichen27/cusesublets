@@ -79,4 +79,17 @@ final class QuadFormatTests: XCTestCase {
       QuadFormat.stay(roomType: "Private room", beds: 4, baths: 2, start: "2027-01-05", end: "2027-05-15"),
       "Private room · 4 beds · 2 baths · Jan 5 – May 15")
   }
+
+  func testAPlacesStatusIsSaidInPlainWords() {
+    XCTAssertEqual(AccountView.status("approved"), "Published")
+    // The server calls a place nobody else can see yet "pending".
+    XCTAssertEqual(AccountView.status("pending"), "Not published")
+    XCTAssertEqual(AccountView.status("paused"), "Paused")
+  }
+
+  func testACheckIsSaidInPlainWords() {
+    XCTAssertEqual(ChecksView.words("verified"), "checked")
+    XCTAssertEqual(ChecksView.words("pending"), "not checked yet")
+    XCTAssertEqual(ChecksView.words("needs_review"), "needs review")
+  }
 }

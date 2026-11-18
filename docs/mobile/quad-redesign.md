@@ -17,8 +17,9 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | Inbox and a conversation | Built (`InboxView.swift`, `Chat.swift`) |
 | The question after sign-up, saying what you're looking for in three steps | Built (`SearchFlow.swift`, `SearchSteps.swift`) |
 | "What you're looking for" and someone's housing search page | Built (`LookingView.swift`, `SearchPage.swift`) |
-| You, editing your own profile | Old style, under the new tab bar |
-| Scan and tour screens in the new colours | Not built |
+| You, editing your own profile, Saved posts, the page for your own place | Built (`AccountView.swift`, `ListingManageView` in `Editors.swift`) |
+| Scan, scan map, scan review, 360° tours and room layouts in the new colours | Built (`SpotCaptureScreens.swift`, `RoomToursView.swift`, `RoomScansView.swift`); the camera screens were not seen running |
+| Logging in and signing up, changing your password, blocked members, the privacy notice, deleting your account, editing a place's details, the offer form | Old style |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
 
 Only light appearance is drawn. The app is locked to light until a dark palette exists.
@@ -207,6 +208,41 @@ Known limits:
 ![The question after sign-up and the three steps](screenshots/quad-looking-steps.jpg)
 
 ![What you're looking for, and someone else's housing search](screenshots/quad-looking-page.jpg)
+
+## You, your profile and your place
+
+**You** is one scrolling page in place of the settings list: who you are (photo or initials, name, email, the ID chip) with the ways to edit your profile and see it as others do; what you're looking for; your places, each with "Published" or "Not published"; anything not finished; then the account's settings and Log out.
+
+**Profile and checks** is the same form in the new look: photo, name, phone, a few public lines, two links, the photos on your profile, and a card for the ID check that says where it stands and that only you and staff see the document. It hides the tab bar, since it has its own Save button.
+
+**Saved posts** shows what you saved as the same cards the home feed uses.
+
+**Your place** opens from a place under You: its status, the way to its public page, editing, pausing or publishing, then its photos, 360° tours and room layouts, and the three things staff check with where each stands ("The lease: not checked yet").
+
+Known limits:
+
+- There is no mockup for these four pages. They are built from the parts the agreed screens use.
+- "Edit details" on your place still opens the old one-page form.
+- Changing your password, blocked members, the privacy notice and deleting your account keep the system look. They work as before.
+
+![You, and Profile and checks](screenshots/quad-you.jpg)
+
+![Your place, room layouts and its 360° tours on a server that builds none](screenshots/quad-your-place.jpg)
+
+## Scan and tour screens
+
+These are recoloured, not redesigned. Nothing about how a scan is taken, stored or uploaded changed.
+
+- **At a spot (the camera).** The dot to aim at is white with an orange rim. The ring that fills while you hold still, and the progress bar, are a green that reads on a dark picture. The instruction sits on a white rounded card. Cancel and Undo are white on translucent pills.
+- **The scan map.** A near-black page. Scanned spots are green, the chosen one orange, and you are the orange dot. Choosing a spot brings up a white card with Preview 360, Capture again and Delete. "Capture here" is the orange main button.
+- **Your scan (review).** The map on a dark card, the count of spots, a note in the orange tint about checking for papers, photos and screens, then "Generate tour".
+- **360° tours for a place.** A scan saved on the iPhone gets a card that says what happens next in three steps (upload, we build it, you check it) with "Upload and build the tour". Each tour is a card with "Private" or "On your listing", "Open 360° tour", and "Add tour to my listing" or "Take tour off my listing".
+- **Room layouts.** New colours and buttons; it keeps the system's title bar.
+
+Known limits:
+
+- **The camera screens were not seen running.** A simulator has no camera, and the local test server builds no tours. They compile, the capture app's interface test passes, and the pages around them were seen in the simulator, but the camera view, the scan map with spots on it and a built tour's card need a run on an iPhone.
+- The mockup's count of shots at a spot ("2 of 6"), its arrow telling you which way to turn, and its separate preview page for a built tour are not built. The tour itself still opens in the web viewer.
 
 ## Checking it
 

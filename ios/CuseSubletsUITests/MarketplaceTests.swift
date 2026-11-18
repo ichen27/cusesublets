@@ -49,7 +49,7 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.textFields["Neighborhood"].waitForExistence(timeout: 30))
     enter("Westcott", into: app.textFields["Neighborhood"], in: app)
     tapOutsideTheForm("Save and finish later", in: app)
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["you-heading"].waitForExistence(timeout: 30))
     app.swipeUp()
     let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
       .firstMatch
@@ -81,13 +81,16 @@ final class MarketplaceTests: XCTestCase {
     // A sublease's page draws its own Back button over the photo.
     reveal(app.buttons["Back"], in: app)
     app.buttons["Back"].tap()
-    app.buttons["Capture or manage room layouts"].tap()
+    reveal(app.buttons["Room layouts"], in: app)
+    app.buttons["Room layouts"].tap()
     XCTAssertTrue(
       app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 30))
     attach(app, "Room capture capability")
-    // Return through the two pushed screens and close the listing steps explicitly.
+    // Return through the two pushed screens and close the listing steps explicitly. The room
+    // layouts page has the system's bar; the page for your place draws its own Back.
     app.navigationBars.buttons.firstMatch.tap()
-    app.navigationBars.buttons.firstMatch.tap()
+    reveal(app.buttons["Back"], in: app)
+    app.buttons["Back"].tap()
     app.buttons["Done"].tap()
     app.buttons["tab-you"].tap()
     logOut(in: app)
@@ -174,7 +177,7 @@ final class MarketplaceTests: XCTestCase {
     app.buttons["List your place"].tap()
     enter("Westcott", into: app.textFields["Neighborhood"], in: app)
     tapOutsideTheForm("Save and finish later", in: app)
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["you-heading"].waitForExistence(timeout: 30))
     let resume = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place"))
       .firstMatch
     XCTAssertTrue(resume.waitForExistence(timeout: 30))
@@ -189,8 +192,8 @@ final class MarketplaceTests: XCTestCase {
     skipToChecksAndPublish(in: app)
     attach(app, "Published sample listing")
     app.buttons["Done"].tap()
-    XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 30))
-    XCTAssertTrue(app.staticTexts["Published"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["you-heading"].waitForExistence(timeout: 30))
+    XCTAssertTrue(ownPlace(status: "Published", in: app).waitForExistence(timeout: 30))
     XCTAssertFalse(
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume place")).firstMatch
         .exists, "The private draft should be gone once its place exists")
@@ -203,7 +206,7 @@ final class MarketplaceTests: XCTestCase {
     let title = try seedListing(for: member, publish: false)
     let app = launchApp(session: member.cookie)
     app.buttons["tab-you"].tap()
-    XCTAssertTrue(app.staticTexts["Not published"].waitForExistence(timeout: 30))
+    XCTAssertTrue(ownPlace(status: "Not published", in: app).waitForExistence(timeout: 30))
     openOwnListing(title, in: app)
     let finish = app.buttons["Add photos, a scan and checks in steps"]
     finish.tap()
@@ -397,6 +400,41 @@ final class MarketplaceTests: XCTestCase {
         .firstMatch.exists, "Nobody needs telling why they cannot message themselves")
     attach(app, "Profile: your own")
   }
+  @MainActor func testEditingYourProfileShowsOnYourPublicProfile() throws {
+    continueAfterFailure = false
+    let member = try seedMember(name: "Alex Morgan")
+    let title = try seedListing(for: member)
+    let app = launchApp(session: member.cookie)
+    app.buttons["tab-you"].tap()
+    XCTAssertTrue(app.staticTexts["you-heading"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Alex Morgan"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["ID not checked"].exists)
+    XCTAssertTrue(
+      app.buttons.matching(NSPredicate(format: "label == %@", title + ", Published")).firstMatch
+        .waitForExistence(timeout: 30), "Your place should be listed with its status")
+    XCTAssertTrue(app.buttons["Say what I'm looking for"].exists)
+    XCTAssertTrue(app.buttons["Saved posts"].exists)
+    XCTAssertTrue(app.buttons["Log out"].exists)
+    attach(app, "You")
+
+    app.buttons["Edit profile & checks"].tap()
+    XCTAssertTrue(app.staticTexts["Profile and checks"].waitForExistence(timeout: 30))
+    let bio = app.descendants(matching: .any)["profile-bio"]
+    reveal(bio, in: app)
+    enter("Synthetic test bio. Not a real person.", into: bio, in: app)
+    reveal(app.buttons["Save profile"], in: app)
+    app.buttons["Save profile"].tap()
+    XCTAssertTrue(app.staticTexts["Profile saved"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.buttons["Submit private identity document"].exists)
+    attach(app, "Profile and checks")
+
+    reveal(app.buttons["Back"], in: app)
+    app.buttons["Back"].tap()
+    app.buttons["See your public profile"].tap()
+    XCTAssertTrue(
+      app.staticTexts["Synthetic test bio. Not a real person."].waitForExistence(timeout: 30),
+      "The saved bio should be on the public profile")
+  }
   @MainActor func testSavingOrMessagingAMatchMovesTheDeckOn() throws {
     continueAfterFailure = false
     let seeker = try seedMember(name: "Sam Seeker")
@@ -505,7 +543,14 @@ final class MarketplaceTests: XCTestCase {
   }
   @MainActor func testSayingWhatYouAreLookingForInThreeStepsTurnsTheSearchOn() throws {
     continueAfterFailure = false
-    let app = launchApp(session: try seedMember().cookie)
+    let member = try seedMember()
+    // This search covers the whole service area. However the test ends, it must not stay on,
+    // or every later test that counts matches would find it.
+    addTeardownBlock { [self] in
+      _ = try? send(
+        "/api/my-search/status", ["status": "paused"], cookie: member.cookie, mustSucceed: false)
+    }
+    let app = launchApp(session: member.cookie)
     app.buttons["tab-matches"].tap()
     let start = app.buttons["Say what I'm looking for"]
     XCTAssertTrue(start.waitForExistence(timeout: 30))
@@ -599,12 +644,28 @@ final class MarketplaceTests: XCTestCase {
     let title = try seedListing(for: member)
     let app = launchApp(session: member.cookie)
     openOwnListing(title, in: app)
-    let layouts = app.buttons["Capture or manage room layouts"]
+    XCTAssertTrue(app.staticTexts["Your place"].exists)
+    XCTAssertTrue(app.staticTexts["Published"].exists)
+    XCTAssertTrue(app.staticTexts["What staff have checked"].exists)
+    XCTAssertTrue(app.staticTexts["The lease: not checked yet"].exists)
+    attach(app, "Your place")
+    let layouts = app.buttons["Room layouts"]
     reveal(layouts, in: app)
     layouts.tap()
     XCTAssertTrue(
       app.staticTexts["Room scanning needs a LiDAR-equipped iPhone."].waitForExistence(timeout: 30))
     attach(app, "Room capture capability")
+    app.navigationBars.buttons.firstMatch.tap()
+
+    // The local test server builds no tours, and the page says so instead of offering a scan.
+    let tours = app.buttons["360° tours"]
+    reveal(tours, in: app)
+    tours.tap()
+    XCTAssertTrue(app.staticTexts["No tours shared yet."].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Tours cannot be built on this server yet."].exists)
+    attach(app, "Tours for your place")
+    app.buttons["Back"].tap()
+    XCTAssertTrue(app.staticTexts["Your place"].waitForExistence(timeout: 30))
   }
   @MainActor func testLocalDeviceCheckDoesNotRequireAccountOrSupportedCamera() throws {
     continueAfterFailure = false
@@ -810,9 +871,9 @@ final class MarketplaceTests: XCTestCase {
         as? [String: Any])
   }
   /// Posts `body`, or reads `path` when there is none.
-  private func send(_ path: String, _ body: [String: Any]?, cookie: String?) throws
-    -> (response: HTTPURLResponse, data: Data)
-  {
+  private func send(
+    _ path: String, _ body: [String: Any]?, cookie: String?, mustSucceed: Bool = true
+  ) throws -> (response: HTTPURLResponse, data: Data) {
     var request = URLRequest(url: try XCTUnwrap(URL(string: Self.apiBase + path)))
     request.setValue(Self.apiBase, forHTTPHeaderField: "Origin")
     if let cookie { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
@@ -832,9 +893,11 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertEqual(answered.wait(timeout: .now() + 60), .success, "\(path) did not answer")
     if let error = answer.error { throw error }
     let http = try XCTUnwrap(answer.response)
-    XCTAssertTrue(
-      (200..<300).contains(http.statusCode),
-      "\(path) returned \(http.statusCode): \(String(decoding: answer.data, as: UTF8.self))")
+    if mustSucceed {
+      XCTAssertTrue(
+        (200..<300).contains(http.statusCode),
+        "\(path) returned \(http.statusCode): \(String(decoding: answer.data, as: UTF8.self))")
+    }
     return (http, answer.data)
   }
   /// What the server sent back, handed from the network queue to the waiting test.
@@ -866,26 +929,42 @@ final class MarketplaceTests: XCTestCase {
   }
   private typealias Spot = (lat: Double, lng: Double)
   /// A spot of its own in the service area. Matching goes by area, so a test that counts
-  /// matches puts its places where no other test, and no earlier run against the same local
-  /// database, has put one. The server keeps a place's pin to three decimals, so the spot is
-  /// chosen on that grid, away from every place the public feed still shows.
+  /// matches puts its places where nothing else in the same local database can match them:
+  /// away from every place the public feed still shows, and outside every area someone's
+  /// search covers. Earlier runs and the server's own runtime tests leave both behind. The
+  /// server keeps a place's pin to three decimals, so the spot is chosen on that grid.
   private func freshSpot() throws -> Spot {
-    let feed = try send("/api/listings", nil, cookie: nil).data
-    let listings =
-      (try JSONSerialization.jsonObject(with: feed) as? [String: Any])?["listings"]
-      as? [[String: Any]] ?? []
+    func rows(_ path: String, _ key: String) throws -> [[String: Any]] {
+      let body = try JSONSerialization.jsonObject(with: try send(path, nil, cookie: nil).data)
+      return (body as? [String: Any])?[key] as? [[String: Any]] ?? []
+    }
     func cell(_ value: Double) -> Int { Int((value * 1000).rounded()) }
     let taken = Set(
-      listings.compactMap { place -> [Int]? in
+      try rows("/api/listings", "listings").compactMap { place -> [Int]? in
         guard let lat = place["lat"] as? Double, let lng = place["lng"] as? Double else {
           return nil
         }
         return [cell(lat), cell(lng)]
       })
+    // Each searched area, as the box around it with a grid step to spare.
+    let searched = try rows("/api/searches", "searches").flatMap { search -> [[Double]] in
+      (search["areas"] as? [[String: Any]] ?? []).compactMap { area in
+        let points = area["points"] as? [[String: Double]] ?? []
+        let lats = points.compactMap { $0["lat"] }
+        let lngs = points.compactMap { $0["lng"] }
+        guard let south = lats.min(), let north = lats.max(), let west = lngs.min(),
+          let east = lngs.max()
+        else { return nil }
+        return [south - 0.001, north + 0.001, west - 0.001, east + 0.001]
+      }
+    }
     // The whole service area, one grid step inside its edges.
-    for _ in 0..<200 {
+    for _ in 0..<500 {
       let spot = [Int.random(in: 42_902...43_148), -Int.random(in: 75_952...76_298)]
-      if !taken.contains(spot) { return (Double(spot[0]) / 1000, Double(spot[1]) / 1000) }
+      let lat = Double(spot[0]) / 1000
+      let lng = Double(spot[1]) / 1000
+      let covered = searched.contains { lat >= $0[0] && lat <= $0[1] && lng >= $0[2] && lng <= $0[3] }
+      if !taken.contains(spot) && !covered { return (lat, lng) }
     }
     throw XCTSkip("No free spot is left in the local test database")
   }
@@ -973,6 +1052,10 @@ final class MarketplaceTests: XCTestCase {
   }
   @MainActor private func matchCard(_ text: String, in app: XCUIApplication) -> XCUIElement {
     app.buttons.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+  }
+  /// A row under "Your places" in You whose place has this status.
+  @MainActor private func ownPlace(status: String, in app: XCUIApplication) -> XCUIElement {
+    app.buttons.matching(NSPredicate(format: "label ENDSWITH %@", ", " + status)).firstMatch
   }
   @MainActor private func openOwnListing(_ title: String, in app: XCUIApplication) {
     app.buttons["tab-you"].tap()
