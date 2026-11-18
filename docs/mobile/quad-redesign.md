@@ -14,7 +14,8 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | Listing a place in five steps, with photos, a scan step and checks | Built (`ListingFlow.swift`, `ListingSteps.swift`) |
 | Matches, one at a time | Built (`MatchesView.swift`, `MatchDeck.swift`) |
 | A person's profile | Built (`MemberView.swift`, `PersonProfile.swift`) |
-| Inbox and chat, You, editing your own profile, a housing search's page | Old style, under the new tab bar |
+| Inbox and a conversation | Built (`InboxView.swift`, `Chat.swift`) |
+| You, editing your own profile, a housing search's page | Old style, under the new tab bar |
 | Sign-up questions | Not built |
 | Scan and tour screens in the new colours | Not built |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
@@ -145,6 +146,34 @@ Known limits:
 ![A profile: someone subleasing, someone looking, and your own](screenshots/quad-profile.jpg)
 
 ![A profile with finished subleases and reviews](screenshots/quad-profile-reviews.jpg)
+
+## Inbox and a conversation
+
+The Inbox lists every conversation, the one that changed last on top: who it is with, a green shield when staff have checked their ID, the place it is about, the last thing said and when.
+
+A conversation fills the screen, so the tab bar is hidden until you go back.
+
+- **Top.** Back, the other person (their name opens their profile) with "ID checked" or "ID not checked", and block and report behind the round button. Under it, the place the conversation is about, which opens its page.
+- **One thread, in order.** The server sends messages, offers, shared documents, events and reservations as separate lists. The app puts them into the one order they happened in, with a heading where each day starts. Your messages sit on the right in the orange tint, theirs on the left in white.
+- **An offer is a card.** It says whose it is, the rent, the dates and where it stands: "Waiting for Jamie", "Waiting for you", "Accepted", "Declined", "Withdrawn". The buttons follow the server's rules: only whoever made an offer can withdraw it, and only the other person can accept, counter or decline it.
+- **Quick replies** sit over the message box. "Make an offer" opens the offer form. "Ask to visit" and "Move-in day" write a message into the box for you to edit and send; nothing is sent until you press Send. The owner of the place sees "Offer a visit" instead.
+- **Sharing a document** first says that both people will see it and that a lease or ID belongs in your private checks instead.
+- **It stays current.** An open conversation asks the server again every ten seconds, so an offer from the other person appears without leaving the screen.
+
+The server gained one thing: each conversation now says whether staff have checked the other person's ID (`peerIdentity` in the list, `peer.identity` in a thread). That is the same fact their public profile already shows. Against an older server the app leaves the line out instead of guessing.
+
+The ordering and every word on the offer card have no interface in them and live in `Chat.swift`, with tests in `ChatTests.swift`.
+
+Known limits:
+
+- The mockup had a heart on a message and a "typing" bubble. The server has neither, so they are not drawn.
+- The mockup had "Change" on your own offer. The server lets you withdraw an offer but not replace it, so the card has "Withdraw" only; make a new offer after withdrawing.
+- The mockup had "Share ID check" as a quick reply. The other person already sees whether your ID is checked, at the top of the conversation, so there is nothing to share.
+- When someone counters an offer, the server leaves the first offer waiting as well, so both cards show buttons until one is answered.
+- The offer form is still the old one-page form, with new wording.
+- Accepting an offer was not run: the server only accepts once staff have checked the lease, the permission and the subleaser's ID, and the interface tests do not act as staff.
+
+![The Inbox, a conversation with your own offer, and the other person's offer declined](screenshots/quad-inbox-chat.jpg)
 
 ## Checking it
 

@@ -87,6 +87,12 @@ struct Conversation: Decodable, Identifiable {
   let listingImage: String
   let peerName: String
   let lastMessage: String?
+  /// Whether staff have checked the other person's ID. Older servers do not say.
+  var peerIdentity: String?
+  var buyerId: String?
+  var sellerId: String?
+  /// When the thread last changed.
+  var updatedAt: String?
 }
 struct ConversationsResponse: Decodable { let conversations: [Conversation] }
 struct ConversationResponse: Decodable { let conversation: Conversation }
@@ -104,6 +110,9 @@ struct Offer: Decodable, Identifiable {
   let endDate: String
   let status: String
   let kind: String
+  /// The offer this one answers, when it is a counteroffer.
+  var parentOfferId: String?
+  var createdAt: String?
 }
 struct Booking: Decodable, Identifiable {
   let id: String
@@ -115,10 +124,13 @@ struct Booking: Decodable, Identifiable {
   let disputeStatus: String
   let disputeReason: String?
   let buyerId: String
+  var createdAt: String?
 }
 struct Attachment: Decodable, Identifiable {
   let id: String
   let name: String
+  var senderId: String?
+  var createdAt: String?
 }
 struct ChatEvent: Decodable, Identifiable {
   let id: String
@@ -129,6 +141,8 @@ struct ChatEvent: Decodable, Identifiable {
 struct ConversationPeer: Decodable {
   let id: String
   let name: String
+  /// Whether staff have checked this person's ID. Older servers do not say.
+  var identity: String?
 }
 struct ConversationDetail: Decodable {
   let conversation: Conversation

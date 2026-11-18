@@ -207,7 +207,7 @@ final class MarketplaceTests: XCTestCase {
   @MainActor func testMatchesShowOneAtATimeWithPassBackAndStartAgain() throws {
     continueAfterFailure = false
     let seeker = try seedMember(name: "Sam Seeker")
-    let spot = freshSpot()
+    let spot = try freshSpot()
     try seedSearch(for: seeker, around: spot)
     // The cheaper place ranks first, so the order of the deck is known.
     let first = try seedListing(
@@ -259,7 +259,7 @@ final class MarketplaceTests: XCTestCase {
   }
   @MainActor func testASubleaserSeesPeopleWhoseSearchFitsTheirPlace() throws {
     continueAfterFailure = false
-    let spot = freshSpot()
+    let spot = try freshSpot()
     let host = try seedMember(name: "Harper Host")
     let place = try seedListing(for: host, price: 800, at: spot)
     try seedSearch(for: try seedMember(name: "Sam Seeker"), around: spot)
@@ -275,13 +275,13 @@ final class MarketplaceTests: XCTestCase {
     attach(app, "Matches: a person who fits")
     app.buttons["Message Sam"].tap()
     XCTAssertTrue(
-      app.navigationBars["Sam Seeker"].waitForExistence(timeout: 30),
+      conversation(with: "Sam Seeker", in: app).waitForExistence(timeout: 30),
       "Messaging should open the conversation in the Inbox")
   }
   @MainActor func testAProfileShowsSomeonesPlaceStartsAConversationAndCanBlock() throws {
     continueAfterFailure = false
     let seeker = try seedMember(name: "Sam Seeker")
-    let spot = freshSpot()
+    let spot = try freshSpot()
     try seedSearch(for: seeker, around: spot)
     let place = try seedListing(for: try seedMember(name: "Jamie Host"), price: 700, at: spot)
     let app = launchApp(session: seeker.cookie)
@@ -306,10 +306,12 @@ final class MarketplaceTests: XCTestCase {
 
     app.buttons["Message Jamie"].tap()
     XCTAssertTrue(
-      app.navigationBars["Jamie Host"].waitForExistence(timeout: 30),
+      conversation(with: "Jamie Host", in: app).waitForExistence(timeout: 30),
       "Messaging from a profile should open the conversation in the Inbox")
 
-    // The profile is still open under Matches. Blocking hides it.
+    // A conversation fills the screen, so the tab bar comes back with the Inbox behind it. The
+    // profile is still open under Matches. Blocking hides it.
+    leaveConversation(in: app)
     app.buttons["tab-matches"].tap()
     let more = app.buttons["More: block or report"]
     XCTAssertTrue(more.waitForExistence(timeout: 30))
@@ -327,7 +329,7 @@ final class MarketplaceTests: XCTestCase {
   }
   @MainActor func testSomeoneLookingIsMessagedByOfferingAPlaceThatFits() throws {
     continueAfterFailure = false
-    let spot = freshSpot()
+    let spot = try freshSpot()
     let host = try seedMember(name: "Harper Host")
     _ = try seedListing(for: host, price: 800, at: spot)
     try seedSearch(for: try seedMember(name: "Sam Seeker"), around: spot)
@@ -353,7 +355,7 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(message.waitForExistence(timeout: 30))
     message.tap()
     XCTAssertTrue(
-      app.navigationBars["Sam Seeker"].waitForExistence(timeout: 30),
+      conversation(with: "Sam Seeker", in: app).waitForExistence(timeout: 30),
       "Offering a place from a profile should open the conversation in the Inbox")
   }
   @MainActor func testYourOwnProfileOpensFromYouWithNothingToMessage() throws {
@@ -379,7 +381,7 @@ final class MarketplaceTests: XCTestCase {
   @MainActor func testSavingOrMessagingAMatchMovesTheDeckOn() throws {
     continueAfterFailure = false
     let seeker = try seedMember(name: "Sam Seeker")
-    let spot = freshSpot()
+    let spot = try freshSpot()
     try seedSearch(for: seeker, around: spot)
     let first = try seedListing(
       for: try seedMember(name: "Jamie Host"), price: 700, at: spot)
@@ -395,8 +397,9 @@ final class MarketplaceTests: XCTestCase {
 
     app.buttons["Message Riley"].tap()
     XCTAssertTrue(
-      app.navigationBars["Riley Host"].waitForExistence(timeout: 30),
+      conversation(with: "Riley Host", in: app).waitForExistence(timeout: 30),
       "Messaging should open the conversation in the Inbox")
+    leaveConversation(in: app)
     app.buttons["tab-matches"].tap()
     XCTAssertTrue(app.staticTexts["You've seen all 2"].waitForExistence(timeout: 30))
 
@@ -405,6 +408,70 @@ final class MarketplaceTests: XCTestCase {
     let again = launchApp(session: seeker.cookie)
     again.buttons["tab-matches"].tap()
     XCTAssertTrue(again.staticTexts["You've seen all 2"].waitForExistence(timeout: 30))
+  }
+  @MainActor func testAConversationCarriesMessagesAndAnOfferEachSideAnswers() throws {
+    continueAfterFailure = false
+    let host = try seedMember(name: "Jamie Host")
+    let seeker = try seedMember(name: "Sam Seeker")
+    let place = try seedPlace(for: host, price: 950)
+    let thread = try seedConversation(about: place.id, from: seeker)
+    _ = try post(
+      "/api/conversations/\(thread)/messages", ["body": "Hi Sam! Yes, it is still open."],
+      cookie: host.cookie)
+    let app = launchApp(session: seeker.cookie)
+    app.buttons["tab-inbox"].tap()
+
+    let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Jamie Host"))
+      .firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 30), "The Inbox did not list the conversation")
+    XCTAssertTrue(row.label.contains(place.title), row.label)
+    XCTAssertTrue(row.label.contains("Hi Sam! Yes, it is still open."), row.label)
+    attach(app, "Inbox")
+    row.tap()
+
+    let peer = conversation(with: "Jamie Host", in: app)
+    XCTAssertTrue(peer.waitForExistence(timeout: 30), "The conversation did not open")
+    XCTAssertTrue(peer.label.contains("ID not checked"), peer.label)
+    XCTAssertTrue(app.buttons["conversation-place"].label.contains(place.title))
+    XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Hi Sam! Yes, it is still open."].exists)
+
+    // A quick reply writes the message; nothing is sent until Send.
+    app.buttons["Ask to visit"].tap()
+    let question = "Could I come and see the place? What days work for you?"
+    let box = app.descendants(matching: .any)["conversation-message"]
+    wait(for: box, toBe: "value == '\(question)'", "The quick reply did not fill the message box")
+    app.buttons["Send"].tap()
+    XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 30))
+
+    app.buttons["Make an offer"].tap()
+    let sendOffer = app.buttons["Send offer"]
+    XCTAssertTrue(sendOffer.waitForExistence(timeout: 30))
+    sendOffer.tap()
+    XCTAssertTrue(app.staticTexts["Your offer"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Waiting for Jamie"].exists)
+    XCTAssertTrue(labelled(beginning: "$950", in: app).exists)
+    attach(app, "Conversation: my offer")
+    app.buttons["Withdraw"].tap()
+    XCTAssertTrue(app.staticTexts["Withdrawn"].waitForExistence(timeout: 30))
+
+    // The other person's offer arrives while the conversation is open.
+    _ = try post(
+      "/api/conversations/\(thread)/offers",
+      ["amount": 900, "startDate": day(40), "endDate": day(120), "kind": "offer"],
+      cookie: host.cookie)
+    XCTAssertTrue(
+      app.staticTexts["Jamie's offer"].waitForExistence(timeout: 60),
+      "An offer from the other person should appear without leaving the conversation")
+    XCTAssertTrue(app.staticTexts["Waiting for you"].exists)
+    XCTAssertTrue(app.buttons["Accept"].exists)
+    XCTAssertTrue(app.buttons["Counter"].exists)
+    app.buttons["Decline"].tap()
+    XCTAssertTrue(app.staticTexts["Declined"].waitForExistence(timeout: 30))
+    attach(app, "Conversation: their offer declined")
+
+    leaveConversation(in: app)
+    XCTAssertTrue(row.waitForExistence(timeout: 30))
   }
   @MainActor func testMatchesWithoutAPlanOfferBothWaysToStart() throws {
     continueAfterFailure = false
@@ -649,12 +716,28 @@ final class MarketplaceTests: XCTestCase {
   private func post(_ path: String, _ body: [String: Any], cookie: String? = nil) throws
     -> HTTPURLResponse
   {
+    try send(path, body, cookie: cookie).response
+  }
+  /// The same, for a caller that needs what the server answered with.
+  private func postForJSON(_ path: String, _ body: [String: Any], cookie: String? = nil) throws
+    -> [String: Any]
+  {
+    try XCTUnwrap(
+      JSONSerialization.jsonObject(with: try send(path, body, cookie: cookie).data)
+        as? [String: Any])
+  }
+  /// Posts `body`, or reads `path` when there is none.
+  private func send(_ path: String, _ body: [String: Any]?, cookie: String?) throws
+    -> (response: HTTPURLResponse, data: Data)
+  {
     var request = URLRequest(url: try XCTUnwrap(URL(string: Self.apiBase + path)))
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(Self.apiBase, forHTTPHeaderField: "Origin")
     if let cookie { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    if let body {
+      request.httpMethod = "POST"
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    }
     let answer = Answer()
     let answered = DispatchSemaphore(value: 0)
     URLSession(configuration: .ephemeral).dataTask(with: request) { data, response, error in
@@ -669,7 +752,7 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(
       (200..<300).contains(http.statusCode),
       "\(path) returned \(http.statusCode): \(String(decoding: answer.data, as: UTF8.self))")
-    return http
+    return (http, answer.data)
   }
   /// What the server sent back, handed from the network queue to the waiting test.
   private final class Answer: @unchecked Sendable {
@@ -700,18 +783,40 @@ final class MarketplaceTests: XCTestCase {
   }
   private typealias Spot = (lat: Double, lng: Double)
   /// A spot of its own in the service area. Matching goes by area, so a test that counts
-  /// matches puts its places where no other test, and no earlier run, has put one. The server
-  /// keeps a place's pin to three decimals, so the spot is chosen on that grid.
-  private func freshSpot() -> Spot {
-    (
-      Double(Int.random(in: 43_060...43_120)) / 1000,
-      -Double(Int.random(in: 76_050...76_250)) / 1000
-    )
+  /// matches puts its places where no other test, and no earlier run against the same local
+  /// database, has put one. The server keeps a place's pin to three decimals, so the spot is
+  /// chosen on that grid, away from every place the public feed still shows.
+  private func freshSpot() throws -> Spot {
+    let feed = try send("/api/listings", nil, cookie: nil).data
+    let listings =
+      (try JSONSerialization.jsonObject(with: feed) as? [String: Any])?["listings"]
+      as? [[String: Any]] ?? []
+    func cell(_ value: Double) -> Int { Int((value * 1000).rounded()) }
+    let taken = Set(
+      listings.compactMap { place -> [Int]? in
+        guard let lat = place["lat"] as? Double, let lng = place["lng"] as? Double else {
+          return nil
+        }
+        return [cell(lat), cell(lng)]
+      })
+    // The whole service area, one grid step inside its edges.
+    for _ in 0..<200 {
+      let spot = [Int.random(in: 42_902...43_148), -Int.random(in: 75_952...76_298)]
+      if !taken.contains(spot) { return (Double(spot[0]) / 1000, Double(spot[1]) / 1000) }
+    }
+    throw XCTSkip("No free spot is left in the local test database")
   }
   private func seedListing(
     for member: SeededMember, price: Int = 800, at spot: Spot = (43.04, -76.13),
     publish: Bool = true
   ) throws -> String {
+    try seedPlace(for: member, price: price, at: spot, publish: publish).title
+  }
+  /// A seeded listing, with the id the server gave it.
+  private func seedPlace(
+    for member: SeededMember, price: Int = 800, at spot: Spot = (43.04, -76.13),
+    publish: Bool = true
+  ) throws -> (id: String, title: String) {
     let title = "Seeded listing \(UUID().uuidString.prefix(6))"
     let body: [String: Any] = [
       "title": title, "neighborhood": "Westcott", "address": "Approximate synthetic test area",
@@ -721,8 +826,18 @@ final class MarketplaceTests: XCTestCase {
       "amenities": [String](), "images": [String](), "lat": spot.lat, "lng": spot.lng,
       "publish": publish,
     ]
-    _ = try post("/api/listings", body, cookie: member.cookie)
-    return title
+    let answer = try postForJSON("/api/listings", body, cookie: member.cookie)
+    let listing = try XCTUnwrap(answer["listing"] as? [String: Any])
+    return (try XCTUnwrap(listing["id"] as? String), title)
+  }
+  /// A conversation about a place, opened by someone other than its owner.
+  private func seedConversation(about listingID: String, from member: SeededMember) throws
+    -> String
+  {
+    let answer = try postForJSON(
+      "/api/conversations", ["listingId": listingID], cookie: member.cookie)
+    let conversation = try XCTUnwrap(answer["conversation"] as? [String: Any])
+    return try XCTUnwrap(conversation["id"] as? String)
   }
   /// An active housing search that a seeded listing at `spot` fits: its one small area
   /// surrounds the spot, its dates sit inside the listing's and its budget is above the rent.
@@ -760,6 +875,19 @@ final class MarketplaceTests: XCTestCase {
       .firstMatch
   }
   /// The card on the Matches screen whose label mentions `text`.
+  /// The header of an open conversation with someone whose name begins with `name`.
+  @MainActor private func conversation(with name: String, in app: XCUIApplication) -> XCUIElement {
+    app.buttons.matching(
+      NSPredicate(format: "identifier == 'conversation-peer' AND label BEGINSWITH %@", name)
+    ).firstMatch
+  }
+  /// Goes back from an open conversation to the Inbox, where the tab bar is.
+  @MainActor private func leaveConversation(in app: XCUIApplication) {
+    app.buttons["Back"].tap()
+    XCTAssertTrue(
+      app.buttons["tab-inbox"].waitForExistence(timeout: 30),
+      "Leaving a conversation should bring the tab bar back")
+  }
   @MainActor private func matchCard(_ text: String, in app: XCUIApplication) -> XCUIElement {
     app.buttons.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
