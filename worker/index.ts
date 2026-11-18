@@ -416,7 +416,7 @@ function reviewed(l: InternalListing) {
 
 const conversationSQL = `SELECT c.*, json_extract(l.data,'$.title') listingTitle,
  (SELECT json_extract(r.data,'$.title') FROM seeker_requests r WHERE r.id=c.requestId) requestTitle,
- COALESCE(json_extract(l.data,'$.images[0]'),'') listingImage,peer.name peerName,
+ COALESCE(json_extract(l.data,'$.images[0]'),'') listingImage,peer.name peerName,peer.identity peerIdentity,
  COALESCE((SELECT body FROM messages m WHERE m.listingId=c.listingId AND
  ((m.senderId=c.buyerId AND m.recipientId=c.sellerId) OR (m.senderId=c.sellerId AND m.recipientId=c.buyerId))
  ORDER BY m.createdAt DESC,m.rowid DESC LIMIT 1),'') lastMessage
@@ -1641,6 +1641,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
         peer: {
           id: u.id === c.buyerId ? c.sellerId : c.buyerId,
           name: c.peerName,
+          identity: c.peerIdentity,
         },
         messages: await all(
           e,

@@ -47,9 +47,9 @@ New listing input optionally accepts `lat:number` between 42.9–43.15 and `lng:
 
 ## Conversations and negotiation
 
-- GET `/api/conversations` → `{conversations:ConversationSummary[]}`, newest activity first; only the signed-in participant's threads.
+- GET `/api/conversations` → `{conversations:ConversationSummary[]}`, newest activity first; only the signed-in participant's threads. Each summary carries `peerIdentity`, the other participant's identity status as their public profile shows it.
 - POST `/api/conversations` `{listingId:string}` → `{conversation:ConversationSummary}` (201). Opens or reuses the unique listing/renter thread without sending a message. New threads require a visible approved listing; owners use their existing inbox threads.
-- GET `/api/conversations/:id` → `ConversationDetail = {conversation,listing,peer:{id,name},messages,offers,bookings,attachments,events}`. Listing contains current property context; renter views exclude private review notes. Review documents are never included. Historical threads remain readable if a listing is paused or an account is suspended.
+- GET `/api/conversations/:id` → `ConversationDetail = {conversation,listing,peer:{id,name,identity},messages,offers,bookings,attachments,events}`. Listing contains current property context; renter views exclude private review notes. Review documents are never included. Historical threads remain readable if a listing is paused or an account is suspended.
 - POST `/api/conversations/:id/messages` `{body:string}` (1–2000 chars) → `{message:Message}` (201).
 - POST `/api/conversations/:id/documents` multipart `file` → `{attachment:ChatAttachment}` (201). PDF/JPEG/PNG only, declared type must match magic bytes, maximum 5 MiB, maximum 100 documents per thread. Object keys are not returned.
 - GET `/api/chat-documents/:id` → protected attachment stream with no-store and sandbox headers. Only the two conversation participants can download, including when an administrator is the requester. These are explicitly shared files, independent of private listing-review evidence.
