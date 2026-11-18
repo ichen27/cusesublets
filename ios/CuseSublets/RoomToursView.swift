@@ -101,6 +101,7 @@ enum SpotTourUpload {
 struct RoomToursView: View {
   @EnvironmentObject var state: AppState
   @Environment(\.scenePhase) var scenePhase
+  @Environment(\.dismiss) private var dismiss
   let listing: Listing
   @State private var tours: [RoomTour] = []
   @State private var enabled = false
@@ -120,119 +121,69 @@ struct RoomToursView: View {
   @State private var legacy = false
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
-        Text("Photographic tours").font(.largeTitle.bold())
+      VStack(alignment: .leading, spacing: 16) {
+        HStack(spacing: 12) {
+          Button {
+            dismiss()
+          } label: {
+            Image(systemName: "chevron.left")
+          }
+          .buttonStyle(.quadIcon).accessibilityLabel("Back")
+          Text("360° tours").font(.title2.weight(.heavy)).accessibilityAddTraits(.isHeader)
+        }
+        .padding(.top, 4)
         Text(
-          "Capture a few spots in each room. Viewers look around a 360° photo at each spot. Photos may show seams, and the 3D overview is rough. These tours do not verify a property or its dimensions."
-        ).foregroundStyle(.secondary)
-        if owner {
-          if enabled && ARWorldTrackingConfiguration.isSupported {
-            Button("Capture spots for a tour", systemImage: "camera.viewfinder") {
-              capture = PhotoCaptureDraft(
-                id: UUID().uuidString, ownerId: listing.ownerId, listingId: listing.id, name: "Room"
-              )
-            }.buttonStyle(.borderedProminent).tint(.cuseButtonFill).disabled(local != nil || busy)
-          } else {
-            Text(
-              enabled
-                ? "Camera capture is unavailable on this device. You can review existing tours here."
-                : "Photographic processing is not configured on this server yet.")
-          }
-          Text(
-            "Remove personal papers and faces from view. Captures upload privately; you choose whether to publish the result. Camera-only capture works without LiDAR on supported iPhones."
-          ).font(.caption)
-        }
+          "Stand in a few spots in each room and turn once at each. Viewers get a 360° look at every spot. Photos may show seams, and the 3D overview is rough. A tour does not check a place or its measurements."
+        )
+        .font(.subheadline).foregroundStyle(Color.quadMuted)
+        if owner { capturing }
         if legacy {
-          Text(
-            "An older walk-around take is saved on this iPhone. This version captures spots instead, so that take can only be discarded."
-          ).font(.caption)
-          Button("Discard older take", role: .destructive) {
-            try? FileManager.default.removeItem(at: legacyFolder)
-            legacy = false
+          card {
+            Text(
+              "An older walk-around take is saved on this iPhone. This version captures spots instead, so that take can only be discarded."
+            )
+            .font(.footnote).foregroundStyle(Color.quadMuted)
+            Button("Discard older take", role: .destructive) {
+              try? FileManager.default.removeItem(at: legacyFolder)
+              legacy = false
+            }
+            .buttonStyle(QuadSecondaryButtonStyle(fill: .quadWell))
           }
         }
-        if let local {
-          Text("Saved on this iPhone · private").font(.headline)
-          SavedCapturePhotos(folder: folder)
-          Button("Review spots") { capture = local }.disabled(busy)
-          TextField("Tour name", text: $name).textFieldStyle(.roundedBorder)
-          Text(
-            "Upload up to 96 MB. Keep the app open during upload. If interrupted, retry the same saved take; the server prevents duplicate jobs."
-          ).font(.caption)
-          HStack {
-            Button("Upload and generate") { Task { await upload(local) } }.buttonStyle(
-              .borderedProminent
-            ).tint(.cuseButtonFill).disabled(
-              busy || !enabled || name.trimmingCharacters(in: .whitespaces).isEmpty)
-            Button("Discard take", role: .destructive) { discard = true }.disabled(busy)
-          }
-        }
-        ForEach(tours) { tour in
-          VStack(alignment: .leading, spacing: 10) {
-            HStack {
-              Text(tour.name).font(.headline)
-              Spacer()
-              StatusText(text: tour.published ? "Published" : "Private")
-            }
-            if tour.status == "ready" {
-              NavigationLink(tour.kind == "spots" ? "Open 360° tour" : "Explore photographic tour") {
-                TourWebView(api: state.api, listingID: listing.id, tourID: tour.id).navigationTitle(
-                  tour.name
-                ).navigationBarTitleDisplayMode(.inline)
-              }
-              if tour.kind == "spots" {
-                Text("\(tour.spotCount) spots").font(.caption)
-                if owner && !tour.published {
-                  Text("Open the tour and check every spot for personal details before publishing.")
-                    .font(.caption)
-                }
-              } else {
-                Button("Export Gaussian PLY") { Task { await download(tour) } }.disabled(busy)
-              }
-              if tour.mesh != nil {
-                Button("Export room mesh (PLY)") { Task { await download(tour, mesh: true) } }
-                  .disabled(busy).accessibilityIdentifier("export-room-mesh")
-              }
-              if owner {
-                Button(tour.published ? "Hide from listing" : "Publish to listing") {
-                  Task { await action(tour, "visibility", ["published": !tour.published]) }
-                }.disabled(busy)
-              }
-            } else {
-              Text(status(tour)).foregroundStyle(.secondary)
-              if owner && tour.status == "failed" {
-                Button("Retry reconstruction") { Task { await action(tour, "retry") } }.disabled(
-                  busy)
-              }
-              if owner && tour.status == "uploading" && local?.id != tour.id {
-                Text(
-                  "The original take is still needed. Retry from the iPhone that captured it, or delete this entry."
-                ).font(.caption)
-              }
-            }
-            if owner {
-              Button("Delete tour", role: .destructive) { deleting = tour }.disabled(busy)
-            }
-          }.padding().background(.quaternary, in: RoundedRectangle(cornerRadius: 14))
-        }
+        if let local { saved(local) }
+        ForEach(tours) { tour in tourCard(tour) }
         if tours.isEmpty && local == nil {
-          Text("No photographic tours shared yet.").foregroundStyle(.secondary)
+          Text("No tours shared yet.").font(.subheadline).foregroundStyle(Color.quadMuted)
         }
-        if busy { ProgressView("Working…") }
+        if busy {
+          HStack(spacing: 8) {
+            ProgressView()
+            Text("Working…").font(.footnote.weight(.semibold)).foregroundStyle(Color.quadMuted)
+          }
+        }
         if !error.isEmpty {
-          Text(error).foregroundStyle(.red)
-          Button("Reload tours") { Task { await load() } }
+          Text(error).font(.subheadline).foregroundStyle(Color(quad: 0xB42318))
+          Button("Reload tours") { Task { await load() } }.buttonStyle(.quadSecondary)
         }
         if let export {
-          ShareLink("Share exported PLY", item: export)
-          Text(
-            exportIsMesh
-              ? "A coloured triangle mesh in metres, Y up. It opens in Blender, MeshLab and most 3D tools. It is reconstructed from photographs, so expect holes and soft edges."
-              : "Use a Gaussian-compatible viewer or Blender importer. This is not an editable wall mesh."
-          ).font(.caption)
+          card {
+            ShareLink("Share exported PLY", item: export).font(.subheadline.weight(.bold))
+              .tint(.quadOrangeDeep)
+            Text(
+              exportIsMesh
+                ? "A coloured triangle mesh in metres, Y up. It opens in Blender, MeshLab and most 3D tools. It is reconstructed from photographs, so expect holes and soft edges."
+                : "Use a Gaussian-compatible viewer or Blender importer. This is not an editable wall mesh."
+            )
+            .font(.footnote).foregroundStyle(Color.quadMuted)
+          }
         }
-      }.padding()
-    }.navigationTitle("Photographic tours").navigationBarTitleDisplayMode(.inline)
+      }
+      .padding(.horizontal, 16).padding(.bottom, 16)
+    }
+    .foregroundStyle(Color.quadInk)
+    .background(Color.quadGround.ignoresSafeArea())
+    .toolbar(.hidden, for: .navigationBar)
+
       .task {
         await load()
         recover()
@@ -248,7 +199,7 @@ struct RoomToursView: View {
       .fullScreenCover(item: $capture, onDismiss: { recover() }) { draft in
         SpotCaptureScreen(recorder: SpotRecorder(draft: draft))
       }
-      .alert("Discard this saved take?", isPresented: $discard) {
+      .alert("Discard this scan?", isPresented: $discard) {
         Button("Discard", role: .destructive) {
           do {
             try FileManager.default.removeItem(at: folder)
@@ -274,14 +225,149 @@ struct RoomToursView: View {
         )
       }
   }
+  // MARK: Parts
+
+  private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    VStack(alignment: .leading, spacing: 10) { content() }
+      .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 22)
+  }
+
+  @ViewBuilder private var capturing: some View {
+    card {
+      if enabled && ARWorldTrackingConfiguration.isSupported {
+        Button("Capture spots for a tour", systemImage: "camera.viewfinder") {
+          capture = PhotoCaptureDraft(
+            id: UUID().uuidString, ownerId: listing.ownerId, listingId: listing.id, name: "Room")
+        }
+        .buttonStyle(.quadPrimaryWide).disabled(local != nil || busy)
+      } else {
+        Text(
+          enabled
+            ? "This device cannot scan. You can still look through the tours here."
+            : "Tours cannot be built on this server yet."
+        )
+        .font(.subheadline.weight(.semibold))
+      }
+      Text(
+        "Put away papers, photos and screens first. A scan uploads privately, and you choose whether it goes on your listing. It works without LiDAR on supported iPhones."
+      )
+      .font(.footnote).foregroundStyle(Color.quadMuted)
+    }
+  }
+
+  private func saved(_ local: PhotoCaptureDraft) -> some View {
+    card {
+      HStack {
+        Text("Your scan").font(.headline.weight(.heavy))
+        Spacer()
+        QuadChip(text: "On this iPhone · private")
+      }
+      SavedCapturePhotos(folder: folder)
+      Button("Review spots") { capture = local }.buttonStyle(.quadSecondary).disabled(busy)
+      VStack(alignment: .leading, spacing: 6) {
+        Text("Tour name").font(.caption.weight(.bold)).foregroundStyle(Color.quadMuted)
+        TextField("Tour name", text: $name).modifier(QuadFieldBox())
+      }
+      Text("What happens next").font(.subheadline.weight(.heavy)).padding(.top, 4)
+      step(1, "Upload.", "Up to 96 MB. Keep the app open. If it is interrupted, upload the same scan again; nothing is built twice.")
+      step(2, "We build the tour.", "You can leave this screen while it is built.")
+      step(3, "You check it.", "It stays private until you add it to your listing.")
+      Button("Upload and build the tour") { Task { await upload(local) } }
+        .buttonStyle(.quadPrimaryWide)
+        .disabled(busy || !enabled || name.trimmingCharacters(in: .whitespaces).isEmpty)
+      Button("Discard this scan", role: .destructive) { discard = true }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell)).disabled(busy)
+    }
+  }
+
+  private func step(_ number: Int, _ title: String, _ text: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Text("\(number)").font(.caption.weight(.heavy)).foregroundStyle(Color.quadGreenText)
+        .frame(width: 24, height: 24).background(Color.quadGreenTint, in: Circle())
+        .accessibilityHidden(true)
+      (Text(title + " ").font(.footnote.weight(.heavy))
+        + Text(text).font(.footnote).foregroundColor(.quadMuted))
+    }
+  }
+
+  private func tourCard(_ tour: RoomTour) -> some View {
+    card {
+      HStack {
+        Text(tour.name).font(.headline.weight(.heavy))
+        Spacer()
+        QuadChip(
+          text: tour.published ? "On your listing" : "Private",
+          kind: tour.published ? .good : .plain)
+      }
+      if tour.status == "ready" {
+        if tour.kind == "spots" {
+          Text(tour.spotCount == 1 ? "1 spot" : "\(tour.spotCount) spots").font(.footnote)
+            .foregroundStyle(Color.quadMuted)
+        }
+        NavigationLink(tour.kind == "spots" ? "Open 360° tour" : "Explore photographic tour") {
+          TourWebView(api: state.api, listingID: listing.id, tourID: tour.id).navigationTitle(
+            tour.name
+          ).navigationBarTitleDisplayMode(.inline)
+        }
+        .buttonStyle(.quadDark)
+        if tour.kind == "spots" {
+          if owner && !tour.published {
+            Text(
+              "Check it before it goes on your listing: open the tour, visit every spot and look around for papers, photos and screens."
+            )
+            .font(.footnote).foregroundStyle(Color.quadMuted)
+          }
+        } else {
+          Button("Export Gaussian PLY") { Task { await download(tour) } }
+            .buttonStyle(.quadSecondary).disabled(busy)
+        }
+        if tour.mesh != nil {
+          Button("Export room mesh (PLY)") { Task { await download(tour, mesh: true) } }
+            .buttonStyle(.quadSecondary).disabled(busy)
+            .accessibilityIdentifier("export-room-mesh")
+        }
+        if owner {
+          if tour.published {
+            Button("Take tour off my listing") {
+              Task { await action(tour, "visibility", ["published": false]) }
+            }
+            .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell)).disabled(busy)
+          } else {
+            Button("Add tour to my listing") {
+              Task { await action(tour, "visibility", ["published": true]) }
+            }
+            .buttonStyle(.quadPrimaryWide).disabled(busy)
+          }
+        }
+      } else {
+        Text(status(tour)).font(.subheadline).foregroundStyle(Color.quadMuted)
+        if owner && tour.status == "failed" {
+          Button("Try building it again") { Task { await action(tour, "retry") } }
+            .buttonStyle(.quadSecondary).disabled(busy)
+        }
+        if owner && tour.status == "uploading" && local?.id != tour.id {
+          Text(
+            "The original scan is still needed. Upload it again from the iPhone that made it, or delete this entry."
+          )
+          .font(.footnote).foregroundStyle(Color.quadMuted)
+        }
+      }
+      if owner {
+        Button("Delete tour", role: .destructive) { deleting = tour }
+          .font(.subheadline.weight(.bold)).foregroundStyle(Color(quad: 0xB42318))
+          .disabled(busy)
+      }
+    }
+  }
+
   func status(_ tour: RoomTour) -> String {
     switch tour.status {
-    case "uploading": return "Waiting for capture upload"
-    case "queued": return "Queued for reconstruction"
-    case "processing": return "Reconstructing the room. You can leave this screen."
+    case "uploading": return "Waiting for the scan to upload"
+    case "queued": return "Waiting to be built"
+    case "processing": return "Building the tour. You can leave this screen."
     case "deleting":
       return "Deletion is pending. Tap Delete tour again to finish removing its files."
-    case "failed": return tour.error ?? "Reconstruction failed. Try again."
+    case "failed": return tour.error ?? "The tour could not be built. Try again."
     default: return tour.status
     }
   }

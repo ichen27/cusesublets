@@ -31,6 +31,13 @@ extension Color {
   static let quadLink = Color(quad: 0x4338CA)
   /// Stand-in behind a photo that has not loaded or does not exist.
   static let quadPhoto = Color(quad: 0xF1E9DD)
+  // The scan screens are dark so the camera picture and the map stand out.
+  /// Behind the scan map.
+  static let quadScanGround = Color(quad: 0x17161C)
+  /// Green that reads on the dark scan screens: scanned spots, the ring that fills, progress.
+  static let quadScanGreen = Color(quad: 0x4ADE80)
+  /// Body text on the dark scan screens.
+  static let quadScanText = Color(quad: 0xCFCDC6)
 }
 
 /// Shrinks a control a little while it is pressed and springs it back, unless the person has
@@ -111,6 +118,22 @@ struct QuadDarkButtonStyle: ButtonStyle {
   }
 }
 
+/// A button on a dark scan screen or over the camera: white on a translucent pill.
+struct QuadOnDarkButtonStyle: ButtonStyle {
+  @Environment(\.isEnabled) private var enabled
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .font(.subheadline.weight(.heavy))
+      .foregroundStyle(.white)
+      .padding(.horizontal, 14).frame(minWidth: 44, minHeight: 44)
+      .background(.white.opacity(0.14), in: Capsule())
+      .opacity(enabled ? 1 : 0.45)
+      .modifier(QuadPress(pressed: configuration.isPressed))
+  }
+}
+extension ButtonStyle where Self == QuadOnDarkButtonStyle {
+  static var quadOnDark: QuadOnDarkButtonStyle { .init() }
+}
 extension ButtonStyle where Self == QuadDarkButtonStyle {
   static var quadDark: QuadDarkButtonStyle { .init() }
 }
