@@ -155,6 +155,43 @@ extension View {
   }
 }
 
+/// The white rounded box that every typed answer sits in.
+struct QuadFieldBox: ViewModifier {
+  var vertical: CGFloat = 14
+  func body(content: Content) -> some View {
+    content
+      .padding(.horizontal, 16).padding(.vertical, vertical)
+      .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .strokeBorder(Color.quadInk.opacity(0.08)))
+  }
+}
+
+/// One answer among several. The chosen ones are green.
+struct QuadChoice: View {
+  let title: String
+  let selected: Bool
+  let action: () -> Void
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 5) {
+        if selected { Image(systemName: "checkmark").imageScale(.small) }
+        Text(title)
+      }
+      .font(.subheadline.weight(.bold))
+      .foregroundStyle(selected ? Color.quadGreenText : Color.quadInk)
+      .padding(.horizontal, 14).frame(minHeight: 40)
+      .background(selected ? Color.quadGreenTint : Color.white, in: Capsule())
+      .overlay(
+        Capsule().strokeBorder(
+          selected ? Color.quadGreen.opacity(0.35) : Color.quadInk.opacity(0.08)))
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(selected ? [.isSelected] : [])
+  }
+}
+
 /// A small pill of text, optionally with a symbol.
 struct QuadChip: View {
   enum Kind { case plain, price, good, note, dark }

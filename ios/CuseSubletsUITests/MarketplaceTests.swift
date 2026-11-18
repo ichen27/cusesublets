@@ -40,6 +40,9 @@ final class MarketplaceTests: XCTestCase {
       "isolated-test-password-2026", into: app.secureTextFields["Password"], in: app, secure: true)
     reveal(app.buttons["Create account"], in: app)
     app.buttons["Create account"].tap()
+    let skip = app.buttons["Skip for now"]
+    XCTAssertTrue(skip.waitForExistence(timeout: 30))
+    skip.tap()
     XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 30))
     attach(app, "Account")
     app.buttons["List your place"].tap()
@@ -125,6 +128,16 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(
       app.navigationBars["Welcome"].waitForNonExistence(timeout: 30),
       "Login sheet stayed open after signup")
+    // A new member is asked what brings them, and starts there.
+    XCTAssertTrue(app.staticTexts["What brings you to Quad?"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.buttons["Skip for now"].exists)
+    XCTAssertFalse(app.buttons["Continue"].isEnabled, "Nothing is chosen yet")
+    attach(app, "Welcome")
+    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "I'm looking for a place"))
+      .firstMatch.tap()
+    app.buttons["Continue"].tap()
+    XCTAssertTrue(app.staticTexts["When do you need a place?"].waitForExistence(timeout: 30))
+    app.buttons["Close"].tap()
     XCTAssertTrue(app.staticTexts["iPhone UI Test"].waitForExistence(timeout: 30))
     attach(app, "Account")
     logOut(in: app)
@@ -331,7 +344,7 @@ final class MarketplaceTests: XCTestCase {
     continueAfterFailure = false
     let spot = try freshSpot()
     let host = try seedMember(name: "Harper Host")
-    _ = try seedListing(for: host, price: 800, at: spot)
+    let place = try seedListing(for: host, price: 800, at: spot)
     try seedSearch(for: try seedMember(name: "Sam Seeker"), around: spot)
     let app = launchApp(session: host.cookie)
     app.buttons["tab-matches"].tap()
@@ -339,9 +352,15 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(position.waitForExistence(timeout: 30))
     wait(for: position, toBe: "label == '1 of 1 that fits'", "The matches did not load")
     matchCard("Sam Seeker", in: app).tap()
+
+    // Their search has a page of its own, which offers the place of mine that fits.
+    XCTAssertTrue(app.staticTexts["Sam is looking for a place"].waitForExistence(timeout: 30))
+    XCTAssertTrue(labelled(containing: "Up to $1,000 a month", in: app).exists)
+    XCTAssertTrue(labelled(containing: "Westcott", in: app).exists)
+    XCTAssertTrue(app.buttons["Offer " + place].waitForExistence(timeout: 30))
+    attach(app, "Someone's housing search")
     let about = app.buttons["About Sam Seeker"]
     XCTAssertTrue(about.waitForExistence(timeout: 30))
-    reveal(about, in: app)
     about.tap()
 
     XCTAssertTrue(
@@ -482,7 +501,71 @@ final class MarketplaceTests: XCTestCase {
     XCTAssertTrue(app.buttons["Sublease my place"].exists)
     attach(app, "Matches: no plans yet")
     app.buttons["Say what I'm looking for"].tap()
-    XCTAssertTrue(app.navigationBars["Housing search"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["When do you need a place?"].waitForExistence(timeout: 30))
+  }
+  @MainActor func testSayingWhatYouAreLookingForInThreeStepsTurnsTheSearchOn() throws {
+    continueAfterFailure = false
+    let app = launchApp(session: try seedMember().cookie)
+    app.buttons["tab-matches"].tap()
+    let start = app.buttons["Say what I'm looking for"]
+    XCTAssertTrue(start.waitForExistence(timeout: 30))
+    start.tap()
+
+    XCTAssertTrue(app.staticTexts["When do you need a place?"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.staticTexts["Step 1 of 3 · Dates and budget"].exists)
+    app.buttons["Summer"].tap()
+    wait(for: app.buttons["Summer"], toBe: "isSelected == true", "Summer was not chosen")
+    XCTAssertEqual(app.staticTexts["search-budget"].label, "$1,000")
+    XCTAssertTrue(app.staticTexts["search-fits"].exists)
+    attach(app, "Looking: dates and budget")
+    app.buttons["Continue"].tap()
+
+    XCTAssertTrue(app.staticTexts["What are you looking for?"].waitForExistence(timeout: 30))
+    app.buttons["Private room"].tap()
+    // Somewhere has to be chosen before moving on.
+    app.buttons["Continue"].tap()
+    let problem = app.staticTexts["flow-problem"]
+    XCTAssertTrue(problem.waitForExistence(timeout: 30))
+    XCTAssertEqual(problem.label, "Say where: anywhere in Syracuse, or draw an area on the map.")
+    app.buttons["Anywhere in Syracuse"].tap()
+    reveal(app.buttons["Furnished"], in: app)
+    app.buttons["Furnished"].tap()
+    attach(app, "Looking: the place")
+    app.buttons["Continue"].tap()
+
+    XCTAssertTrue(app.staticTexts["A little about you"].waitForExistence(timeout: 30))
+    let hello = app.descendants(matching: .any)["search-hello"]
+    enter("Synthetic test search only.", into: hello, in: app)
+    dismissKeyboard(in: app)
+    attach(app, "Looking: about you")
+    app.buttons["Finish and see my matches"].tap()
+    wait(
+      for: app.buttons["tab-matches"], toBe: "exists == true AND isSelected == true",
+      "Finishing should land on Matches")
+
+    app.buttons["tab-you"].tap()
+    let looking = app.buttons.matching(
+      NSPredicate(format: "label BEGINSWITH %@", "What you're looking for")
+    ).firstMatch
+    XCTAssertTrue(looking.waitForExistence(timeout: 30))
+    looking.tap()
+    XCTAssertTrue(app.staticTexts["Your search is on"].waitForExistence(timeout: 30))
+    XCTAssertTrue(labelled(containing: "Up to $1,000 a month", in: app).exists)
+    XCTAssertTrue(labelled(containing: "Private room", in: app).exists)
+    XCTAssertTrue(labelled(containing: "Anywhere in Syracuse", in: app).exists)
+    XCTAssertTrue(labelled(containing: "Furnished", in: app).exists)
+    XCTAssertTrue(labelled(containing: "Synthetic test search only.", in: app).exists)
+    attach(app, "What you're looking for")
+
+    app.switches["search-on"].tap()
+    XCTAssertTrue(app.staticTexts["Your search is off"].waitForExistence(timeout: 30))
+
+    // A row opens the step that changes it, with the saved answers filled in.
+    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Kind of place")).firstMatch
+      .tap()
+    XCTAssertTrue(app.staticTexts["What are you looking for?"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.buttons["Private room"].isSelected)
+    XCTAssertTrue(app.buttons["Anywhere in Syracuse"].isSelected)
   }
   @MainActor func testListingCommentPostsAndEdits() throws {
     continueAfterFailure = false

@@ -44,11 +44,11 @@ struct Listing: Codable, Identifiable {
 }
 struct ListingsResponse: Decodable { let listings: [Listing] }
 struct ListingResponse: Decodable { let listing: Listing }
-struct GeoPoint: Codable {
+struct GeoPoint: Codable, Equatable {
   var lat: Double
   var lng: Double
 }
-struct SearchArea: Codable, Identifiable {
+struct SearchArea: Codable, Identifiable, Equatable {
   var id: String
   var label: String
   var points: [GeoPoint]

@@ -50,6 +50,12 @@ import SwiftUI
   /// How many screens with their own bottom bar are showing; the tab bar hides while any is.
   @Published var screensHidingTabBar = 0
   @Published var conversationID: String?
+  /// True from the moment an account is created until the login sheet has closed.
+  var justSignedUp = false
+  /// Shows the question a new member is asked once: what brings them here.
+  @Published var welcoming = false
+  /// What they answered. The You tab opens the matching steps once the question has closed.
+  var welcomeChoice: PostIntent?
   func refreshSession(reportErrors: Bool = true) async {
     let requestID = UUID()
     refreshID = requestID
@@ -178,7 +184,24 @@ struct RootView: View {
     ) { _ in
       if state.api.appleUserID != nil { Task { await state.logout() } }
     }
-    .sheet(isPresented: $state.showLogin) { LoginView() }
+    // One cover at a time: the question waits for the login sheet to close, and the steps it
+    // leads to wait for the question to close.
+    .sheet(
+      isPresented: $state.showLogin,
+      onDismiss: {
+        guard state.justSignedUp else { return }
+        state.justSignedUp = false
+        state.welcoming = state.user != nil
+      }
+    ) { LoginView() }
+    .fullScreenCover(
+      isPresented: $state.welcoming,
+      onDismiss: {
+        guard let choice = state.welcomeChoice, state.user != nil else { return }
+        state.welcomeChoice = nil
+        post(choice)
+      }
+    ) { WelcomeView() }
     .alert(
       "Quad",
       isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })
@@ -318,6 +341,7 @@ struct LoginView: View {
         signup ? "/api/auth/signup" : "/api/auth/login",
         ["email": email, "password": password, "name": name])
       password = ""
+      state.justSignedUp = signup
       await state.refreshSession()
       if state.user != nil { dismiss() }
     } catch { self.error = error.localizedDescription }

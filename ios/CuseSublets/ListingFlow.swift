@@ -319,7 +319,7 @@ struct ListingFlow: View {
         .accessibilityLabel("Walk to campus in minutes")
       Text("min").foregroundStyle(Color.quadMuted)
     }
-    .modifier(FieldBox())
+    .modifier(QuadFieldBox())
   }
 
   @ViewBuilder private var detailsStep: some View {
@@ -339,7 +339,7 @@ struct ListingFlow: View {
         TextField("Monthly rent", value: $form.price, format: .number).keyboardType(.decimalPad)
         Text("per month").foregroundStyle(Color.quadMuted)
       }
-      .modifier(FieldBox())
+      .modifier(QuadFieldBox())
     }
     counter("Bedrooms", value: $form.beds, step: 1)
     counter("Bathrooms", value: $form.baths, step: 0.5)
@@ -351,7 +351,7 @@ struct ListingFlow: View {
         .padding(.vertical, 6)
     }
     .font(.body.weight(.semibold))
-    .modifier(FieldBox(vertical: 6))
+    .modifier(QuadFieldBox(vertical: 6))
     field("About the place") {
       TextField("Describe your place", text: $form.description, axis: .vertical)
         .lineLimit(4...10).accessibilityIdentifier("listing-description")
@@ -551,27 +551,12 @@ struct ListingFlow: View {
   {
     VStack(alignment: .leading, spacing: 6) {
       caption(title)
-      content().modifier(FieldBox())
+      content().modifier(QuadFieldBox())
     }
   }
 
-  /// One answer among several. The chosen ones are green.
   private func choice(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      HStack(spacing: 5) {
-        if selected { Image(systemName: "checkmark").imageScale(.small) }
-        Text(title)
-      }
-      .font(.subheadline.weight(.bold))
-      .foregroundStyle(selected ? Color.quadGreenText : Color.quadInk)
-      .padding(.horizontal, 14).frame(minHeight: 40)
-      .background(selected ? Color.quadGreenTint : Color.white, in: Capsule())
-      .overlay(
-        Capsule().strokeBorder(
-          selected ? Color.quadGreen.opacity(0.35) : Color.quadInk.opacity(0.08)))
-    }
-    .buttonStyle(.plain)
-    .accessibilityAddTraits(selected ? [.isSelected] : [])
+    QuadChoice(title: title, selected: selected, action: action)
   }
 
   private func counter(_ title: String, value: Binding<Double>, step: Double) -> some View {
@@ -593,7 +578,7 @@ struct ListingFlow: View {
       }
       .buttonStyle(.quadIcon).accessibilityLabel("More \(title.lowercased())")
     }
-    .modifier(FieldBox(vertical: 8))
+    .modifier(QuadFieldBox(vertical: 8))
   }
 
   private func point(_ symbol: String, _ text: String) -> some View {
@@ -858,19 +843,6 @@ struct ListingFlow: View {
       leaseSent = true
       try await reloadPlace()
     } catch { problem = error.localizedDescription }
-  }
-}
-
-/// The white rounded box that every typed answer sits in.
-private struct FieldBox: ViewModifier {
-  var vertical: CGFloat = 14
-  func body(content: Content) -> some View {
-    content
-      .padding(.horizontal, 16).padding(.vertical, vertical)
-      .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .strokeBorder(Color.quadInk.opacity(0.08)))
   }
 }
 

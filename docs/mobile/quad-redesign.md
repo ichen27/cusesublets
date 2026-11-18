@@ -15,8 +15,9 @@ The iPhone app is being redrawn and renamed from CuseSublets to **Quad**. This p
 | Matches, one at a time | Built (`MatchesView.swift`, `MatchDeck.swift`) |
 | A person's profile | Built (`MemberView.swift`, `PersonProfile.swift`) |
 | Inbox and a conversation | Built (`InboxView.swift`, `Chat.swift`) |
-| You, editing your own profile, a housing search's page | Old style, under the new tab bar |
-| Sign-up questions | Not built |
+| The question after sign-up, saying what you're looking for in three steps | Built (`SearchFlow.swift`, `SearchSteps.swift`) |
+| "What you're looking for" and someone's housing search page | Built (`LookingView.swift`, `SearchPage.swift`) |
+| You, editing your own profile | Old style, under the new tab bar |
 | Scan and tour screens in the new colours | Not built |
 | Building pages, building managers, staff tools in the app | Not built; these need new server features first |
 
@@ -174,6 +175,38 @@ Known limits:
 - Accepting an offer was not run: the server only accepts once staff have checked the lease, the permission and the subleaser's ID, and the interface tests do not act as staff.
 
 ![The Inbox, a conversation with your own offer, and the other person's offer declined](screenshots/quad-inbox-chat.jpg)
+
+## Saying what you're looking for
+
+**After sign-up.** Someone who has just created an account with an email and password is asked once what brings them: looking for a place, or subleasing theirs. The answer opens the matching steps; "Skip for now" opens neither.
+
+**Three steps** replace the one-page housing search form. They open from that question, from the Post button, from Matches and from You.
+
+1. **Dates and budget.** One tap fills in a term (spring, summer, fall, a full year), and the two dates can then be changed. The term dates are round guesses at a university year, not any one school's calendar. A slider sets the most you can spend each month.
+2. **The place.** A private room, an entire place or either. Where: "Anywhere in Syracuse", or up to five areas drawn on the map. Must-haves use the same words a place is listed with, so they can match one.
+3. **About you.** A few lines that people subleasing their place read before they reply, with links to add a photo and to get the ID check.
+
+Under each step a green line says how many places fit the answers so far. Finishing turns the search on and lands on Matches.
+
+**"What you're looking for"** opens from You once a search is saved. It shows whether the search is on, with a switch; how many places fit right now; and one row per answer. A row opens the step that changes it, with "Save changes".
+
+**Someone else's search** has its own page: who they are, the same rows, what they wrote, the map of their areas and the comments. A conversation is always about a place, so the bar at the bottom offers them a place of yours that fits. With none it says why.
+
+Nothing changed on the server for this. The rules, the words and the count have no interface in them and live in `SearchSteps.swift`, with tests in `SearchStepsTests.swift`.
+
+Known limits:
+
+- **The count is from the phone.** It runs the server's matching rule over the public feed, which holds the newest 200 places. The matches themselves still come from the server.
+- **"Anywhere in Syracuse" is a design call.** The server needs at least one area, and there are no ready-made neighborhoods to pick from, so this is one area covering everything the service covers. The mockup's neighborhood and building chips are not built.
+- **No "my dates can shift" and no "how you live" tags.** The server stores neither.
+- **No lowest rent or bedroom count.** The steps do not ask for them. A search that already has them keeps them.
+- **No private draft.** Leaving the steps discards the answers. An unfinished search saved from the website or an older version is read once and removed when the search is saved.
+- **Only email sign-up is asked the question.** With Apple or Google the app cannot tell a new account from a returning one.
+- The login and sign-up form itself is still the old one.
+
+![The question after sign-up and the three steps](screenshots/quad-looking-steps.jpg)
+
+![What you're looking for, and someone else's housing search](screenshots/quad-looking-page.jpg)
 
 ## Checking it
 

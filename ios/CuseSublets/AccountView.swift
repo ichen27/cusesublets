@@ -22,21 +22,19 @@ struct AccountView: View {
             NavigationLink("Saved posts") { SavedView() }
             NavigationLink("Change password") { PasswordView() }
           }
-          Section("Your housing search") {
+          Section("What you're looking for") {
             if let search {
-              SearchCard(search: search)
-              Button(search.status == "active" ? "Turn search off" : "Turn search on") {
-                Task {
-                  do {
-                    try await state.api.act(
-                      "/api/my-search/status",
-                      ["status": search.status == "active" ? "paused" : "active"])
-                    await load()
-                  } catch { self.error = error.localizedDescription }
+              NavigationLink {
+                LookingView()
+              } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                  Text("What you're looking for")
+                  StatusText(text: search.status == "active" ? "Search on" : "Search off")
                 }
-              }.disabled(search.status == "removed")
+              }
+            } else {
+              Button("Say what I'm looking for") { newSearch = true }
             }
-            Button(search == nil ? "Create housing search" : "Edit search") { newSearch = true }
           }
           Section("Your places") {
             Button("List your place", systemImage: "plus") { listing = .new() }
@@ -116,8 +114,8 @@ struct AccountView: View {
       .fullScreenCover(item: $listing, onDismiss: { Task { await load() } }) { start in
         NavigationStack { ListingFlow(start: start, onSaved: { Task { await load() } }) }
       }
-      .sheet(isPresented: $newSearch) {
-        NavigationStack { SearchEditor(search: search, onSaved: { Task { await load() } }) }
+      .fullScreenCover(isPresented: $newSearch, onDismiss: { Task { await load() } }) {
+        NavigationStack { SearchFlow(search: search, onSaved: { Task { await load() } }) }
       }
   }
   func load() async {
