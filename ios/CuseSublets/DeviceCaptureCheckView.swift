@@ -17,6 +17,19 @@
     @State private var hasSpotTake = false
     @State private var spotArchive: URL?
     @State private var confirmSpotDiscard = false
+    #if !PERSONAL_DEVICE
+      // The scanning app lists properties on its first screen. In the marketplace app this
+      // screen is where they are reached.
+      @StateObject private var store = PropertyStore()
+      @State private var naming = false
+      @State private var newName = ""
+      @State private var opened: Property?
+      /// The scan whose finished tour is being looked at.
+      @State private var viewing: Property?
+      @State private var reading = false
+      /// What the list is waiting on or could not do, in a sentence.
+      @State private var studioStatus = ""
+    #endif
     private let spotDraft = PhotoCaptureDraft(
       id: "device-check-spots", ownerId: "local-device-check",
       listingId: "local-device-check-spots", name: "Private spot check")
@@ -31,6 +44,9 @@
     }
     var body: some View {
       Form {
+        #if !PERSONAL_DEVICE
+          scans
+        #endif
         Section("Local hardware test") {
           Text(
             "This development-only screen saves a private camera take on this iPhone. It does not need an account, contact the reconstruction service, or publish a listing."
@@ -99,6 +115,31 @@
       }
       .navigationTitle("Device capture check")
       .task { recover() }
+      #if !PERSONAL_DEVICE
+        .task {
+          StudioClient.rememberLaunchAddress()
+          await readScans()
+        }
+        .navigationDestination(item: $opened) { property in
+          PropertyDetailView(store: store, id: property.id)
+        }
+        .fullScreenCover(item: $viewing) { property in
+          if let client = StudioClient.configured {
+            StudioTourScreen(
+              title: property.name, url: client.tourPage(property.id), cookie: client.tokenCookie)
+          }
+        }
+        .alert("New scan", isPresented: $naming) {
+          TextField("Name or address", text: $newName).textInputAutocapitalization(.words)
+          Button("Add") {
+            opened = store.add(name: newName)
+            newName = ""
+          }
+          Button("Cancel", role: .cancel) { newName = "" }
+        } message: {
+          Text("Name the place, then scan it spot by spot.")
+        }
+      #endif
       .fullScreenCover(isPresented: $capture, onDismiss: recover) {
         PhotoCaptureScreen(recorder: PhotoRecorder(draft: draft, recordStream: true))
       }
@@ -134,6 +175,77 @@
         )
       }
     }
+    #if !PERSONAL_DEVICE
+      /// Every scan: the ones Tour Studio holds, whichever copy of the app made them, and any
+      /// started on this iPhone. Each opens its page to view its tour, scan or scan again.
+      private var scans: some View {
+        Section("Your spot scans") {
+          ForEach(store.properties) { property in
+            // Two things to tap in one row: the scan's own page, and its tour when it has one.
+            HStack(spacing: 10) {
+              Button {
+                opened = property
+              } label: {
+                HStack {
+                  PropertyRow(property: property)
+                  Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+              if property.uploaded {
+                Button {
+                  viewing = property
+                } label: {
+                  Label("View tour", systemImage: "view.3d")
+                }
+                .buttonStyle(.bordered).font(.footnote.weight(.semibold))
+                .accessibilityLabel("View the 360° tour of \(property.name)")
+              }
+              Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+          }
+          if reading {
+            HStack(spacing: 10) {
+              ProgressView()
+              Text("Reading your scans from Tour Studio")
+            }
+            .accessibilityElement(children: .combine)
+          }
+          if !studioStatus.isEmpty {
+            Text(studioStatus).font(.footnote).foregroundStyle(.secondary)
+              .accessibilityIdentifier("tour-studio-status")
+          }
+          Button("New scan", systemImage: "plus") { naming = true }
+          NavigationLink("Tour Studio settings") { StudioSettingsView() }
+          if StudioClient.configured != nil {
+            Button("Read my scans again") { Task { await readScans() } }.disabled(reading)
+          }
+        }
+      }
+
+      private func readScans() async {
+        guard let client = StudioClient.configured else {
+          studioStatus =
+            "Scans are kept in Tour Studio. Set its address and access token in Tour Studio settings to list the ones you made before."
+          return
+        }
+        reading = true
+        defer { reading = false }
+        do {
+          let kept = try await client.properties()
+          store.merge(kept)
+          studioStatus =
+            kept.isEmpty
+            ? "Tour Studio has no scans yet."
+            : "Tour Studio holds \(kept.count) scan\(kept.count == 1 ? "" : "s"). View tour opens a scan's 360° tour."
+        } catch {
+          studioStatus = error.localizedDescription
+        }
+      }
+    #endif
+
     private func recover() {
       hasTake = FileManager.default.fileExists(
         atPath: folder.appendingPathComponent("draft.json").path)

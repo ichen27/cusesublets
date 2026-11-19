@@ -30,10 +30,10 @@ struct RoomScansView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 18) {
-        Text("Room layouts").font(.largeTitle.bold())
+        Text("Room layouts").font(.title.weight(.heavy)).accessibilityAddTraits(.isHeader)
         Text(
-          "Approximate geometry captured on an iPhone. Furniture is simplified; this is not a photographic tour or a measured survey."
-        ).foregroundStyle(.secondary)
+          "A rough shape of a room, captured on an iPhone. Furniture is simplified. It is not a 360° tour and not a measured survey."
+        ).font(.subheadline).foregroundStyle(Color.quadMuted)
         if owner {
           if RoomCaptureSession.isSupported {
             Button("Scan a room", systemImage: "viewfinder") {
@@ -41,68 +41,82 @@ struct RoomScansView: View {
                 if await AVCaptureDevice.requestAccess(for: .video) {
                   capture = true
                 } else {
-                  error = "Camera access is off. Enable it for CuseSublets in Settings."
+                  error = "Camera access is off. Turn it on for Quad in Settings."
                 }
               }
-            }.buttonStyle(.borderedProminent).tint(.cuseButtonFill).disabled(busy || local != nil)
+            }.buttonStyle(.quadPrimaryWide).disabled(busy || local != nil)
           } else {
             Label("Room scanning needs a LiDAR-equipped iPhone.", systemImage: "info.circle")
-            Text("You can still upload photos, videos and an existing tour from Manage place.")
-              .font(.caption)
+              .font(.subheadline.weight(.semibold))
+            Text("You can still add photos and a 360° tour to your place.")
+              .font(.footnote).foregroundStyle(Color.quadMuted)
           }
           Text(
-            "Scans stay private until you explicitly publish them. Check for private information before sharing."
-          ).font(.caption)
+            "A scan stays private until you add it to your listing. Look through it for anything private first."
+          ).font(.footnote).foregroundStyle(Color.quadMuted)
         }
         if let draft = local {
-          Text("Private scan — saved on this iPhone").font(.headline)
+          HStack {
+            Text("Your scan").font(.headline.weight(.heavy))
+            Spacer()
+            QuadChip(text: "On this iPhone · private")
+          }
           RoomModelView(layout: draft.layout).frame(height: 320).accessibilityHidden(true)
           RoomLayoutMeasurements(layout: draft.layout)
-          TextField("Room name", text: $name).textFieldStyle(.roundedBorder)
+          TextField("Room name", text: $name).modifier(QuadFieldBox())
           HStack {
-            Button("Upload privately") { Task { await upload(draft) } }.buttonStyle(
-              .borderedProminent
-            ).tint(.cuseButtonFill).disabled(
-              busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Upload privately") { Task { await upload(draft) } }
+              .buttonStyle(.quadPrimary)
+              .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Discard", role: .destructive) {
               do {
                 try FileManager.default.removeItem(at: draftURL)
                 local = nil
               } catch { self.error = error.localizedDescription }
-            }.disabled(busy)
+            }.buttonStyle(QuadSecondaryButtonStyle(fill: .quadWell)).disabled(busy)
           }
         }
         ForEach(scans) { scan in
           VStack(alignment: .leading, spacing: 10) {
             HStack {
-              Text(scan.name).font(.headline)
+              Text(scan.name).font(.headline.weight(.heavy))
               Spacer()
-              StatusText(text: scan.published ? "Published" : "Private")
+              QuadChip(
+                text: scan.published ? "On your listing" : "Private",
+                kind: scan.published ? .good : .plain)
             }
             RoomModelView(layout: scan.layout).frame(height: 300).accessibilityHidden(true)
             RoomLayoutMeasurements(layout: scan.layout)
-            Text("Drag to orbit · pinch to zoom").font(.caption).foregroundStyle(.secondary)
+            Text("Drag to turn it · pinch to zoom").font(.caption)
+              .foregroundStyle(Color.quadMuted)
             if owner {
               HStack {
-                Button(scan.published ? "Hide from listing" : "Publish to listing") {
+                Button(scan.published ? "Take off my listing" : "Add to my listing") {
                   Task { await visibility(scan) }
-                }.disabled(busy)
+                }.buttonStyle(QuadSecondaryButtonStyle(fill: .quadWell)).disabled(busy)
                 Spacer()
-                Button("Delete", role: .destructive) { deleting = scan }.disabled(busy)
+                Button("Delete", role: .destructive) { deleting = scan }
+                  .font(.subheadline.weight(.bold)).foregroundStyle(Color(quad: 0xB42318))
+                  .disabled(busy)
               }
             }
           }
+          .padding(16).quadCard(radius: 22)
         }
         if scans.isEmpty && local == nil {
-          Text("No room layouts shared yet.").foregroundStyle(.secondary)
+          Text("No room layouts shared yet.").font(.subheadline)
+            .foregroundStyle(Color.quadMuted)
         }
         if busy { ProgressView() }
         if !error.isEmpty {
-          Text(error).foregroundStyle(.red)
-          Button("Reload scans") { Task { await load() } }
+          Text(error).font(.subheadline).foregroundStyle(Color(quad: 0xB42318))
+          Button("Reload scans") { Task { await load() } }.buttonStyle(.quadSecondary)
         }
-      }.padding()
-    }.navigationTitle("Room capture").navigationBarTitleDisplayMode(.inline).task {
+      }.padding(.horizontal, 16).padding(.bottom, 16)
+    }
+    .foregroundStyle(Color.quadInk).background(Color.quadGround.ignoresSafeArea())
+    .tint(.quadOrangeDeep)
+    .navigationTitle("Room capture").navigationBarTitleDisplayMode(.inline).task {
       await load()
       if owner {
         do {

@@ -103,14 +103,16 @@ struct SpotTurnView: View {
                 }
                 .stroke(.white, style: StrokeStyle(lineWidth: 3, dash: [3, 5]))
                 if target.onScreen {
-                  Circle().fill(Color(white: 0.96)).frame(width: 40, height: 40)
+                  // The dot to aim at: white with an orange rim, as on the capture map.
+                  Circle().fill(.white).frame(width: 36, height: 36)
+                    .overlay(Circle().strokeBorder(Color.quadOrange, lineWidth: 9))
                     .position(target.point).accessibilityHidden(true)
                 }
               }
               Circle().stroke(.white, lineWidth: 3).frame(width: Self.reticle, height: Self.reticle)
                 .position(center)
               Circle().trim(from: 0, to: recorder.turn?.holdProgress ?? 0)
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .stroke(Color.quadScanGreen, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .frame(width: Self.reticle + 10, height: Self.reticle + 10)
                 .position(center).accessibilityHidden(true)
@@ -127,13 +129,14 @@ struct SpotTurnView: View {
         HStack {
           Spacer()
           Button("Back to the map", systemImage: "xmark") { recorder.cancelSpot() }
-            .labelStyle(.iconOnly).font(.title2).padding().foregroundStyle(.white)
+            .labelStyle(.iconOnly).buttonStyle(.quadOnDark).padding(.horizontal, 14)
+            .padding(.top, 8)
         }
         Spacer()
-        ProgressView(value: recorder.turn?.progress ?? 0).tint(.green).padding(.horizontal, 24)
-          .accessibilityLabel("Spot progress")
+        ProgressView(value: recorder.turn?.progress ?? 0).tint(.quadScanGreen)
+          .padding(.horizontal, 24).accessibilityLabel("Spot progress")
         Button("Undo", systemImage: "arrow.uturn.backward") { recorder.undoSlice() }
-          .buttonStyle(.borderedProminent).tint(Color(white: 0.15))
+          .buttonStyle(.quadOnDark)
           .disabled((recorder.turn?.captured.isEmpty ?? true)).padding(.bottom, 24)
       }
     }
@@ -146,20 +149,20 @@ struct SpotTurnView: View {
       if !recorder.cameraLive {
         // The 0.5× camera takes a moment to take over from the one that tracks the walk.
         HStack(spacing: 10) {
-          ProgressView().tint(.black)
-          Text("Starting the camera…").font(.title3.weight(.semibold))
+          ProgressView().tint(.quadInk)
+          Text("Starting the camera…").font(.title3.weight(.heavy))
         }
       } else {
         Text(away ? "Turn to the dot" : "Point the camera at the dot")
-          .font(.title3.weight(.semibold))
+          .font(.title3.weight(.heavy))
         if first {
           Text("Hold still until the ring fills, then turn on the spot to the next dot.")
-            .font(.footnote).multilineTextAlignment(.center)
+            .font(.footnote).foregroundStyle(Color.quadMuted).multilineTextAlignment(.center)
         }
       }
     }
-    .foregroundStyle(.black).padding(.horizontal, 24).padding(.vertical, 14)
-    .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 10))
+    .foregroundStyle(Color.quadInk).padding(.horizontal, 22).padding(.vertical, 14)
+    .background(.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     .padding(.horizontal, 24)
     .accessibilityElement(children: .combine).accessibilityIdentifier("spot-caption")
   }
@@ -200,41 +203,42 @@ struct SpotMapView: View {
 
   var body: some View {
     ZStack {
-      Color.black.ignoresSafeArea()
+      Color.quadScanGround.ignoresSafeArea()
       SpotCameraSurface(recorder: recorder).frame(width: 1, height: 1).opacity(0.01)
         .accessibilityHidden(true)
       VStack(spacing: 12) {
         HStack {
           Button("Close", systemImage: "chevron.left") { close() }.labelStyle(.iconOnly)
-            .font(.title2)
+            .buttonStyle(.quadOnDark)
           Spacer()
-          Text(recorder.spots.count == 1 ? "1 spot" : "\(recorder.spots.count) spots")
-            .font(.headline)
+          Text(
+            recorder.spots.count == 1
+              ? "1 spot scanned" : "\(recorder.spots.count) spots scanned"
+          )
+          .font(.headline.weight(.heavy))
           Spacer()
-          Button("Done") { review() }.buttonStyle(.borderedProminent).tint(.green)
-            .foregroundStyle(.black).disabled(recorder.spots.isEmpty)
+          Button("Done") { review() }.buttonStyle(.quadSecondary)
+            .disabled(recorder.spots.isEmpty)
         }
-        .padding(.horizontal).padding(.vertical, 8)
+        .padding(.horizontal, 14).padding(.vertical, 8)
         SpotMapEditor(
           recorder: recorder, you: recorder.you,
-          empty: "Stand where you want the first view, then tap Capture Here.",
+          empty: "Stand where you want the first view, then tap Capture here.",
           redo: { recorder.redoSpot($0) })
         VStack(spacing: 10) {
           if !recorder.message.isEmpty {
             Text(recorder.message).font(.callout).multilineTextAlignment(.center)
-              .accessibilityIdentifier("spot-message")
+              .foregroundStyle(Color.quadScanText).accessibilityIdentifier("spot-message")
           }
           Button {
             recorder.openSpot()
           } label: {
             HStack(spacing: 10) {
-              if recorder.opening { ProgressView().tint(.white) }
-              Text(recorder.opening ? "Finding your position…" : "Capture Here")
+              if recorder.opening { ProgressView().tint(.quadInk) }
+              Text(recorder.opening ? "Finding your position…" : "Capture here")
             }
-            .font(.title3.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 8)
           }
-          .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 8))
-          .tint(.cuseButtonFill).controlSize(.large)
+          .buttonStyle(.quadPrimaryWide)
           .accessibilityIdentifier("next-spot")
           .disabled(
             !recorder.running || recorder.phase != .map || recorder.spotsRemaining == 0
@@ -280,20 +284,25 @@ struct SpotMapEditor: View {
       )
       .accessibilityIdentifier("captured-so-far")
       if let picked {
-        HStack {
+        HStack(spacing: 8) {
           Button("Preview 360") { preview = picked }
+            .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadOrangeTint))
           if let redo, recorder.running {
             Button("Capture again") {
               selected = nil
               redo(picked.spot)
             }
+            .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
           }
           Button("Delete", role: .destructive) { deleting = picked }
+            .buttonStyle(QuadSecondaryButtonStyle(fill: .quadWell))
         }
-        .buttonStyle(.bordered)
+        .padding(10)
+        .background(.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 12)
       } else if !help.isEmpty {
-        Text(help).font(.caption).multilineTextAlignment(.center).opacity(0.75)
-          .padding(.horizontal)
+        Text(help).font(.footnote).multilineTextAlignment(.center)
+          .foregroundStyle(Color.quadScanText).padding(.horizontal)
       }
     }
     .sheet(item: $preview) { spot in
@@ -302,10 +311,12 @@ struct SpotMapEditor: View {
           SpotPreview(
             folder: recorder.folder, spot: spot,
             frames: (try? PhotoRecorder.savedFrames(in: recorder.folder)) ?? [])
-          Text("Rough preview — the tour is stitched after upload.").font(.caption).padding()
+          Text("A rough preview. The tour is put together after upload.").font(.footnote)
+            .foregroundStyle(Color.quadMuted).padding()
         }
+        .background(Color.quadGround)
         .navigationTitle("Preview").navigationBarTitleDisplayMode(.inline)
-        .toolbar { Button("Done") { preview = nil } }
+        .toolbar { Button("Done") { preview = nil }.tint(.quadOrangeDeep) }
       }
     }
     .alert(
@@ -513,17 +524,14 @@ struct SpotMapCanvas: View {
             let p = layout.screen(place(of: spot))
             let chosen = picked == spot.spot || drag?.spot == spot.spot
             let shape = hexagon(at: p, radius: chosen ? Self.marker + 3 : Self.marker)
-            context.fill(
-              shape,
-              with: .color(
-                chosen ? Color(red: 0.05, green: 0.1, blue: 0.85) : Color(red: 0.3, green: 0.42, blue: 1)))
+            context.fill(shape, with: .color(chosen ? Color.quadOrange : Color.quadScanGreen))
             context.stroke(shape, with: .color(.white), lineWidth: chosen ? 3 : 1.5)
           }
           if let you {
             let p = layout.screen(you)
             let dot = Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14))
-            context.fill(dot, with: .color(.green))
-            context.stroke(dot, with: .color(.white), lineWidth: 2)
+            context.fill(dot, with: .color(.quadOrange))
+            context.stroke(dot, with: .color(.white), lineWidth: 3)
           }
         }
         ForEach(spots.filter { drawing.contains($0.spot) }, id: \.spot) { spot in
@@ -590,9 +598,17 @@ struct SpotReviewView: View {
   let close: () -> Void
 
   var body: some View {
-    NavigationStack {
-      List {
-        Section {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
+        HStack {
+          Text("Your scan").font(.title2.weight(.heavy)).accessibilityAddTraits(.isHeader)
+          Spacer()
+          if recorder.running {
+            Button("Keep capturing") { close() }.font(.subheadline.weight(.bold))
+              .foregroundStyle(Color.quadLink)
+          }
+        }
+        VStack(spacing: 10) {
           SpotMapEditor(
             recorder: recorder, movable: false,
             redo: { spot in
@@ -600,26 +616,39 @@ struct SpotReviewView: View {
               recorder.redoSpot(spot)
             }
           )
-          .frame(height: 360).listRowBackground(Color.black).foregroundStyle(.white)
-          Text(recorder.spots.count == 1 ? "1 spot." : "\(recorder.spots.count) spots.")
-            .font(.subheadline)
+          .frame(height: 360).foregroundStyle(.white)
         }
-        if !recorder.message.isEmpty { Text(recorder.message).foregroundStyle(.secondary) }
-        Section {
-          Text("Each spot's 360 shows everything in the room. Check the previews for personal details before generating.")
-            .font(.caption)
-          Button("Generate tour") { generate() }.buttonStyle(.borderedProminent).tint(.cuseButtonFill)
-            .disabled(!recorder.canGenerate || packaging)
-          if packaging { ProgressView("Preparing upload…") }
+        .padding(.vertical, 10)
+        .background(Color.quadScanGround, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        Text(recorder.spots.count == 1 ? "1 spot" : "\(recorder.spots.count) spots")
+          .font(.subheadline.weight(.heavy))
+        if !recorder.message.isEmpty {
+          Text(recorder.message).font(.subheadline).foregroundStyle(Color.quadMuted)
         }
+        HStack(alignment: .top, spacing: 12) {
+          Image(systemName: "eye").font(.title3).foregroundStyle(Color.quadOrangeTintText)
+            .accessibilityHidden(true)
+          Text(
+            "Each spot's 360 shows everything in the room. Look through the previews for papers, photos and screens you would not want strangers to see."
+          )
+          .font(.footnote).foregroundStyle(Color.quadOrangeTintText)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.quadOrangeTint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        if packaging {
+          HStack(spacing: 8) {
+            ProgressView()
+            Text("Preparing upload…").font(.footnote.weight(.semibold))
+              .foregroundStyle(Color.quadMuted)
+          }
+        }
+        Button("Generate tour") { generate() }.buttonStyle(.quadPrimaryWide)
+          .disabled(!recorder.canGenerate || packaging)
       }
-      .navigationTitle("Review spots").navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        if recorder.running {
-          ToolbarItem(placement: .cancellationAction) { Button("Keep capturing") { close() } }
-        }
-      }
+      .padding(20)
     }
+    .foregroundStyle(Color.quadInk)
+    .background(Color.quadGround.ignoresSafeArea())
   }
 }
 

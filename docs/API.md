@@ -8,6 +8,7 @@ All endpoints same-origin. Errors `{error:string}` with non-2xx. Money is USD mo
 - GET `/api/listings` → `{listings:Listing[]}` approved public listings.
 - GET `/api/listings/:id` → `{listing:Listing}` (pending only owner/admin).
 - POST `/api/listings` `{title,neighborhood,address,price,beds,baths,roomType,startDate,endDate,description,amenities?:string[],images?:string[],videoUrl?:string,matterportUrl?:string,walkMinutes?:number}` → `{listing:Listing}` pending review. Approximate coordinates assigned for Syracuse; address must describe approximate public location.
+- POST `/api/listings` also accepts `publish?:boolean` (default `true`). `publish:false` creates the listing unpublished: `status:"pending"` with no review note, visible only to its owner and staff, until the owner calls `/api/listings/:id/publish`. Any other value returns 400.
 - GET `/api/mine` → `{listings:Listing[],documents:DocumentRecord[]}`
 - POST `/api/profile` `{name:string}` → `{user:User}`; cannot change role/identity.
 - GET `/api/messages` → `{messages:Message[],listings:Listing[]}` participant messages.
@@ -46,9 +47,9 @@ New listing input optionally accepts `lat:number` between 42.9–43.15 and `lng:
 
 ## Conversations and negotiation
 
-- GET `/api/conversations` → `{conversations:ConversationSummary[]}`, newest activity first; only the signed-in participant's threads.
+- GET `/api/conversations` → `{conversations:ConversationSummary[]}`, newest activity first; only the signed-in participant's threads. Each summary carries `peerIdentity`, the other participant's identity status as their public profile shows it.
 - POST `/api/conversations` `{listingId:string}` → `{conversation:ConversationSummary}` (201). Opens or reuses the unique listing/renter thread without sending a message. New threads require a visible approved listing; owners use their existing inbox threads.
-- GET `/api/conversations/:id` → `ConversationDetail = {conversation,listing,peer:{id,name},messages,offers,bookings,attachments,events}`. Listing contains current property context; renter views exclude private review notes. Review documents are never included. Historical threads remain readable if a listing is paused or an account is suspended.
+- GET `/api/conversations/:id` → `ConversationDetail = {conversation,listing,peer:{id,name,identity},messages,offers,bookings,attachments,events}`. Listing contains current property context; renter views exclude private review notes. Review documents are never included. Historical threads remain readable if a listing is paused or an account is suspended.
 - POST `/api/conversations/:id/messages` `{body:string}` (1–2000 chars) → `{message:Message}` (201).
 - POST `/api/conversations/:id/documents` multipart `file` → `{attachment:ChatAttachment}` (201). PDF/JPEG/PNG only, declared type must match magic bytes, maximum 5 MiB, maximum 100 documents per thread. Object keys are not returned.
 - GET `/api/chat-documents/:id` → protected attachment stream with no-store and sandbox headers. Only the two conversation participants can download, including when an administrator is the requester. These are explicitly shared files, independent of private listing-review evidence.
@@ -76,7 +77,7 @@ New listings publish immediately (approved) with pending lease and permission ch
 - GET /api/profile-media/:id returns public image; unavailable for suspended accounts. Storage metadata is independent from private evidence.
 - POST /api/profile/identity accepts multipart file (PDF/JPG/PNG, maximum 5MB; bytes checked). Returns document (id, name, type, createdAt); resets identity check.
 - GET /api/identity-documents/:id is owner/admin only, attachment download with no-store.
-- GET /api/users/:id returns profile, listings, reviews, reviewableBookings. Explicit public profile projection excludes email, phone, evidence and review reasons. Listings are published only; eligible bookings visible only to authenticated counterpart.
+- GET /api/users/:id returns profile, listings, reviews, reviewableBookings. Explicit public profile projection excludes email, phone, evidence and review reasons. Listings are published only; eligible bookings visible only to authenticated counterpart. `profile.joinedAt` is the month the account was created (`yyyy-MM`), absent for accounts made before it was recorded. `completed` is `{subleaser, subtenant}`: how many subleases the member has finished on each side, by the same rule that allows a review below. Each review carries `authorRole` (`subleaser` or `subtenant`) and `stayEnded` (`yyyy-MM`).
 - POST /api/users/:id/reviews accepts bookingId, rating, body. Integer 1–5 stars and 10–2000 characters. Requires paid booking, move-in, past end date in Syracuse, no open dispute, active participants and no cancellation. Local development accepts simulated payment. Unique per booking/reviewer; no self reviews.
 - GET /api/admin/identities returns submissions with userId, name, email, identity, identityNote and documents. Current-name evidence only, newest first.
 - POST /api/admin/identities/:userId/review accepts status (verified/needs_info/rejected), reason and documentId. Requires latest evidence matching current name version. Self-review denied. Existing /api/admin/users/:id/review accepts identity as status alias but also requires documentId.

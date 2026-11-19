@@ -44,11 +44,11 @@ struct Listing: Codable, Identifiable {
 }
 struct ListingsResponse: Decodable { let listings: [Listing] }
 struct ListingResponse: Decodable { let listing: Listing }
-struct GeoPoint: Codable {
+struct GeoPoint: Codable, Equatable {
   var lat: Double
   var lng: Double
 }
-struct SearchArea: Codable, Identifiable {
+struct SearchArea: Codable, Identifiable, Equatable {
   var id: String
   var label: String
   var points: [GeoPoint]
@@ -87,6 +87,12 @@ struct Conversation: Decodable, Identifiable {
   let listingImage: String
   let peerName: String
   let lastMessage: String?
+  /// Whether staff have checked the other person's ID. Older servers do not say.
+  var peerIdentity: String?
+  var buyerId: String?
+  var sellerId: String?
+  /// When the thread last changed.
+  var updatedAt: String?
 }
 struct ConversationsResponse: Decodable { let conversations: [Conversation] }
 struct ConversationResponse: Decodable { let conversation: Conversation }
@@ -104,6 +110,9 @@ struct Offer: Decodable, Identifiable {
   let endDate: String
   let status: String
   let kind: String
+  /// The offer this one answers, when it is a counteroffer.
+  var parentOfferId: String?
+  var createdAt: String?
 }
 struct Booking: Decodable, Identifiable {
   let id: String
@@ -115,10 +124,13 @@ struct Booking: Decodable, Identifiable {
   let disputeStatus: String
   let disputeReason: String?
   let buyerId: String
+  var createdAt: String?
 }
 struct Attachment: Decodable, Identifiable {
   let id: String
   let name: String
+  var senderId: String?
+  var createdAt: String?
 }
 struct ChatEvent: Decodable, Identifiable {
   let id: String
@@ -129,6 +141,8 @@ struct ChatEvent: Decodable, Identifiable {
 struct ConversationPeer: Decodable {
   let id: String
   let name: String
+  /// Whether staff have checked this person's ID. Older servers do not say.
+  var identity: String?
 }
 struct ConversationDetail: Decodable {
   let conversation: Conversation
@@ -160,12 +174,25 @@ struct PublicMember: Decodable {
   let avatar: String?
   let photos: [String]
   let socials: [String: String]
+  /// The month the account was created, `yyyy-MM`. Accounts from before this was recorded, and
+  /// older servers, have none.
+  var joinedAt: String?
 }
 struct MemberReview: Decodable, Identifiable {
   let id: String
+  var authorId: String?
   let authorName: String
   let rating: Int
   let body: String
+  /// "subleaser" or "subtenant": which side of the sublease the reviewer was on.
+  var authorRole: String?
+  /// The month the stay ended, `yyyy-MM`.
+  var stayEnded: String?
+}
+/// Subleases a person has finished here: paid for, moved into and ended.
+struct CompletedSubleases: Decodable {
+  let subleaser: Int
+  let subtenant: Int
 }
 struct ReviewableBooking: Decodable, Identifiable {
   let id: String
@@ -178,6 +205,8 @@ struct PublicProfileResponse: Decodable {
   let reviews: [MemberReview]
   let reviewableBookings: [ReviewableBooking]
   let search: HousingSearch?
+  /// Absent from a server older than the profile redesign.
+  var completed: CompletedSubleases?
 }
 struct SocialComment: Decodable, Identifiable {
   let id: String

@@ -10,6 +10,8 @@ struct StudioProperty: Decodable, Equatable {
   let error: String?
   let spots: Int
   let seconds: Double?
+  /// When the capture arrived, as Tour Studio writes it. Absent in older answers.
+  var createdAt: String?
 }
 
 enum StudioFailure: LocalizedError, Equatable {
@@ -143,6 +145,22 @@ struct StudioClient {
       _ = try await send(request("api/properties"))
       return "Connected."
     } catch { return error.localizedDescription }
+  }
+
+  /// Every property Tour Studio holds, newest first. This is how scans made earlier, or with
+  /// another copy of the app, show up on this iPhone.
+  func properties() async throws -> [StudioProperty] {
+    try Self.properties(in: try await send(request("api/properties")))
+  }
+
+  private struct PropertyList: Decodable { let properties: [StudioProperty] }
+
+  /// The list as the service sends it. Anything else is treated as not reaching the service.
+  static func properties(in body: Data) throws -> [StudioProperty] {
+    guard let list = try? JSONDecoder().decode(PropertyList.self, from: body) else {
+      throw StudioFailure.unreachable
+    }
+    return list.properties
   }
 
   /// Nil when Tour Studio has no capture of this property.

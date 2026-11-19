@@ -84,4 +84,12 @@ final class ModelsTests: XCTestCase {
     XCTAssertNil(tour.result)
     XCTAssertEqual(tour.spotCount, 2)
   }
+
+  func testTheAppIsToldWhichServerToUseByItsBuild() {
+    // `INFOPLIST_KEY_APIBaseURL` in project.yml has to arrive in the app's Info.plist, or a
+    // build made for another server silently talks to the default one.
+    XCTAssertEqual(
+      Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String,
+      "https://app-cusesublets.chenagent.com")
+  }
 }

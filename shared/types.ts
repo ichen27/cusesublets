@@ -138,6 +138,8 @@ export interface ConversationSummary extends Conversation {
   listingTitle: string;
   listingImage: string;
   peerName: string;
+  /** Whether staff have checked the other person's ID, as on their public profile. */
+  peerIdentity: string;
   lastMessage?: string;
 }
 export interface ChatAttachment {
@@ -162,7 +164,7 @@ export interface ConversationDetail {
   conversation: ConversationSummary;
   request?: SeekerRequest | null;
   listing: Listing;
-  peer: { id: string; name: string };
+  peer: { id: string; name: string; identity: string };
   messages: Message[];
   offers: Offer[];
   bookings: Booking[];
@@ -205,6 +207,7 @@ export interface PublicProfile {
   avatar?: string;
   photos: string[];
   socials: ProfileSocials;
+  /** The month the account was created, as yyyy-MM. */
   joinedAt?: string;
 }
 export interface ProfileReview {
@@ -215,6 +218,10 @@ export interface ProfileReview {
   body: string;
   createdAt: string;
   listingTitle: string;
+  /** Which side of the sublease the reviewer was on. Absent from older servers. */
+  authorRole?: "subleaser" | "subtenant";
+  /** The month the stay ended, as yyyy-MM. Absent from older servers. */
+  stayEnded?: string;
 }
 export interface ReviewableBooking {
   id: string;

@@ -22,10 +22,15 @@ final class AccountDeletionTests: XCTestCase {
       to: photo.appendingPathComponent("draft.json"))
     try JSONSerialization.data(withJSONObject: ["ownerId": other]).write(
       to: otherPhoto.appendingPathComponent("draft.json"))
+    let seen = MatchSeenStore()
+    seen.save(["match"], user: owner, plan: "search:test")
+    seen.save(["match"], user: other, plan: "search:test")
     defer {
       try? fm.removeItem(at: room)
       try? fm.removeItem(at: photo)
       try? fm.removeItem(at: otherPhoto)
+      seen.forget(user: owner)
+      seen.forget(user: other)
     }
     let api = APIClient(baseURL: URL(string: "https://deletion-\(UUID().uuidString).example.test"))
     let state = AppState(api: api)
@@ -35,6 +40,8 @@ final class AccountDeletionTests: XCTestCase {
     XCTAssertFalse(fm.fileExists(atPath: room.path))
     XCTAssertFalse(fm.fileExists(atPath: photo.path))
     XCTAssertTrue(fm.fileExists(atPath: otherPhoto.path))
+    XCTAssertEqual(seen.seen(user: owner, plan: "search:test"), [], "Seen matches outlived the account")
+    XCTAssertEqual(seen.seen(user: other, plan: "search:test"), ["match"])
     state.user = Member(
       id: other, name: "Other", email: "other@example.test", role: "member", identity: "pending")
     try state.finishAccountDeletion(

@@ -229,4 +229,66 @@ final class SessionLifecycleTests: XCTestCase {
     XCTAssertNil(vault.read())
     XCTAssertNotNil(state.error)
   }
+  private static let signedInSession =
+    "{\"user\":{\"id\":\"one\",\"name\":\"Synthetic\",\"email\":\"one@example.test\",\"role\":\"member\",\"identity\":\"pending\"},\"demo\":false}"
+  /// An app state whose saved session the server has not yet been asked about.
+  @MainActor private func stateWithSavedSession(_ name: String) throws -> AppState {
+    let base = URL(string: "https://\(name)-\(UUID().uuidString).example.test")!
+    try KeychainSession(account: base.absoluteString).save(
+      SessionCredential(
+        cookie: "cuse_password_session=synthetic", expires: Date().addingTimeInterval(60)))
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [SessionProtocol.self]
+    return AppState(api: APIClient(baseURL: base, configuration: configuration))
+  }
+  /// Just after the app opens, a signed-in person's session is still being checked. A tap that
+  /// needs an account must wait for that answer, not show them the login sheet.
+  @MainActor func testATapThatNeedsAnAccountWaitsForTheSavedSessionCheck() async throws {
+    let state = try stateWithSavedSession("early-tap")
+    SessionProtocol.handler = { request in
+      request.url?.path == "/api/blocked-members"
+        ? (200, Data("{\"members\":[],\"hiddenMemberIDs\":[]}".utf8))
+        : (200, Data(Self.signedInSession.utf8))
+    }
+    defer {
+      try? state.api.clearSession()
+      SessionProtocol.handler = nil
+    }
+    XCTAssertTrue(state.checkingSavedSession)
+    let tapped = Task { await state.signedInOrAsk() }
+    for _ in 0..<5 { await Task.yield() }
+    XCTAssertFalse(state.showLogin, "The saved session has not been checked yet")
+    await state.refreshSession()
+    let signedIn = await tapped.value
+    XCTAssertTrue(signedIn)
+    XCTAssertFalse(state.showLogin)
+    XCTAssertFalse(state.checkingSavedSession)
+  }
+  @MainActor func testATapThatNeedsAnAccountAsksAGuestToLogInAtOnce() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [SessionProtocol.self]
+    let api = APIClient(
+      baseURL: URL(string: "https://guest-\(UUID().uuidString).example.test"),
+      configuration: configuration)
+    let state = AppState(api: api)
+    XCTAssertFalse(state.checkingSavedSession, "A guest has no saved session to check")
+    let signedIn = await state.signedInOrAsk()
+    XCTAssertFalse(signedIn)
+    XCTAssertTrue(state.showLogin)
+  }
+  @MainActor func testATapThatNeedsAnAccountAsksForLoginWhenTheSavedSessionHasEnded() async throws {
+    let state = try stateWithSavedSession("ended")
+    SessionProtocol.handler = { _ in (200, Data("{\"user\":null,\"demo\":false}".utf8)) }
+    defer {
+      try? state.api.clearSession()
+      SessionProtocol.handler = nil
+    }
+    let tapped = Task { await state.signedInOrAsk() }
+    for _ in 0..<5 { await Task.yield() }
+    await state.refreshSession(reportErrors: false)
+    let signedIn = await tapped.value
+    XCTAssertFalse(signedIn)
+    XCTAssertTrue(state.showLogin)
+    XCTAssertFalse(state.checkingSavedSession)
+  }
 }

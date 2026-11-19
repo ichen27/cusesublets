@@ -1,4 +1,9 @@
 import { blockedMemberIDs, memberBlockRoute } from "./member-blocks";
+import {
+  completedSubleases,
+  joinedMonth,
+  profileReviews,
+} from "./profile-history";
 import { beginAccountDeletion, accountDeletionStatus, sweepAccountDeletions } from "./account-deletion";
 import { appleNotification, appleChallenge, appleExchange, appleConfigured, type AppleEnv } from "./apple-auth";
 import { roomTourRoute, tourProcessorRoute } from "./room-tours";
@@ -411,7 +416,7 @@ function reviewed(l: InternalListing) {
 
 const conversationSQL = `SELECT c.*, json_extract(l.data,'$.title') listingTitle,
  (SELECT json_extract(r.data,'$.title') FROM seeker_requests r WHERE r.id=c.requestId) requestTitle,
- COALESCE(json_extract(l.data,'$.images[0]'),'') listingImage,peer.name peerName,
+ COALESCE(json_extract(l.data,'$.images[0]'),'') listingImage,peer.name peerName,peer.identity peerIdentity,
  COALESCE((SELECT body FROM messages m WHERE m.listingId=c.listingId AND
  ((m.senderId=c.buyerId AND m.recipientId=c.sellerId) OR (m.senderId=c.sellerId AND m.recipientId=c.buyerId))
  ORDER BY m.createdAt DESC,m.rowid DESC LIMIT 1),'') lastMessage
@@ -693,6 +698,10 @@ async function reviewable(e: Env, u: User, target: string) {
     syracuseDate(),
     u.id,
   );
+}
+/** Payment states that count as paid. A practice payment counts only in development. */
+function paidStatuses(e: Env) {
+  return e.APP_ENV === "development" ? ["paid", "demo_paid"] : ["paid"];
 }
 function socialLinks(value: unknown) {
   requireThat(
@@ -1035,7 +1044,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
         avatar: profile.avatar,
         photos: profile.photos,
         socials: profile.socials,
-        joinedAt: target.joinedAt || undefined,
+        joinedAt: joinedMonth(target.joinedAt),
       },
       listings: (
         await listings(
@@ -1046,10 +1055,12 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
       ).map((l) => listingView(l)),
       search: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? LIMIT 1", target.id, syracuseDate())).filter(r=>!hiddenMembers.has(r.ownerId)).map(searchView)[0] || null,
       requests: (await requests(e, "WHERE r.ownerId=? AND r.profileSearch=1 AND r.status='active' AND json_extract(r.data,'$.endDate')>? ORDER BY r.createdAt DESC", target.id, syracuseDate())).filter(r=>!hiddenMembers.has(r.ownerId)).map(requestView),
-      reviews: await all(
-        e,
-        "SELECT r.id,r.authorId,a.name authorName,r.rating,r.body,r.createdAt,json_extract(l.data,'$.title') listingTitle FROM profile_reviews r JOIN users a ON a.id=r.authorId JOIN bookings b ON b.id=r.bookingId JOIN listings l ON l.id=b.listingId WHERE r.targetId=? ORDER BY r.rowid DESC LIMIT 200",
+      reviews: await profileReviews(e.DB, target.id),
+      completed: await completedSubleases(
+        e.DB,
         target.id,
+        paidStatuses(e),
+        syracuseDate(),
       ),
       reviewableBookings: u ? await reviewable(e, u, target.id) : [],
     });
@@ -1436,6 +1447,11 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
     requireThat(createKey === null || (typeof createKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(createKey)), 400, "Invalid publication ID");
     const draftRevision = b.clientDraftRevision ?? null;
     requireThat(draftRevision === null || (createKey && Number.isSafeInteger(draftRevision) && Number(draftRevision) > 0), 400, "Invalid draft revision");
+    // The iPhone listing steps create a place unpublished, add photos and a tour, then publish.
+    // An unpublished place is 'pending' with no review note: the state the owner's own pause
+    // leaves and the only one the owner's publish accepts.
+    const publishNow = b.publish ?? true;
+    requireThat(typeof publishNow === "boolean", 400, "Publish must be true or false");
     if (createKey) {
       const previous = await one<{id:string}>(e, "SELECT id FROM listings WHERE ownerId=? AND createKey=?", u.id, createKey);
       if (previous) return json({ listing: listingView(await getListing(e, previous.id), u) });
@@ -1490,10 +1506,11 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
     const key = id();
     const creation = await stmt(
       e,
-      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,'approved',?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id=? AND revision=? AND deleted=0)) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
+      "INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND suspended=0) AND (? IS NULL OR EXISTS(SELECT 1 FROM private_drafts WHERE ownerId=? AND id=? AND revision=? AND deleted=0)) ON CONFLICT(ownerId,createKey) WHERE createKey IS NOT NULL DO NOTHING",
       key,
       u.id,
       JSON.stringify(data),
+      publishNow ? "approved" : "pending",
       now(),
       createKey,
       u.id,
@@ -1624,6 +1641,7 @@ async function route(req: Request, e: Env, ctx: Pick<ExecutionContext, "waitUnti
         peer: {
           id: u.id === c.buyerId ? c.sellerId : c.buyerId,
           name: c.peerName,
+          identity: c.peerIdentity,
         },
         messages: await all(
           e,

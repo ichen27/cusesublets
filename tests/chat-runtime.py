@@ -41,6 +41,12 @@ class Chat(unittest.TestCase):
    self.assertEqual(detail["messages"],[])
    self.assertNotIn("reviewNote",detail["listing"])
    self.assertEqual(detail["peer"]["id"],"demo-host")
+   # Each side is told whether staff have checked the other's ID, in the thread and in the list.
+   self.assertEqual(detail["peer"]["identity"],"verified")
+   self.assertEqual(detail["conversation"]["peerIdentity"],"verified")
+   self.assertEqual([x["peerIdentity"] for x in renter.call("/api/conversations")[1]["conversations"] if x["id"]==c],["verified"])
+   renter_identity=renter.call("/api/session")[1]["user"]["identity"]
+   self.assertEqual(host.call(path)[1]["peer"]["identity"],renter_identity)
    self.assertEqual(admin.call(path+"/messages",dict(body="Unauthorized"))[0],403)
    self.assertEqual(renter.call(path+"/messages",dict(body="Hello from the listing"))[0],201)
    self.assertEqual(host.call("/api/messages",dict(listingId=key,recipientId="demo-renter",body="Legacy reply"))[0],201)

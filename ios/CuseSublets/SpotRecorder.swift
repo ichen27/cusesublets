@@ -152,7 +152,7 @@ final class SpotRecorder: NSObject, ObservableObject, ARSessionDelegate {
           return
         }
         guard allowed else {
-          self.message = "Enable camera access for CuseSublets in Settings."
+          self.message = "Turn on camera access for Quad in Settings."
           return
         }
         do { try self.run() } catch { self.message = error.localizedDescription }

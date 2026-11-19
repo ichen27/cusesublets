@@ -60,9 +60,11 @@ class DraftWrites(unittest.TestCase):
   self.create("property-draft","listing")
   self.db.execute("UPDATE private_drafts SET revision=2 WHERE id='property-draft'")
   listing=sql("INSERT INTO listings(id,ownerId,data,status,createdAt,createKey) SELECT",source)
-  args=("place","owner","{}","now","property-draft","owner",1,"owner","property-draft",1)
+  # The fourth value is the status: 'approved' to publish at once, 'pending' to hold it back.
+  args=("place","owner","{}","pending","now","property-draft","owner",1,"owner","property-draft",1)
   self.assertEqual(self.db.execute(listing,args).rowcount,0)
-  self.assertEqual(self.db.execute(listing,(*args[:6],2,"owner","property-draft",2)).rowcount,1)
+  self.assertEqual(self.db.execute(listing,(*args[:7],2,"owner","property-draft",2)).rowcount,1)
+  self.assertEqual(self.db.execute("SELECT status FROM listings WHERE id='place'").fetchone()[0],"pending")
  def test_limit_is_enforced_by_write_statement(self):
   for i in range(20):self.assertEqual(self.create(str(i),"listing"),1)
   self.assertEqual(self.create("21","listing"),0)

@@ -45,7 +45,17 @@ import SwiftUI
   @Published var showLogin = false
   @Published var error: String?
   @Published var tab = 0
+  /// Set by the Post button; the You tab opens the matching editor and clears it.
+  @Published var postIntent: PostIntent?
+  /// How many screens with their own bottom bar are showing; the tab bar hides while any is.
+  @Published var screensHidingTabBar = 0
   @Published var conversationID: String?
+  /// True from the moment an account is created until the login sheet has closed.
+  var justSignedUp = false
+  /// Shows the question a new member is asked once: what brings them here.
+  @Published var welcoming = false
+  /// What they answered. The You tab opens the matching steps once the question has closed.
+  var welcomeChoice: PostIntent?
   func refreshSession(reportErrors: Bool = true) async {
     let requestID = UUID()
     refreshID = requestID
@@ -89,15 +99,27 @@ import SwiftUI
     clearAccount()
     error = warning
   }
-  func requireLogin() -> Bool {
+  private func requireLogin() -> Bool {
     if user == nil {
       showLogin = true
       return false
     }
     return true
   }
+  /// The app has just opened with a saved session and the server has not yet said whose it is.
+  /// Until it does, nobody is known to be signed in, and nobody is known to be a guest.
+  var checkingSavedSession: Bool { user == nil && loading && api.hasStoredSession }
+  /// Whether someone is signed in; a guest is shown the login sheet. Just after the app opens
+  /// a saved session is still being checked, and this waits for that answer: asking at once
+  /// would show a signed-in person the login sheet and then drop what they tapped.
+  func signedInOrAsk() async -> Bool {
+    if checkingSavedSession {
+      for await checking in $loading.values where !checking { break }
+    }
+    return requireLogin()
+  }
   func contact(listingID: String, searchID: String? = nil) async {
-    guard requireLogin() else { return }
+    guard await signedInOrAsk() else { return }
     do {
       var body: [String: Any] = ["listingId": listingID]
       if let searchID { body["requestId"] = searchID }
@@ -108,6 +130,13 @@ import SwiftUI
   }
 }
 @main struct CuseSubletsApp: App {
+  init() {
+    #if DEBUG
+      // A developer sets the Tour Studio address and token from the Mac as launch arguments.
+      // They are kept at launch, so it does not matter which screen is opened first.
+      StudioClient.rememberLaunchAddress()
+    #endif
+  }
   #if !PERSONAL_DEVICE
     @StateObject private var state = AppState()
     @Environment(\.scenePhase) private var scenePhase
@@ -117,8 +146,9 @@ import SwiftUI
       #if PERSONAL_DEVICE
         PropertiesView().tint(.cuseOrange)
       #else
+        // The redesign is drawn for light appearance only so far.
         RootView().environmentObject(state).environment(\.timeZone, marketplaceTimeZone)
-          .tint(.cuseOrange).task(id: scenePhase) {
+          .tint(.quadOrangeDeep).preferredColorScheme(.light).task(id: scenePhase) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
               await state.refreshSession(reportErrors: false)
@@ -131,18 +161,28 @@ import SwiftUI
 }
 struct RootView: View {
   @EnvironmentObject var state: AppState
+  @State private var choosingPost = false
   var body: some View {
+    // The system tab bar is hidden; `QuadTabBar` floats over the bottom of every tab instead.
     TabView(selection: $state.tab) {
-      NavigationStack { BrowseView() }.tabItem { Label("Browse", systemImage: "square.grid.2x2") }
-        .tag(0)
-      NavigationStack { MatchesView() }.tabItem {
-        Label("Matches", systemImage: "arrow.left.arrow.right")
-      }.tag(1)
-      NavigationStack { InboxView() }.tabItem {
-        Label("Inbox", systemImage: "bubble.left.and.bubble.right")
-      }.tag(2)
-      NavigationStack { AccountView() }.tabItem { Label("You", systemImage: "person.crop.circle") }
-        .tag(3)
+      tab(.home) { BrowseView() }
+      tab(.matches) { MatchesView() }
+      tab(.inbox) { InboxView() }
+      tab(.you) { AccountView() }
+    }
+    .overlay(alignment: .bottom) {
+      if state.screensHidingTabBar == 0 {
+        QuadTabBar(selection: $state.tab) {
+          Task { if await state.signedInOrAsk() { choosingPost = true } }
+        }
+          .ignoresSafeArea(.keyboard, edges: .bottom)
+      }
+    }
+    .confirmationDialog(
+      "What would you like to post?", isPresented: $choosingPost, titleVisibility: .visible
+    ) {
+      Button("Sublease my place") { post(.listing) }
+      Button("Say what I'm looking for") { post(.search) }
     }
     .id(state.user?.id ?? "guest")
     .onReceive(
@@ -151,15 +191,60 @@ struct RootView: View {
     ) { _ in
       if state.api.appleUserID != nil { Task { await state.logout() } }
     }
-    .sheet(isPresented: $state.showLogin) { LoginView() }
+    // One cover at a time: the question waits for the login sheet to close, and the steps it
+    // leads to wait for the question to close.
+    .sheet(
+      isPresented: $state.showLogin,
+      onDismiss: {
+        guard state.justSignedUp else { return }
+        state.justSignedUp = false
+        state.welcoming = state.user != nil
+      }
+    ) { LoginView() }
+    .fullScreenCover(
+      isPresented: $state.welcoming,
+      onDismiss: {
+        guard let choice = state.welcomeChoice, state.user != nil else { return }
+        state.welcomeChoice = nil
+        post(choice)
+      }
+    ) { WelcomeView() }
     .alert(
-      "CuseSublets",
+      "Quad",
       isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })
     ) {
       Button("OK") { state.error = nil }
     } message: {
       Text(state.error ?? "")
     }
+  }
+  /// One tab's screens. The margin keeps the end of every scrolling screen above the floating
+  /// bar; a safe-area inset on the tab view or the stack does not reach the screens inside.
+  private func tab<Content: View>(_ tab: QuadTab, @ViewBuilder content: () -> Content)
+    -> some View
+  {
+    NavigationStack { content() }
+      .contentMargins(.bottom, QuadTabBar.reservedHeight, for: .scrollContent)
+      .toolbar(.hidden, for: .tabBar)
+      .tag(tab.rawValue)
+  }
+  private func post(_ intent: PostIntent) {
+    state.postIntent = intent
+    state.tab = QuadTab.you.rawValue
+  }
+}
+/// Shown in place of a tab's guest screen while a saved session is still being checked, so a
+/// signed-in person opening the app is not first told to log in.
+struct CheckingSessionView: View {
+  var body: some View {
+    VStack(spacing: 12) {
+      ProgressView()
+      Text("Checking your account").font(.subheadline.weight(.semibold))
+        .foregroundStyle(Color.quadMuted)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("checking-session")
   }
 }
 struct LoginView: View {
@@ -263,6 +348,7 @@ struct LoginView: View {
         signup ? "/api/auth/signup" : "/api/auth/login",
         ["email": email, "password": password, "name": name])
       password = ""
+      state.justSignedUp = signup
       await state.refreshSession()
       if state.user != nil { dismiss() }
     } catch { self.error = error.localizedDescription }
@@ -342,8 +428,8 @@ struct RemoteImage: View {
     AsyncImage(url: path.flatMap { URL(string: $0, relativeTo: state.api.baseURL) }) { image in
       image.resizable().scaledToFill()
     } placeholder: {
-      Color.cuseCream.overlay(
-        Image(systemName: "house").font(.largeTitle).foregroundStyle(.secondary))
+      Color.quadPhoto.overlay(
+        Image(systemName: "photo").font(.title).foregroundStyle(Color.quadMuted))
     }.clipped()
   }
 }

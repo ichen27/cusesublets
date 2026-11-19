@@ -58,6 +58,9 @@ struct DraftResponse: Decodable {
   let draft: DraftRecord?
   let revision: Int
 }
+/// Edits the details of a place that already exists ("Edit details" on its page). New places are
+/// made in `ListingFlow`; the parts of this view that create one are no longer reached and can
+/// go when this editor is redrawn.
 struct ListingEditor: View {
   @EnvironmentObject var state: AppState
   @Environment(\.dismiss) var dismiss
@@ -279,56 +282,100 @@ struct ListingEditor: View {
     } catch { self.error = error.localizedDescription }
   }
 }
+/// Your own place: its status, the way to its public page, its photos, tours and room
+/// layouts, and the private documents staff check.
 struct ListingManageView: View {
   @EnvironmentObject var state: AppState
+  @Environment(\.dismiss) private var dismiss
   let listing: Listing
   @State private var current: Listing?
   @State private var picking = false
   @State private var kind = "media"
   @State private var editing = false
+  @State private var finishing: ListingFlowStart?
   @State private var busy = false
   @State private var error = ""
   @State private var notice = ""
   var l: Listing { current ?? listing }
   var body: some View {
-    List {
-      Section {
-        Text(l.title).font(.title2.bold())
-        StatusText(text: l.status)
-        NavigationLink("View listing") { ListingView(listing: l) }
-        Button("Edit details") { editing = true }
-        if l.status == "approved" {
-          Button("Pause listing") { change("pause") }
-        } else if l.status == "paused" || l.status == "pending" {
-          Button("Publish listing") { change("publish") }
+    ScrollView {
+      VStack(alignment: .leading, spacing: 18) {
+        HStack(spacing: 12) {
+          Button {
+            dismiss()
+          } label: {
+            Image(systemName: "chevron.left")
+          }
+          .buttonStyle(.quadIcon).accessibilityLabel("Back")
+          Text("Your place").font(.title2.weight(.heavy)).accessibilityAddTraits(.isHeader)
+        }
+        .padding(.top, 4)
+        summary
+        section("Photos and tours") {
+          rows {
+            Button {
+              kind = "media"
+              picking = true
+            } label: {
+              row("Upload photo or video", "photo.on.rectangle")
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            NavigationLink {
+              RoomToursView(listing: l)
+            } label: {
+              row("360° tours", "view.3d")
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            NavigationLink {
+              RoomScansView(listing: l)
+            } label: {
+              row("Room layouts", "square.split.bottomrightquarter")
+            }
+            .buttonStyle(.plain)
+          }
+        }
+        section("Checks") {
+          ChecksView(identity: l.hostIdentity, lease: l.leaseStatus, permission: l.permissionStatus)
+          rows {
+            Button {
+              kind = "lease"
+              picking = true
+            } label: {
+              row("Upload private lease evidence", "doc.text")
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            Button {
+              kind = "permission"
+              picking = true
+            } label: {
+              row("Upload private sublet permission", "signature")
+            }
+            .buttonStyle(.plain)
+          }
+          Text("Only you and staff see these. Sending a new one starts that check again.")
+            .font(.footnote).foregroundStyle(Color.quadMuted)
+        }
+        if busy { ProgressView().frame(maxWidth: .infinity) }
+        if !notice.isEmpty {
+          Text(notice).font(.subheadline.weight(.bold)).foregroundStyle(Color.quadGreenText)
+        }
+        if !error.isEmpty {
+          Text(error).font(.subheadline).foregroundStyle(Color(quad: 0xB42318))
         }
       }
-      Section("Photos, video & room scans") {
-        Button("Upload photo or video") {
-          kind = "media"
-          picking = true
-        }
-        NavigationLink("Capture or manage photographic tours") { RoomToursView(listing: l) }
-        NavigationLink("Capture or manage room layouts") { RoomScansView(listing: l) }
-      }
-      Section("Independent checks") {
-        ChecksView(identity: l.hostIdentity, lease: l.leaseStatus, permission: l.permissionStatus)
-        Button("Upload private lease evidence") {
-          kind = "lease"
-          picking = true
-        }
-        Button("Upload private sublet permission") {
-          kind = "permission"
-          picking = true
-        }
-        Text("Evidence is visible to you and staff. Replacement evidence resets that check.").font(
-          .caption)
-      }
-      if busy { ProgressView() }
-      if !notice.isEmpty { Text(notice) }
-      if !error.isEmpty { Text(error).foregroundStyle(.red) }
-    }.navigationTitle("Manage place").task { await load() }.sheet(isPresented: $editing) {
+      .padding(.horizontal, 16).padding(.bottom, 16)
+    }
+    .foregroundStyle(Color.quadInk)
+    .background(Color.quadGround.ignoresSafeArea())
+    .toolbar(.hidden, for: .navigationBar)
+    .task { await load() }.sheet(isPresented: $editing) {
       NavigationStack { ListingEditor(existing: l, onSaved: { Task { await load() } }) }
+    }
+    .fullScreenCover(item: $finishing, onDismiss: { Task { await load() } }) { start in
+      NavigationStack { ListingFlow(start: start, onSaved: { Task { await load() } }) }
     }
     .fileImporter(
       isPresented: $picking,
@@ -348,6 +395,59 @@ struct ListingManageView: View {
       }
     }
   }
+  private var summary: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 12) {
+        RemoteImage(path: l.images.first).frame(width: 64, height: 64)
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 5) {
+          Text(l.title).font(.title3.weight(.heavy))
+          QuadChip(
+            text: AccountView.status(l.status), kind: l.status == "approved" ? .good : .note)
+        }
+        Spacer(minLength: 0)
+      }
+      NavigationLink("View listing") { ListingView(listing: l) }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
+      Button("Edit details") { editing = true }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
+      if l.status == "approved" {
+        Button("Pause listing") { change("pause") }
+          .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell)).disabled(busy)
+      } else if l.status == "paused" || l.status == "pending" {
+        Button("Publish listing") { change("publish") }.buttonStyle(.quadPrimaryWide)
+          .disabled(busy)
+        Button("Add photos, a scan and checks in steps") {
+          finishing = ListingFlowStart(id: UUID().uuidString, place: l)
+        }
+        .buttonStyle(QuadSecondaryButtonStyle(wide: true, fill: .quadWell))
+      }
+    }
+    .padding(16).frame(maxWidth: .infinity, alignment: .leading).quadCard(radius: 24)
+  }
+  private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content)
+    -> some View
+  {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title).font(.headline.weight(.heavy)).accessibilityAddTraits(.isHeader)
+      content()
+    }
+  }
+  private func rows<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    VStack(spacing: 0) { content() }.quadCard(radius: 22)
+  }
+  private func row(_ title: String, _ symbol: String) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol).font(.body.weight(.semibold)).foregroundStyle(Color.quadMuted)
+        .frame(width: 26).accessibilityHidden(true)
+      Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.quadInk)
+      Spacer(minLength: 0)
+      Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+        .foregroundStyle(Color.quadMuted).accessibilityHidden(true)
+    }
+    .padding(.horizontal, 16).padding(.vertical, 14).contentShape(Rectangle())
+  }
   func load() async {
     do {
       let r: ListingResponse = try await state.api.get("/api/listings/\(listing.id)")
@@ -366,188 +466,6 @@ struct ListingManageView: View {
     }
   }
 }
-struct SearchEditor: View {
-  @EnvironmentObject var state: AppState
-  @Environment(\.dismiss) var dismiss
-  let search: HousingSearch?
-  let onSaved: () -> Void
-  @State private var start = Date()
-  @State private var end = Date().addingTimeInterval(86400 * 90)
-  @State private var minimum = ""
-  @State private var maximum = "1000"
-  @State private var bedrooms = ""
-  @State private var roomType = "Any"
-  @State private var required = ""
-  @State private var preferred = ""
-  @State private var intro = ""
-  @State private var active = false
-  @State private var areas: [SearchArea] = []
-  @State private var drawing: [GeoPoint] = []
-  @State private var areaName = ""
-  @State private var revision = 0
-  @State private var loaded = false
-  @State private var busy = false
-  @State private var error = ""
-  @State private var cleanupNotice = false
-  var data: [String: Any] {
-    [
-      "startDate": isoDay(start), "endDate": isoDay(end), "minBudget": minimum,
-      "maxBudget": maximum, "minBedrooms": bedrooms, "roomType": roomType,
-      "requiredAmenities": conditions(required), "preferredAmenities": conditions(preferred),
-      "areas": areas.map { try! $0.dictionary() }, "introduction": intro, "activate": active,
-    ]
-  }
-  func conditions(_ s: String) -> [String] {
-    s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-  }
-  var body: some View {
-    Form {
-      Section("Your plans") {
-        DatePicker("From", selection: $start, displayedComponents: .date)
-        DatePicker("Until", selection: $end, displayedComponents: .date)
-        TextField("Minimum monthly rent (optional)", text: $minimum).keyboardType(.numberPad)
-        TextField("Maximum monthly rent", text: $maximum).keyboardType(.numberPad)
-        Picker("Room type", selection: $roomType) {
-          ForEach(["Any", "Private room", "Entire place"], id: \.self) { Text($0) }
-        }
-        if roomType == "Entire place" {
-          TextField("Minimum bedrooms (optional)", text: $bedrooms).keyboardType(.numberPad)
-        }
-      }
-      Section("Desired areas") {
-        ForEach(areas) { a in
-          HStack {
-            Text(a.label)
-            Spacer()
-            Button("Remove", role: .destructive) { areas.removeAll { $0.id == a.id } }
-          }
-        }
-        MapReader { proxy in
-          Map(
-            initialPosition: .region(
-              MKCoordinateRegion(
-                center: .init(latitude: 43.04, longitude: -76.13),
-                span: .init(latitudeDelta: 0.1, longitudeDelta: 0.1)))
-          ) {
-            ForEach(areas) { area in
-              MapPolygon(
-                coordinates: area.points.map { .init(latitude: $0.lat, longitude: $0.lng) }
-              ).foregroundStyle(Color.cuseOrange.opacity(0.2))
-            }
-            if drawing.count > 1 {
-              MapPolyline(coordinates: drawing.map { .init(latitude: $0.lat, longitude: $0.lng) })
-                .stroke(.orange, lineWidth: 3)
-            }
-          }.onTapGesture { point in
-            if drawing.count < 25, let c = proxy.convert(point, from: .local) {
-              drawing.append(.init(lat: c.latitude, lng: c.longitude))
-            }
-          }
-        }.frame(height: 260)
-        Text(
-          "Tap at least three corners around an area in Syracuse, name it, then add it. Up to five areas."
-        ).font(.caption)
-        TextField("Area name", text: $areaName)
-        HStack {
-          Button("Undo point") { if !drawing.isEmpty { drawing.removeLast() } }
-          Button("Add area") {
-            areas.append(.init(id: UUID().uuidString, label: areaName, points: drawing))
-            drawing = []
-            areaName = ""
-          }.disabled(drawing.count < 3 || areaName.isEmpty || areas.count >= 5)
-        }
-      }
-      Section("Conditions and introduction") {
-        TextField("Required conditions, comma separated", text: $required)
-        TextField("Preferred conditions, comma separated", text: $preferred)
-        TextField("Introduce yourself", text: $intro, axis: .vertical)
-        Toggle("Make my search visible", isOn: $active)
-      }
-      Button("Save private draft & finish later") {
-        Task { await save(close: true, publish: false) }
-      }.disabled(busy || !loaded)
-      Button("Save housing search") { Task { await save(close: true, publish: true) } }.disabled(
-        busy || !loaded)
-      if busy { ProgressView() }
-      if !error.isEmpty { Text(error).foregroundStyle(.red) }
-    }.navigationTitle("Housing search").toolbar { Button("Close") { dismiss() }.disabled(busy) }
-      .interactiveDismissDisabled(busy).task { await load() }
-      .alert("Housing search saved", isPresented: $cleanupNotice) {
-        Button("Done") { dismiss() }
-      } message: {
-        Text(
-          "Your search was saved successfully. Its private draft could not be removed; review the remaining draft in You."
-        )
-      }
-  }
-  func load() async {
-    guard !loaded else { return }
-    do {
-      if let s = search {
-        start = parseDay(s.startDate)
-        end = parseDay(s.endDate)
-        minimum = s.minBudget.map { String($0) } ?? ""
-        maximum = String(s.maxBudget)
-        bedrooms = s.minBedrooms.map { String($0) } ?? ""
-        roomType = s.roomType
-        required = s.requiredAmenities.joined(separator: ", ")
-        preferred = s.preferredAmenities.joined(separator: ", ")
-        intro = s.introduction
-        active = s.status == "active"
-        areas = s.areas
-      }
-      let r: DraftResponse = try await state.api.get("/api/drafts/search")
-      revision = r.revision
-      if let d = r.draft {
-        let v = d.data.mapValues(\.value)
-        start = parseDay(v["startDate"] as? String ?? "")
-        end = parseDay(v["endDate"] as? String ?? "")
-        minimum = v["minBudget"] as? String ?? ""
-        maximum = v["maxBudget"] as? String ?? ""
-        bedrooms = v["minBedrooms"] as? String ?? ""
-        roomType = v["roomType"] as? String ?? "Any"
-        required = (v["requiredAmenities"] as? [String] ?? []).joined(separator: ", ")
-        preferred = (v["preferredAmenities"] as? [String] ?? []).joined(separator: ", ")
-        intro = v["introduction"] as? String ?? ""
-        active = v["activate"] as? Bool ?? false
-        if let a = v["areas"] {
-          areas = try JSONDecoder().decode(
-            [SearchArea].self, from: JSONSerialization.data(withJSONObject: a))
-        }
-      }
-      loaded = true
-    } catch { self.error = error.localizedDescription }
-  }
-  func save(close: Bool, publish: Bool) async {
-    guard !busy else { return }
-    error = ""
-    busy = true
-    defer { busy = false }
-    do {
-      let r: DraftResponse = try await state.api.post(
-        "/api/drafts/search", ["kind": "search", "step": 4, "revision": revision, "data": data])
-      revision = r.revision
-      if publish {
-        guard let max = Double(maximum) else { throw APIError(message: "Enter a maximum rent") }
-        var b = data
-        b["maxBudget"] = max
-        b["minBudget"] = minimum.isEmpty ? nil : Double(minimum)
-        b["minBedrooms"] = bedrooms.isEmpty || roomType != "Entire place" ? nil : Double(bedrooms)
-        b["status"] = active ? "active" : "paused"
-        b["clientDraftRevision"] = revision
-        let cleaned = try await state.api.publishHousingSearch(b, draftRevision: revision)
-        if !cleaned {
-          onSaved()
-          cleanupNotice = true
-          return
-        }
-      }
-      onSaved()
-      if close { dismiss() }
-    } catch { self.error = error.localizedDescription }
-  }
-}
-
 // Keep these bounds aligned with shared/drafts.ts; explain invalid input rather than moving the pin.
 enum ListingInputValidation {
   static func validate(
