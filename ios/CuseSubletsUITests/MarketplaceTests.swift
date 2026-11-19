@@ -689,6 +689,30 @@ final class MarketplaceTests: XCTestCase {
     reveal(app.buttons["Device capture check"], in: app)
     app.buttons["Device capture check"].tap()
     XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 30))
+    // Scans live in Tour Studio. Without its address there are none to list, and the screen
+    // says how to connect; a new scan can still be started.
+    XCTAssertTrue(app.staticTexts["tour-studio-status"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.buttons["Tour Studio settings"].exists)
+    attach(app, "Device capture check: scans")
+    app.buttons["New scan"].tap()
+    let field = app.textFields["Name or address"]
+    XCTAssertTrue(field.waitForExistence(timeout: 30))
+    field.typeText("12 Elm St")
+    app.buttons["Add"].tap()
+    XCTAssertTrue(app.navigationBars["12 Elm St"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.buttons["Start scan"].waitForExistence(timeout: 30))
+    app.navigationBars.buttons["Device capture check"].tap()
+    let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "12 Elm St"))
+      .firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 30), "The new scan should be listed")
+    XCTAssertTrue(row.label.contains("Not scanned yet"), row.label)
+    // Leave nothing behind for the next run.
+    row.tap()
+    reveal(app.buttons["Delete property"], in: app)
+    app.buttons["Delete property"].tap()
+    app.buttons["Delete property and its tour"].tap()
+    XCTAssertTrue(app.navigationBars["Device capture check"].waitForExistence(timeout: 30))
+
     let start = app.buttons["Start camera test"]
     reveal(start, in: app)
     XCTAssertFalse(start.isEnabled, "Simulator must not pretend camera capture works")

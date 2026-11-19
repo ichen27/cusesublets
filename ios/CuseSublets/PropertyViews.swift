@@ -64,7 +64,7 @@ struct PropertiesView: View {
   }
 }
 
-private struct PropertyRow: View {
+struct PropertyRow: View {
   let property: Property
   var body: some View {
     let scanned = PropertyScan.spots(for: property.id).count

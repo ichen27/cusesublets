@@ -2,7 +2,7 @@ import Foundation
 
 /// A place being scanned: its name here, its capture in `SpotTake`'s folder, and its stitched
 /// tour on the Tour Studio service under the same id.
-struct Property: Codable, Identifiable, Equatable {
+struct Property: Codable, Identifiable, Hashable {
   let id: String
   var name: String
   var createdAt: Date
@@ -36,6 +36,35 @@ final class PropertyStore: ObservableObject {
     save()
     return property
   }
+
+  /// Adds the properties Tour Studio holds that this iPhone does not list yet, and notes which
+  /// of its own Tour Studio already has. Nothing is removed and no name here is changed: a scan
+  /// that was never uploaded exists only on this iPhone. Returns how many were added.
+  @discardableResult
+  func merge(_ kept: [StudioProperty]) -> Int {
+    var added = 0
+    var changed = false
+    for remote in kept {
+      if let index = properties.firstIndex(where: { $0.id == remote.id }) {
+        if !properties[index].uploaded {
+          properties[index].uploaded = true
+          changed = true
+        }
+      } else {
+        properties.append(
+          Property(
+            id: remote.id, name: Self.clean(remote.name),
+            createdAt: remote.createdAt.flatMap(Self.moment) ?? Date(), uploaded: true))
+        added += 1
+      }
+    }
+    guard added > 0 || changed else { return 0 }
+    properties.sort { $0.createdAt > $1.createdAt }
+    save()
+    return added
+  }
+
+  private static func moment(_ text: String) -> Date? { ISO8601DateFormatter().date(from: text) }
 
   func update(_ id: String, _ change: (inout Property) -> Void) {
     guard let index = properties.firstIndex(where: { $0.id == id }) else { return }

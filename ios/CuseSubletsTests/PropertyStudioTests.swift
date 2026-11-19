@@ -21,6 +21,53 @@ final class PropertyStudioTests: XCTestCase {
     XCTAssertNotNil(UUID(uuidString: second.id))
   }
 
+  func testPastScansKeptByTourStudioJoinTheList() {
+    let file = temporaryFile()
+    let store = PropertyStore(file: file)
+    let local = store.add(name: "Scanned here")
+    let kept = [
+      StudioProperty(
+        id: "a", name: "Test 9", status: "ready", error: nil, spots: 3, seconds: 12,
+        createdAt: "2026-11-15T20:00:00Z"),
+      StudioProperty(
+        id: "b", name: "Test 10", status: "ready", error: nil, spots: 3, seconds: 729.8,
+        createdAt: "2026-11-16T20:55:39Z"),
+      // Tour Studio also has the one made on this iPhone, under another name.
+      StudioProperty(
+        id: local.id, name: "Renamed elsewhere", status: "ready", error: nil, spots: 2,
+        seconds: 9),
+    ]
+    XCTAssertEqual(store.merge(kept), 2, "Two scans were not on this iPhone yet")
+    // Newest first, and the name given on this iPhone stays.
+    XCTAssertEqual(store.properties.map(\.name), ["Scanned here", "Test 10", "Test 9"])
+    XCTAssertEqual(store.properties.map(\.uploaded), [true, true, true])
+    XCTAssertEqual(store.merge(kept), 0, "Reading the same list again adds nothing")
+    XCTAssertEqual(
+      PropertyStore(file: file).properties.map(\.name), ["Scanned here", "Test 10", "Test 9"])
+  }
+
+  func testAScanOnlyOnThisPhoneStaysWhenTourStudioHasNone() {
+    let store = PropertyStore(file: temporaryFile())
+    store.add(name: "Not uploaded yet")
+    XCTAssertEqual(store.merge([]), 0)
+    XCTAssertEqual(store.properties.map(\.name), ["Not uploaded yet"])
+    XCTAssertEqual(store.properties.map(\.uploaded), [false])
+  }
+
+  func testTheListOfScansIsReadAsTourStudioSendsIt() throws {
+    let body = Data(
+      #"{"properties":[{"id":"d6","name":"Test 10","status":"ready","error":null,"createdAt":"2026-11-16T20:55:39Z","spots":3,"seconds":729.8,"tour":{"id":"tour","kind":"spots"}}]}"#
+        .utf8)
+    XCTAssertEqual(
+      try StudioClient.properties(in: body),
+      [
+        StudioProperty(
+          id: "d6", name: "Test 10", status: "ready", error: nil, spots: 3, seconds: 729.8,
+          createdAt: "2026-11-16T20:55:39Z")
+      ])
+    XCTAssertThrowsError(try StudioClient.properties(in: Data("<html>sign in</html>".utf8)))
+  }
+
   func testRemovingAPropertyForgetsIt() {
     let file = temporaryFile()
     let store = PropertyStore(file: file)

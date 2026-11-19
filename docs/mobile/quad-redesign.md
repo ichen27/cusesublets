@@ -244,6 +244,23 @@ Known limits:
 - **The camera screens were not seen running.** A simulator has no camera, and the local test server builds no tours. They compile, the capture app's interface test passes, and the pages around them were seen in the simulator, but the camera view, the scan map with spots on it and a built tour's card need a run on an iPhone.
 - The mockup's count of shots at a spot ("2 of 6"), its arrow telling you which way to turn, and its separate preview page for a built tour are not built. The tour itself still opens in the web viewer.
 
+## Your scans on the capture check
+
+Device capture check (a development-only screen, under You) now starts with "Your spot scans":
+
+- **Past scans.** Scans are kept by Tour Studio, whichever copy of the app made them. The screen reads that list and adds any scan this iPhone does not have yet, so scans made with the separate capture app show up here. Nothing on the phone is removed, and a name given on the phone stays.
+- **View tour.** A scan with a tour has a "View tour" button in its row, which opens the 360° tour full screen. The scan's own page opens from the rest of the row.
+- **New scan.** Name the place and it opens the same page the capture app uses: scan spot by spot, generate, view.
+- **Setting it up.** It needs the Tour Studio address and access token, entered under "Tour Studio settings" or passed once as launch arguments from the Mac. The app now keeps those arguments at launch, whichever screen is opened first.
+
+The capture app keeps its own first screen and does not show this section. The merge and the reading of Tour Studio's list are in `PropertyStore.swift` and `StudioClient.swift`, with tests in `PropertyStudioTests.swift`.
+
+Known limits:
+
+- A past scan arrives without its camera images, which stay on the phone that took them. Its tour can be viewed, and scanning it again replaces the tour.
+- Deleting a scan is on its own page, which also deletes its tour from Tour Studio.
+- The interface test covers the screen without Tour Studio set up and starting a new scan. The list of past scans and a tour opening from it were checked once by hand in the simulator against the real service.
+
 ## Checking it
 
 ```sh

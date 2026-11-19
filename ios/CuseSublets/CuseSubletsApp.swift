@@ -130,6 +130,13 @@ import SwiftUI
   }
 }
 @main struct CuseSubletsApp: App {
+  init() {
+    #if DEBUG
+      // A developer sets the Tour Studio address and token from the Mac as launch arguments.
+      // They are kept at launch, so it does not matter which screen is opened first.
+      StudioClient.rememberLaunchAddress()
+    #endif
+  }
   #if !PERSONAL_DEVICE
     @StateObject private var state = AppState()
     @Environment(\.scenePhase) private var scenePhase
