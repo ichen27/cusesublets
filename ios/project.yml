@@ -41,6 +41,9 @@ targets:
           - CFBundleURLSchemes: ["$(CUSE_CALLBACK_SCHEME)"]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # The build setting above reaches the app only through this key. Without it the app
+        # always used the address written in APIClient.swift, whatever the setting said.
+        APIBaseURL: $(INFOPLIST_KEY_APIBaseURL)
     settings:
       base:
         TARGETED_DEVICE_FAMILY: '1'
