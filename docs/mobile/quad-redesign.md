@@ -266,6 +266,8 @@ The first slow run of these screens failed three of the new tests, twice each. E
 - **The offer form and the offer card had the same title.** A test waiting for "Your offer" found the form's title while the offer was still being sent. The form is now titled "Make an offer".
 - **The tours page claimed too early.** Before the server had answered, it said tours could not be built on this server. It now says "Loading tours" until it knows.
 
+Hosted CI then failed one new assertion that the local runs could not: the tours page test expected "Tours cannot be built on this server yet", but the hosted test server is started with tour building switched on, so the page said the device cannot scan instead. The test now accepts either explanation, and the local server is started the same way as the hosted one.
+
 Two more failures came from the local test database, not the app. The interface tests put their places at a random map spot and count the matches there:
 
 - A spot landed on the exact one an earlier run had used, so two leftover places showed up as extra matches.

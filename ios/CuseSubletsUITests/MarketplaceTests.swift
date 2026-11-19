@@ -664,12 +664,17 @@ final class MarketplaceTests: XCTestCase {
     attach(app, "Room capture capability")
     app.navigationBars.buttons.firstMatch.tap()
 
-    // The local test server builds no tours, and the page says so instead of offering a scan.
+    // A simulator cannot scan, and a test server may or may not be set up to build tours.
+    // Either way the page says why instead of offering a scan.
     let tours = app.buttons["360° tours"]
     reveal(tours, in: app)
     tours.tap()
     XCTAssertTrue(app.staticTexts["No tours shared yet."].waitForExistence(timeout: 30))
-    XCTAssertTrue(app.staticTexts["Tours cannot be built on this server yet."].exists)
+    XCTAssertTrue(
+      app.staticTexts["Tours cannot be built on this server yet."].exists
+        || app.staticTexts["This device cannot scan. You can still look through the tours here."]
+          .exists, "The tours page should say why no scan is offered")
+    XCTAssertFalse(app.buttons["Capture spots for a tour"].exists)
     attach(app, "Tours for your place")
     app.buttons["Back"].tap()
     XCTAssertTrue(app.staticTexts["Your place"].waitForExistence(timeout: 30))
